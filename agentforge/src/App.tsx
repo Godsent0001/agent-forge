@@ -12,6 +12,7 @@ const API_BASE = "http://127.0.0.1:8756";
 
 export default function App() {
   const [boot, setBoot] = useState<BootState>("checking-sidecar");
+  const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
 
@@ -19,7 +20,6 @@ export default function App() {
     let cancelled = false;
 
     const bootstrap = async () => {
-      // 1. Wait for the Python sidecar (retry briefly — it may still be starting).
       let sidecarUp = false;
       for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
         try {
@@ -39,11 +39,8 @@ export default function App() {
         return;
       }
 
-      // 2. Load or create the default project (single-project MVP for now —
-      // a project switcher is a natural Phase 3.5 addition, not core to the
-      // architecture, so it's deliberately out of scope here).
       setBoot("loading-project");
-      const projects = await api.projects.list();
+      const projects = await fetchProjects();
       const project = projects[0] ?? (await api.projects.create("My First Project"));
       await loadProject(project);
       if (!cancelled) setBoot("ready");
@@ -53,7 +50,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [loadProject]);
+  }, [fetchProjects, loadProject]);
 
   if (boot === "checking-sidecar" || boot === "loading-project") {
     return (

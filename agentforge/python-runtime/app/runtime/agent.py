@@ -8,6 +8,7 @@ for memory read/write, keeping the loop logic testable in isolation
 
 from __future__ import annotations
 
+import asyncio
 from sqlalchemy.orm import Session
 
 from app import models
@@ -27,6 +28,7 @@ class RuntimeAgent:
         llm: LLMInterface,
         tools: dict[str, Tool],
         db: Session,
+        parallel_execution: bool = False,
     ):
         self.id = agent_row.id
         self.name = agent_row.name
@@ -36,6 +38,7 @@ class RuntimeAgent:
         self.llm = llm
         self.tools = tools  # name -> Tool (normal tools AND AgentTools, same interface)
         self._db = db
+        self.parallel_execution = parallel_execution
 
     def _read_memory(self) -> str:
         if not self.memory_enabled:
@@ -81,19 +84,31 @@ class RuntimeAgent:
                 final_answer = decision.answer or ""
                 continue
 
-            tool = self.tools.get(decision.tool_name or "")
+            tool_name = decision.tool_name or ""
+            tool = self.tools.get(tool_name)
             if tool is None:
-                raise AgentExecutionError(f"Agent {self.name} requested unknown tool '{decision.tool_name}'")
+                raise AgentExecutionError(f"Agent {self.name} requested unknown tool '{tool_name}'")
 
-            try:
-                tool_result = await tool.execute(decision.tool_input or "", context=context)
-            except ToolExecutionError as e:
-                # Tool errors are reported back to the agent as a message, not
-                # a crash — the agent may recover (retry differently, use
-                # another tool, or give up gracefully in its final answer).
-                tool_result = f"ERROR: {e}"
+            tool_inputs = [inp.strip() for inp in (decision.tool_input or "").split("\n---\n") if inp.strip()]
+            if not tool_inputs:
+                tool_inputs = [decision.tool_input or ""]
 
-            messages.append(f"[TOOL RESULT: {tool.name}] {tool_result}")
+            if self.parallel_execution and len(tool_inputs) > 1:
+                async def _exec_single(inp: str):
+                    try:
+                        return await tool.execute(inp, context=context)
+                    except ToolExecutionError as e:
+                        return f"ERROR: {e}"
+
+                results = await asyncio.gather(*[_exec_single(inp) for inp in tool_inputs])
+                combined_result = "\n".join([f"Result {i+1}: {res}" for i, res in enumerate(results)])
+                messages.append(f"[TOOL RESULT: {tool.name}] (Parallel Execution)\n{combined_result}")
+            else:
+                try:
+                    tool_result = await tool.execute(decision.tool_input or "", context=context)
+                except ToolExecutionError as e:
+                    tool_result = f"ERROR: {e}"
+                messages.append(f"[TOOL RESULT: {tool.name}] {tool_result}")
 
         self._write_memory(f"Task '{parent_prompt}' -> {final_answer}")
         await context.emit("AgentCompleted", agent_name=self.name, data={"result": final_answer})

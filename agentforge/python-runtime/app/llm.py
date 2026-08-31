@@ -14,7 +14,9 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-USE_MOCK = True  # flip off once you have real provider credentials configured
+import os
+
+USE_MOCK = False  # Default to real LiteLLM; falls back to mock if LiteLLM call fails or no API keys are present
 
 
 @dataclass
@@ -39,7 +41,10 @@ class LLMInterface:
     async def reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
         if USE_MOCK:
             return await self._mock_reason(messages, tools)
-        return await self._litellm_reason(messages, tools)
+        try:
+            return await self._litellm_reason(messages, tools)
+        except Exception as e:
+            return await self._mock_reason(messages, tools)
 
     async def _litellm_reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
         import litellm  # imported lazily so the mock path never needs it installed

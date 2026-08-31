@@ -28,8 +28,10 @@ export interface ExecutionResult {
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
-    create: (name: string) =>
-      request<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
+    create: (name: string, parallel_execution = false) =>
+      request<Project>("/projects", { method: "POST", body: JSON.stringify({ name, parallel_execution }) }),
+    update: (id: string, patch: { name?: string; parallel_execution?: boolean }) =>
+      request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   },
   agents: {
     list: (project_id: string) => request<Agent[]>(`/agents?project_id=${project_id}`),

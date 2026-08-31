@@ -50,7 +50,7 @@ class ExecutionEngine:
 
         return tools
 
-    def _build_agent(self, agent_id: str) -> RuntimeAgent:
+    def _build_agent(self, agent_id: str, parallel_execution: bool = False) -> RuntimeAgent:
         if agent_id in self._agent_cache:
             return self._agent_cache[agent_id]
 
@@ -60,15 +60,11 @@ class ExecutionEngine:
 
         llm = LLMInterface(provider=agent_row.provider, model=agent_row.model)
 
-        # Placeholder inserted into the cache before recursing into
-        # children, so a genuine graph cycle at the *build* stage (which
-        # should already be impossible per app/graph.py's edit-time check)
-        # fails loudly here too, rather than infinite-looping the builder.
         runtime_agent = RuntimeAgent.__new__(RuntimeAgent)
         self._agent_cache[agent_id] = runtime_agent
 
         tools = self._build_tools_for(agent_row)
-        RuntimeAgent.__init__(runtime_agent, agent_row, llm, tools, self._db)
+        RuntimeAgent.__init__(runtime_agent, agent_row, llm, tools, self._db, parallel_execution=parallel_execution)
         return runtime_agent
 
     async def run(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
@@ -105,7 +101,9 @@ class ExecutionEngine:
 
         try:
             await context.emit("ExecutionStarted")
-            root_agent = self._build_agent(root_agent_id)
+            project = self._db.get(models.Project, project_id)
+            parallel_exec = project.parallel_execution if project else False
+            root_agent = self._build_agent(root_agent_id, parallel_execution=parallel_exec)
             final_output = await root_agent.run(task, context=context)
 
             execution.status = "completed"

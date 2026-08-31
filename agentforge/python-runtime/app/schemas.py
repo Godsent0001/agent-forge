@@ -13,12 +13,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ProjectCreate(BaseModel):
     name: str
+    parallel_execution: bool = False
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    parallel_execution: bool | None = None
 
 
 class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
+    parallel_execution: bool
     created_at: datetime
 
 
