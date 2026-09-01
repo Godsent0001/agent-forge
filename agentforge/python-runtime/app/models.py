@@ -34,6 +34,7 @@ class Project(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    parallel_execution: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     agents: Mapped[list["Agent"]] = relationship(back_populates="project", cascade="all, delete-orphan")

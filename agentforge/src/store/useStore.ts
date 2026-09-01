@@ -3,11 +3,16 @@ import { api } from "../api/client";
 import type { Agent, Project, Tool } from "../types";
 
 interface StoreState {
+  projects: Project[];
   project: Project | null;
   agents: Agent[];
   tools: Tool[];
   selectedAgentId: string | null;
 
+  fetchProjects: () => Promise<Project[]>;
+  switchProject: (projectId: string) => Promise<void>;
+  createProject: (name: string) => Promise<void>;
+  updateProjectSettings: (patch: { name?: string; parallel_execution?: boolean }) => Promise<void>;
   loadProject: (project: Project) => Promise<void>;
   selectAgent: (id: string | null) => void;
   createAgent: (name: string) => Promise<void>;
@@ -18,13 +23,45 @@ interface StoreState {
 }
 
 export const useStore = create<StoreState>((set, get) => ({
+  projects: [],
   project: null,
   agents: [],
   tools: [],
   selectedAgentId: null,
 
+  fetchProjects: async () => {
+    const projects = await api.projects.list();
+    set({ projects });
+    return projects;
+  },
+
+  switchProject: async (projectId) => {
+    const projects = get().projects;
+    const proj = projects.find((p) => p.id === projectId);
+    if (proj) {
+      await get().loadProject(proj);
+    }
+  },
+
+  createProject: async (name) => {
+    const newProj = await api.projects.create(name);
+    const projects = [...get().projects, newProj];
+    set({ projects });
+    await get().loadProject(newProj);
+  },
+
+  updateProjectSettings: async (patch) => {
+    const { project, projects } = get();
+    if (!project) return;
+    const updated = await api.projects.update(project.id, patch);
+    set({
+      project: updated,
+      projects: projects.map((p) => (p.id === updated.id ? updated : p)),
+    });
+  },
+
   loadProject: async (project) => {
-    set({ project });
+    set({ project, selectedAgentId: null });
     const [agents, tools] = await Promise.all([
       api.agents.list(project.id),
       api.tools.list(project.id),

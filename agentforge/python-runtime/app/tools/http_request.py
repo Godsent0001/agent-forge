@@ -17,8 +17,20 @@ from app.tools.base import Tool, ToolExecutionError
 RequestFn = Callable[[str, str, str | None], Awaitable[str]]
 
 
-async def _mock_request_backend(method: str, url: str, body: str | None) -> str:
-    return f"[mock {method} response from {url}] status=200 body_echo={body!r}"
+async def _real_request_backend(method: str, url: str, body: str | None) -> str:
+    import httpx
+
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        if method == "GET":
+            resp = await client.get(url)
+        elif method == "POST":
+            headers = {"Content-Type": "application/json"} if body and body.strip().startswith(("{", "[")) else None
+            resp = await client.post(url, content=body, headers=headers)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
+        content_preview = resp.text[:2000] + ("..." if len(resp.text) > 2000 else "")
+        return f"Status: {resp.status_code}\nHeaders: {dict(resp.headers)}\nBody:\n{content_preview}"
 
 
 class HttpRequestTool(Tool):
@@ -26,7 +38,7 @@ class HttpRequestTool(Tool):
     description = "Make an HTTP GET or POST request to a specified URL."
 
     def __init__(self, request_fn: RequestFn | None = None):
-        self._request_fn = request_fn or _mock_request_backend
+        self._request_fn = request_fn or _real_request_backend
 
     async def execute(self, input: str, *, context: Any) -> str:
         parts = input.split(" ", 1)
