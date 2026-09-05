@@ -60,9 +60,6 @@ htmlcov/
 src-tauri/target/
 target/
 
-# Rust lockfile is intentionally tracked for the desktop app
-# Cargo.lock
-
 # ================================
 # Tauri generated / local files
 # ================================
@@ -76,8 +73,6 @@ src-tauri/.tauri/
 
 python-runtime/.venv/
 python-runtime/__pycache__/
-
-# Local runtime databases
 python-runtime/*.db
 python-runtime/*.sqlite
 python-runtime/*.sqlite3
@@ -92,18 +87,13 @@ sidecar-launcher/target/
 # OS files
 # ================================
 
-# Windows
 Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
 Desktop.ini
-
-# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# Linux
 *~
 
 # ================================
@@ -130,9 +120,6 @@ Desktop.ini
 *.deb
 *.AppImage
 *.rpm
-
-# Tauri generated installers
-src-tauri/target/release/bundle/
 
 # ================================
 # Temporary files
