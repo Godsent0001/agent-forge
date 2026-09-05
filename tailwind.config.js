@@ -4,32 +4,25 @@ export default {
   darkMode: "class",
   theme: {
     extend: {
-      // Phase 3 design system. Premium-feel decisions baked in as tokens,
-      // not left to per-component ad hoc styling:
-      //   - Desaturated near-black surfaces instead of pure #000/#111 grays,
-      //     so panels read as "material" rather than "default dark mode".
-      //   - A single accent (indigo) used sparingly — restraint is what
-      //     reads as premium, not saturation.
-      //   - Type scale capped and deliberate; no ad hoc text-[13px] sprinkled
-      //     through components.
       colors: {
         surface: {
-          950: "#0b0b0f",
-          900: "#131317",
-          800: "#1b1b21",
-          700: "#26262e",
-          600: "#34343f",
+          950: "#f8fafc", // Main canvas / background
+          900: "#ffffff", // Primary panel / card surface
+          800: "#f1f5f9", // Secondary element / input surface
+          700: "#e2e8f0", // Subtle border / hover surface
+          600: "#cbd5e1", // Distinct border / neutral text
         },
         accent: {
-          500: "#6366f1",
-          400: "#818cf8",
-          300: "#a5b4fc",
+          500: "#4f46e5", // Indigo primary
+          400: "#6366f1", // Hover
+          300: "#818cf8", // Soft highlight
+          100: "#e0e7ff", // Very soft badge background
         },
         status: {
-          running: "#f59e0b",
-          success: "#10b981",
-          error: "#ef4444",
-          idle: "#52525b",
+          running: "#d97706",
+          success: "#059669",
+          error: "#dc2626",
+          idle: "#64748b",
         },
       },
       fontFamily: {
@@ -47,7 +40,8 @@ export default {
         panel: "0.75rem",
       },
       boxShadow: {
-        panel: "0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.5)",
+        panel: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        card: "0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)",
       },
       transitionDuration: {
         150: "150ms",

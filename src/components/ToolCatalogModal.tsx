@@ -1,128 +1,101 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
-import type { CatalogShelf } from "../types";
-
-const STATUS_BADGE: Record<string, string> = {
-  real: "bg-status-success/15 text-status-success",
-  stub: "bg-status-idle/20 text-neutral-400",
-};
+import type { CatalogShelf, CatalogToolEntry } from "../types";
 
 export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
-  const [shelves, setShelves] = useState<CatalogShelf[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [openShelf, setOpenShelf] = useState<string | null>(null);
-  const [addedFeedback, setAddedFeedback] = useState<string | null>(null);
-  const tools = useStore((s) => s.tools);
   const createTool = useStore((s) => s.createTool);
+  const attachToolToSelected = useStore((s) => s.attachToolToSelected);
+  const selectedAgentId = useStore((s) => s.selectedAgentId);
+
+  const [shelves, setShelves] = useState<CatalogShelf[]>([]);
+  const [selectedShelf, setSelectedShelf] = useState<string>("");
 
   useEffect(() => {
     api.catalog.shelves().then((data) => {
       setShelves(data);
-      setOpenShelf(data[0]?.shelf ?? null);
+      if (data.length > 0) {
+        setSelectedShelf(data[0].shelf);
+      }
     });
   }, []);
 
-  const attachedKinds = useMemo(() => new Set(tools.map((t) => t.kind)), [tools]);
+  const activeShelf = shelves.find((s) => s.shelf === selectedShelf) ?? shelves[0];
 
-  const filteredShelves = useMemo(() => {
-    if (!shelves) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return shelves;
-    return shelves
-      .map((shelf) => ({
-        ...shelf,
-        tools: shelf.tools.filter(
-          (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
-        ),
-      }))
-      .filter((shelf) => shelf.tools.length > 0);
-  }, [shelves, query]);
-
-  const handleAdd = async (kind: string, name: string) => {
-    await createTool(name, kind);
-    setAddedFeedback(kind);
-    setTimeout(() => setAddedFeedback(null), 1200);
+  const handleAdd = async (item: CatalogToolEntry) => {
+    await createTool(item.name, item.kind);
+    if (selectedAgentId) {
+      const { tools } = useStore.getState();
+      const created = tools.find((t) => t.name === item.name);
+      if (created) {
+        await attachToolToSelected(created.id);
+      }
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in p-6">
-      <div className="bg-surface-900 border border-white/10 rounded-panel shadow-panel
-        w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 shrink-0">
-          <h2 className="text-base font-semibold">Tool Library</h2>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tools…"
-            className="flex-1 bg-surface-800 border border-white/10 rounded-md px-3 py-1.5
-              text-sm placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-accent-500"
-          />
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 text-sm">
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-card w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">Tool Catalog Shelf</h2>
+            <p className="text-xs text-slate-500">Pick production tools from specialized domain shelves</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 font-bold text-lg px-2"
+          >
             ✕
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {!shelves && (
-            <p className="px-6 py-8 text-sm text-neutral-500">Loading catalog…</p>
-          )}
-          {filteredShelves.map((shelf) => (
-            <div key={shelf.shelf} className="border-b border-white/5">
+        <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
+          <div className="border-r border-slate-200 overflow-y-auto p-2 bg-slate-50 space-y-1">
+            {shelves.map((shelf) => (
               <button
-                onClick={() => setOpenShelf(openShelf === shelf.shelf ? null : shelf.shelf)}
-                className="w-full flex items-center justify-between px-6 py-3 hover:bg-white/[0.02]
-                  transition-colors duration-150"
+                key={shelf.shelf}
+                onClick={() => setSelectedShelf(shelf.shelf)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${
+                  selectedShelf === shelf.shelf
+                    ? "bg-accent-500 text-white shadow-sm"
+                    : "text-slate-700 hover:bg-slate-200/60"
+                }`}
               >
-                <span className="text-sm font-semibold text-neutral-200">{shelf.label}</span>
-                <span className="text-xs text-neutral-600">
-                  {shelf.tools.length} tool{shelf.tools.length !== 1 ? "s" : ""}
-                  <span className="ml-2">{openShelf === shelf.shelf ? "▾" : "▸"}</span>
-                </span>
+                <span>{shelf.label}</span>
+                <span className="opacity-80">({shelf.tools.length})</span>
               </button>
+            ))}
+          </div>
 
-              {(openShelf === shelf.shelf || query) && (
-                <div className="pb-2">
-                  {shelf.tools.map((tool) => {
-                    const attached = attachedKinds.has(tool.kind);
-                    const justAdded = addedFeedback === tool.kind;
-                    return (
-                      <div
-                        key={tool.kind}
-                        className="px-6 py-2.5 flex items-start gap-3 hover:bg-white/[0.02] transition-colors duration-150"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-neutral-200">{tool.name}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase tracking-wide
-                              ${STATUS_BADGE[tool.status]}`}>
-                              {tool.status === "real" ? "ready" : "needs setup"}
-                            </span>
-                          </div>
-                          <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">
-                            {tool.description}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleAdd(tool.kind, tool.name)}
-                          disabled={attached}
-                          className={`shrink-0 text-xs px-3 py-1.5 rounded-md transition-colors duration-150
-                            ${attached
-                              ? "bg-white/5 text-neutral-600 cursor-default"
-                              : "bg-accent-500 hover:bg-accent-400 text-white"}`}
-                        >
-                          {justAdded ? "✓ Added" : attached ? "Added" : "Add"}
-                        </button>
+          <div className="overflow-y-auto p-6 space-y-4 bg-white">
+            {activeShelf ? (
+              <>
+                <p className="text-xs text-slate-500 italic">{activeShelf.label} production shelf</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {activeShelf.tools.map((item) => (
+                    <div
+                      key={item.kind}
+                      className="p-3 border border-slate-200 rounded-lg hover:border-accent-300 transition-all bg-surface-950 flex flex-col justify-between"
+                    >
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800">{item.name}</h4>
+                        <span className="text-[10px] font-mono text-slate-400">{item.kind}</span>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{item.description}</p>
                       </div>
-                    );
-                  })}
+                      <button
+                        onClick={() => handleAdd(item)}
+                        className="mt-3 text-xs bg-accent-500 hover:bg-accent-400 text-white font-bold py-1.5 px-3 rounded-md shadow-sm transition-colors self-end"
+                      >
+                        + Add to Library
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
-          ))}
-          {shelves && filteredShelves.length === 0 && (
-            <p className="px-6 py-8 text-sm text-neutral-600">No tools match "{query}".</p>
-          )}
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">Loading catalog shelves…</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

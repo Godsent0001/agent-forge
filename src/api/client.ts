@@ -1,3 +1,4 @@
+import { keychain } from "./keychain";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
 const API_BASE = "http://127.0.0.1:8756";
@@ -65,5 +66,17 @@ export const api = {
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
     shelves: () => request<CatalogShelf[]>("/catalog/shelves"),
+  },
+  settings: {
+    getKeys: async () => ({
+      anthropic: (await keychain.get("anthropic")) ?? "",
+      openai: (await keychain.get("openai")) ?? "",
+      google: (await keychain.get("google")) ?? "",
+    }),
+    setKeys: async (keys: { anthropic?: string; openai?: string; google?: string }) => {
+      if (keys.anthropic !== undefined) await keychain.save("anthropic", keys.anthropic);
+      if (keys.openai !== undefined) await keychain.save("openai", keys.openai);
+      if (keys.google !== undefined) await keychain.save("google", keys.google);
+    },
   },
 };
