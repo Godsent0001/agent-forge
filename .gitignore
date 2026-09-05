@@ -1,0 +1,144 @@
+# ================================
+# Node / React / Vite
+# ================================
+
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ================================
+# Environment / Secrets
+# ================================
+
+.env
+.env.*
+!.env.example
+
+# ================================
+# Python
+# ================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+venv/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ================================
+# uv
+# ================================
+
+.python-version
+
+# ================================
+# SQLite / Local Databases
+# ================================
+
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ================================
+# Tauri / Rust
+# ================================
+
+src-tauri/target/
+target/
+
+# Rust lockfile is intentionally tracked for the desktop app
+# Cargo.lock
+
+# ================================
+# Tauri generated / local files
+# ================================
+
+src-tauri/gen/
+src-tauri/.tauri/
+
+# ================================
+# AgentForge Python runtime
+# ================================
+
+python-runtime/.venv/
+python-runtime/__pycache__/
+
+# Local runtime databases
+python-runtime/*.db
+python-runtime/*.sqlite
+python-runtime/*.sqlite3
+
+# ================================
+# Sidecar launcher build artifacts
+# ================================
+
+sidecar-launcher/target/
+
+# ================================
+# OS files
+# ================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# ================================
+# IDE / Editors
+# ================================
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+.idea/
+*.swp
+*.swo
+
+# ================================
+# Build / Installer artifacts
+# ================================
+
+*.msi
+*.exe
+*.dmg
+*.deb
+*.AppImage
+*.rpm
+
+# Tauri generated installers
+src-tauri/target/release/bundle/
+
+# ================================
+# Temporary files
+# ================================
+
+*.tmp
+*.temp
+*.bak
+*.old
