@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api/client";
+import { AgentChat } from "./components/AgentChat";
 import { AgentEditor } from "./components/AgentEditor";
 import { AgentTree } from "./components/AgentTree";
 import { ExecutionTree } from "./components/ExecutionTree";
@@ -15,6 +16,7 @@ export default function App() {
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"chat" | "config">("chat");
 
   useEffect(() => {
     let cancelled = false;
@@ -54,21 +56,19 @@ export default function App() {
 
   if (boot === "checking-sidecar" || boot === "loading-project") {
     return (
-      <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
-        {boot === "checking-sidecar" ? "Starting runtime…" : "Loading project…"}
+      <div className="h-full flex items-center justify-center bg-surface-950 text-slate-500 text-sm font-medium">
+        {boot === "checking-sidecar" ? "Starting runtime sidecar…" : "Loading project workspace…"}
       </div>
     );
   }
 
   if (boot === "sidecar-down") {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="rounded-panel border border-white/10 bg-surface-900 shadow-panel px-8 py-6 max-w-md">
-          <h1 className="text-lg font-semibold text-status-error mb-2">Runtime unreachable</h1>
-          <p className="text-sm text-neutral-400">
-            The Python sidecar didn't respond on {API_BASE}. Check the terminal for
-            <code className="mx-1 px-1 bg-surface-800 rounded">[python-runtime:err]</code>
-            lines — see the README's sidecar naming/path section.
+      <div className="h-full flex items-center justify-center bg-surface-950">
+        <div className="rounded-panel border border-slate-200 bg-white shadow-card px-8 py-6 max-w-md">
+          <h1 className="text-lg font-bold text-status-error mb-2">Runtime unreachable</h1>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            The Python sidecar didn't respond on {API_BASE}. Check your terminal logs or ensure the Python backend is running on port 8756.
           </p>
         </div>
       </div>
@@ -76,11 +76,19 @@ export default function App() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <TopBar onRun={setActiveExecutionId} />
-      <div className="flex-1 grid grid-cols-[260px_1fr_320px] min-h-0">
+    <div className="h-full flex flex-col bg-surface-950">
+      <TopBar
+        onRun={setActiveExecutionId}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
+      <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0">
         <AgentTree />
-        <AgentEditor />
+        {activeTab === "chat" ? (
+          <AgentChat onRunExecution={setActiveExecutionId} />
+        ) : (
+          <AgentEditor />
+        )}
         <ExecutionTree executionId={activeExecutionId} />
       </div>
     </div>
