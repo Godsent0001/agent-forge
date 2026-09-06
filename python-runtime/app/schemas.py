@@ -84,9 +84,16 @@ class AgentOut(BaseModel):
     tool_use_schema: str
     memory_enabled: bool
     created_at: datetime
+    tool_ids: list[str] = Field(default_factory=list)
+    child_agent_ids: list[str] = Field(default_factory=list)
 
 
 class AttachToolRequest(BaseModel):
+    agent_id: str
+    tool_id: str
+
+
+class DetachToolRequest(BaseModel):
     agent_id: str
     tool_id: str
 
@@ -95,6 +102,11 @@ class AttachChildAgentRequest(BaseModel):
     parent_agent_id: str
     child_agent_id: str
     description: str = ""
+
+
+class DetachChildAgentRequest(BaseModel):
+    parent_agent_id: str
+    child_agent_id: str
 
 
 class ExecutionEventOut(BaseModel):

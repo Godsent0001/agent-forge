@@ -43,10 +43,17 @@ export const api = {
     remove: (id: string) => request<{ deleted: string }>(`/agents/${id}`, { method: "DELETE" }),
     attachTool: (agent_id: string, tool_id: string) =>
       request("/agents/attach-tool", { method: "POST", body: JSON.stringify({ agent_id, tool_id }) }),
+    detachTool: (agent_id: string, tool_id: string) =>
+      request("/agents/detach-tool", { method: "POST", body: JSON.stringify({ agent_id, tool_id }) }),
     attachChildAgent: (parent_agent_id: string, child_agent_id: string, description = "") =>
       request("/agents/attach-child-agent", {
         method: "POST",
         body: JSON.stringify({ parent_agent_id, child_agent_id, description }),
+      }),
+    detachChildAgent: (parent_agent_id: string, child_agent_id: string) =>
+      request("/agents/detach-child-agent", {
+        method: "POST",
+        body: JSON.stringify({ parent_agent_id, child_agent_id }),
       }),
   },
   tools: {
