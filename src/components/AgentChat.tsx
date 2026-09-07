@@ -23,8 +23,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   if (!selectedAgentId || !agent || !project) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-500 text-sm bg-surface-950">
-        Select an agent from the left hierarchy to start a conversation.
+      <div className="h-full flex items-center justify-center text-slate-500 text-sm bg-surface-950 p-6">
+        <div className="text-center max-w-sm space-y-2">
+          <span className="text-3xl block">💬</span>
+          <p className="font-semibold text-slate-700">No Agent Selected</p>
+          <p className="text-xs text-slate-500">
+            Select an agent from the left explorer sidebar to start a interactive chat session.
+          </p>
+        </div>
       </div>
     );
   }
@@ -86,37 +92,37 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface-950">
+    <div className="h-full flex flex-col bg-surface-950 min-w-0">
       {/* Header bar showing active agent */}
-      <div className="px-6 py-3 border-b border-slate-200 bg-surface-900 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-accent-100 text-accent-500 flex items-center justify-center font-bold text-lg border border-accent-300">
+      <div className="px-6 py-3 border-b border-slate-200 bg-surface-900 flex items-center justify-between shadow-sm shrink-0 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-accent-100 text-accent-600 flex items-center justify-center font-bold text-lg border border-accent-300 shrink-0">
             🤖
           </div>
-          <div>
-            <h3 className="font-bold text-slate-800 text-base leading-tight">{agent.name}</h3>
-            <p className="text-xs text-slate-500 truncate max-w-md">
+          <div className="min-w-0">
+            <h3 className="font-bold text-slate-800 text-sm leading-tight truncate">{agent.name}</h3>
+            <p className="text-xs text-slate-500 truncate">
               {agent.description || `${agent.provider} / ${agent.model}`}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {agent.child_agent_ids && agent.child_agent_ids.length > 0 && (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-600 font-medium">
-              🔗 {agent.child_agent_ids.length} Child Agent(s)
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 font-medium shrink-0">
+              🔗 {agent.child_agent_ids.length} Sub-agent(s)
             </span>
           )}
         </div>
       </div>
 
       {/* Chat Messages scroll area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {agentMessages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-2">
             <span className="text-4xl">💬</span>
-            <p className="font-medium text-slate-600 text-sm">Start chatting with {agent.name}</p>
-            <p className="text-xs max-w-sm">
-              Type a prompt or task below. {agent.name} will execute its reasoning, tools, and child agents to respond.
+            <p className="font-semibold text-slate-700 text-sm">Start chatting with {agent.name}</p>
+            <p className="text-xs text-slate-500 max-w-sm">
+              Type a prompt or task below. {agent.name} will execute its reasoning, tools, and sub-agents to respond.
             </p>
           </div>
         )}
@@ -141,7 +147,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               }`}
             >
               {msg.sender === "user" ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.text}</p>
+                <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">{msg.text}</p>
               ) : (
                 <ArtifactViewer content={msg.text} />
               )}
@@ -162,21 +168,27 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         )}
       </div>
 
-      {/* Explicit Prompt Bar */}
-      <div className="p-4 border-t border-slate-200 bg-surface-900">
-        <div className="flex items-center gap-2 max-w-4xl mx-auto bg-white border border-slate-300 rounded-xl px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-accent-500 focus-within:border-accent-500 transition-all">
-          <input
+      {/* Multi-Line Prompt Bar */}
+      <div className="p-4 border-t border-slate-200 bg-surface-900 shrink-0">
+        <div className="max-w-4xl mx-auto flex items-end gap-2 bg-white border border-slate-300 rounded-xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-accent-500 focus-within:border-accent-500 transition-all">
+          <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-            placeholder={`Prompt ${agent.name} with a task or message…`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
+            placeholder={`Prompt ${agent.name}… (Shift+Enter for new line, Enter to send)`}
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+            className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none py-1.5 px-2 min-h-[38px] max-h-32 overflow-y-auto"
           />
           <button
             onClick={handleSendMessage}
             disabled={!promptInput.trim() || isProcessing}
-            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1 shrink-0"
+            className="bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
           >
             <span>Send</span> ➔
           </button>
