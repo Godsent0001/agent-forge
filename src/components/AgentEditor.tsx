@@ -3,6 +3,29 @@ import { useStore } from "../store/useStore";
 
 const PROVIDERS = ["anthropic", "openai", "google"] as const;
 
+const MODEL_OPTIONS: Record<string, string[]> = {
+  google: [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3.1-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+  ],
+  openai: [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o3-mini",
+    "o1",
+  ],
+  anthropic: [
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+  ],
+};
+
 export function AgentEditor() {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
@@ -191,19 +214,46 @@ export function AgentEditor() {
         <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-2">
           <select
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            onChange={(e) => {
+              const newProvider = e.target.value;
+              setProvider(newProvider);
+              const defaultModels = MODEL_OPTIONS[newProvider];
+              if (defaultModels && defaultModels.length > 0) {
+                setModel(defaultModels[0]);
+              }
+            }}
             className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
-          <input
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="e.g. claude-3-5-sonnet-20241022 or gpt-4o"
-            className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
-          />
+          <div className="relative flex gap-2">
+            <select
+              value={MODEL_OPTIONS[provider]?.includes(model) ? model : "custom"}
+              onChange={(e) => {
+                if (e.target.value !== "custom") {
+                  setModel(e.target.value);
+                } else {
+                  setModel("");
+                }
+              }}
+              className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 flex-1 min-w-0"
+            >
+              {(MODEL_OPTIONS[provider] || []).map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+              <option value="custom">Custom model name...</option>
+            </select>
+            {(!MODEL_OPTIONS[provider]?.includes(model) || model === "") && (
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="Enter model name..."
+                className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 flex-1 min-w-0"
+              />
+            )}
+          </div>
         </div>
       </Field>
 
