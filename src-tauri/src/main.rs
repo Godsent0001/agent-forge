@@ -7,13 +7,21 @@ use tauri_plugin_shell::ShellExt;
 
 mod keychain;
 
+struct BackendPort(std::sync::Mutex<u16>);
+
+#[tauri::command]
+fn get_backend_port(state: tauri::State<BackendPort>) -> u16 {
+    *state.0.lock().unwrap()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             keychain::save_api_key,
             keychain::get_api_key,
-            keychain::delete_api_key
+            keychain::delete_api_key,
+            get_backend_port
         ])
         .setup(|app| {
             let shell = app.shell();
@@ -21,9 +29,23 @@ fn main() {
             // "python-runtime" resolves to the externalBin entry declared in
             // tauri.conf.json. Tauri appends the target triple automatically
             // when it looks for the binary (see README for exact naming).
+            // Find a free TCP port dynamically to prevent port collision errors (Errno 10048)
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").ok();
+            let port = listener
+                .as_ref()
+                .and_then(|l| l.local_addr().ok())
+                .map(|addr| addr.port())
+                .unwrap_or(8756);
+            drop(listener);
+
+            println!("[tauri] Spawning python-runtime sidecar on dynamic port: {}", port);
+
+            app.manage(BackendPort(std::sync::Mutex::new(port)));
+
             let sidecar_command = shell
                 .sidecar("python-runtime")
-                .expect("failed to create python-runtime sidecar command");
+                .expect("failed to create python-runtime sidecar command")
+                .arg(port.to_string());
 
             let (mut rx, mut _child) = sidecar_command
                 .spawn()
