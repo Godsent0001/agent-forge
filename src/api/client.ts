@@ -1,10 +1,38 @@
 import { keychain } from "./keychain";
+import { invoke } from "@tauri-apps/api/core";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
-const API_BASE = "http://127.0.0.1:8756";
+let currentApiBase = "http://127.0.0.1:8756";
+let portInitPromise: Promise<void> | null = null;
+
+function ensurePortInitialized(): Promise<void> {
+  if (!portInitPromise) {
+    portInitPromise = (async () => {
+      try {
+        const port = await invoke<number>("get_backend_port");
+        if (port) {
+          currentApiBase = `http://127.0.0.1:${port}`;
+        }
+      } catch {
+        // Not running in Tauri or command unavailable, fallback to default port 8756
+      }
+    })();
+  }
+  return portInitPromise;
+}
+
+export function setApiBase(base: string) {
+  currentApiBase = base;
+}
+
+export async function getApiBase(): Promise<string> {
+  await ensurePortInitialized();
+  return currentApiBase;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  await ensurePortInitialized();
+  const res = await fetch(`${currentApiBase}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });

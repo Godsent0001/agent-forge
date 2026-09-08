@@ -24,11 +24,17 @@ fn main() {
 
     let main_py = runtime_dir.join("main.py");
 
+    let args: Vec<String> = env::args().skip(1).collect();
+
     // Replace this launcher process with Python on Windows.
-    // This makes the Python runtime the actual sidecar process,
-    // so Tauri can terminate it cleanly.
-    let status = Command::new(&python)
-        .arg(&main_py)
+    // Forward all CLI args (such as dynamic port) to main.py.
+    let mut cmd = Command::new(&python);
+    cmd.arg(&main_py);
+    for arg in args {
+        cmd.arg(arg);
+    }
+
+    let status = cmd
         .current_dir(&runtime_dir)
         .status()
         .expect("Failed to start Python runtime");
