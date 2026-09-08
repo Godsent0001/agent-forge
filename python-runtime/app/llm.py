@@ -40,7 +40,7 @@ class LLMInterface:
         provider = (self.provider or "").strip().lower()
         model = (self.model or "").strip()
 
-        # Handle Gemini model variants
+        # Handle Gemini / Google model variants
         if "gemini" in provider or "gemini" in model.lower() or "google" in provider:
             cleaned_model = model
             if cleaned_model.startswith("models/"):
@@ -89,10 +89,19 @@ class LLMInterface:
             f"[EXISTING SUMMARY]\n{existing_summary or '(none yet)'}\n\n"
             f"[NEW ENTRIES TO FOLD IN]\n" + "\n".join(f"- {e}" for e in new_entries)
         )
-        response = await litellm.acompletion(
-            model=formatted_model,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if gemini_key:
+            os.environ["GEMINI_API_KEY"] = gemini_key
+            os.environ["GOOGLE_API_KEY"] = gemini_key
+
+        kwargs: dict[str, Any] = {
+            "model": formatted_model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if gemini_key and formatted_model.startswith("gemini/"):
+            kwargs["api_key"] = gemini_key
+
+        response = await litellm.acompletion(**kwargs)
         return response.choices[0].message.content or existing_summary
 
     def _mock_summarize(self, existing_summary: str, new_entries: list[str]) -> str:
@@ -170,11 +179,21 @@ class LLMInterface:
 
         logger.debug(f"Sending to litellm: messages_count={len(formatted_messages)}, tools_count={len(tool_defs)}")
 
-        response = await litellm.acompletion(
-            model=formatted_model,
-            messages=formatted_messages,
-            tools=tool_defs or None,
-        )
+        # Ensure GEMINI_API_KEY and GOOGLE_API_KEY are synchronized if either is present
+        gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if gemini_key:
+            os.environ["GEMINI_API_KEY"] = gemini_key
+            os.environ["GOOGLE_API_KEY"] = gemini_key
+
+        kwargs: dict[str, Any] = {
+            "model": formatted_model,
+            "messages": formatted_messages,
+            "tools": tool_defs or None,
+        }
+        if gemini_key and formatted_model.startswith("gemini/"):
+            kwargs["api_key"] = gemini_key
+
+        response = await litellm.acompletion(**kwargs)
         choice = response.choices[0].message
 
         tool_calls = getattr(choice, "tool_calls", None)
