@@ -8,9 +8,10 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
+    "build:python": "python3 python-runtime/build_standalone.py || python python-runtime/build_standalone.py",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && npm run build:python && electron-builder"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -45,7 +46,7 @@
     ],
     "extraResources": [
       {
-        "from": "python-runtime",
+        "from": "python-runtime/dist/python-runtime",
         "to": "python-runtime",
         "filter": [
           "**/*"
