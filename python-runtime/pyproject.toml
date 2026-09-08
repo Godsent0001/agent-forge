@@ -9,6 +9,8 @@ dependencies = [
     "sqlalchemy>=2.0.30",
     "alembic>=1.13.1",
     "pydantic>=2.7.1",
+    "pillow>=12.3.0",
+    "litellm>=1.100.0",
 ]
 
 [build-system]

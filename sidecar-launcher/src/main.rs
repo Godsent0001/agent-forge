@@ -8,9 +8,6 @@ fn main() {
         .expect("Failed to locate launcher directory")
         .to_path_buf();
 
-    // During development, Tauri places the sidecar in:
-    // src-tauri/target/debug/
-    // We need to walk back to the project root.
     let project_root = exe_dir
         .parent()
         .and_then(|p| p.parent())
@@ -27,8 +24,12 @@ fn main() {
 
     let main_py = runtime_dir.join("main.py");
 
+    // Replace this launcher process with Python on Windows.
+    // This makes the Python runtime the actual sidecar process,
+    // so Tauri can terminate it cleanly.
     let status = Command::new(&python)
         .arg(&main_py)
+        .current_dir(&runtime_dir)
         .status()
         .expect("Failed to start Python runtime");
 
