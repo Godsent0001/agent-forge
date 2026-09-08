@@ -1,5 +1,4 @@
 import { keychain } from "./keychain";
-import { invoke } from "@tauri-apps/api/core";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
 let currentApiBase = "http://127.0.0.1:8756";
@@ -8,13 +7,19 @@ let portInitPromise: Promise<void> | null = null;
 function ensurePortInitialized(): Promise<void> {
   if (!portInitPromise) {
     portInitPromise = (async () => {
-      try {
-        const port = await invoke<number>("get_backend_port");
-        if (port) {
-          currentApiBase = `http://127.0.0.1:${port}`;
+      if (window.electronAPI) {
+        try {
+          const port = await window.electronAPI.getBackendPort();
+          if (port) {
+            currentApiBase = `http://127.0.0.1:${port}`;
+          }
+        } catch (err) {
+          console.error("Failed to acquire Python backend port from Electron:", err);
+          throw new Error("Could not connect to Python backend: " + (err as Error).message);
         }
-      } catch {
-        // Not running in Tauri or command unavailable, fallback to default port 8756
+      } else {
+        // Fallback for standalone web preview in dev
+        currentApiBase = "http://127.0.0.1:8756";
       }
     })();
   }
