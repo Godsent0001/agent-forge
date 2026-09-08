@@ -122,7 +122,7 @@ export const api = {
       await request("/settings/keys", {
         method: "POST",
         body: JSON.stringify(currentKeys),
-      }).catch(() => {});
+      });
     },
     syncKeysToBackend: async () => {
       const currentKeys = {
@@ -133,7 +133,7 @@ export const api = {
       return request("/settings/keys", {
         method: "POST",
         body: JSON.stringify(currentKeys),
-      }).catch(() => {});
+      });
     },
   },
 };
