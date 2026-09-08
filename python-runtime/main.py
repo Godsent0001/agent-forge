@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import init_db
-from app.routers import agents, executions, projects, tools
+from app.routers import agents, executions, projects, settings, tools
 from app.routers import catalog as catalog_router
 
 app = FastAPI(title="AgentForge Runtime")
@@ -23,6 +23,7 @@ app.include_router(agents.router)
 app.include_router(tools.router)
 app.include_router(executions.router)
 app.include_router(catalog_router.router)
+app.include_router(settings.router)
 
 # The frontend is served from a Tauri webview, not a normal browser origin,
 # so CORS needs to explicitly allow the dev server / tauri origin.

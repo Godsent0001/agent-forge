@@ -42,6 +42,7 @@ export default function App() {
       }
 
       setBoot("loading-project");
+      await api.settings.syncKeysToBackend();
       const projects = await fetchProjects();
       const project = projects[0] ?? (await api.projects.create("My First Project"));
       await loadProject(project);

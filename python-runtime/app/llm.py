@@ -1,22 +1,17 @@
 """
 LLM interface. Agents call `llm.reason(...)`, never a provider SDK directly —
-this is the seam LiteLLM plugs into, per the architecture decision to keep
-provider-switching out of the agent/runtime logic entirely.
-
-This sandbox has no network access, so LiteLLM calls can't be exercised
-here. The interface is written against real LiteLLM's completion() shape;
-swap USE_MOCK to False once running with real API keys.
+this is the seam LiteLLM / Google GenAI plugs into, keeping provider-switching
+out of the agent/runtime logic entirely.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Any
 
-import os
-
-USE_MOCK = False  # Default to real LiteLLM; falls back to mock if LiteLLM call fails or no API keys are present
+USE_MOCK = False  # Default to real LLM calls; falls back to mock if LiteLLM call fails or no API keys are present
 
 
 @dataclass
@@ -38,19 +33,37 @@ class LLMInterface:
         self.provider = provider
         self.model = model
 
+    def _format_model_name(self) -> str:
+        provider = (self.provider or "").strip().lower()
+        model = (self.model or "").strip()
+
+        # Handle Gemini model variants
+        if "gemini" in provider or "gemini" in model.lower() or "google" in provider:
+            cleaned_model = model
+            if cleaned_model.startswith("models/"):
+                cleaned_model = cleaned_model[len("models/"):]
+            if cleaned_model.startswith("gemini/"):
+                cleaned_model = cleaned_model[len("gemini/"):]
+            if cleaned_model.startswith("google/"):
+                cleaned_model = cleaned_model[len("google/"):]
+            return f"gemini/{cleaned_model}"
+
+        if provider and not model.startswith(f"{provider}/"):
+            return f"{provider}/{model}"
+        return model
+
     async def reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
         if USE_MOCK:
             return await self._mock_reason(messages, tools)
         try:
             return await self._litellm_reason(messages, tools)
         except Exception as e:
+            # Fall back to mock if real call fails
             return await self._mock_reason(messages, tools)
 
     async def summarize(self, existing_summary: str, new_entries: list[str]) -> str:
         """
-        Fold a batch of raw memory entries into (an update of) the existing
-        rolling summary. Used by app/runtime/memory.py's compaction step —
-        never called on every run, only when the recent-window overflows.
+        Fold a batch of raw memory entries into an update of existing summary.
         """
         if USE_MOCK:
             return self._mock_summarize(existing_summary, new_entries)
@@ -62,6 +75,7 @@ class LLMInterface:
     async def _litellm_summarize(self, existing_summary: str, new_entries: list[str]) -> str:
         import litellm
 
+        formatted_model = self._format_model_name()
         prompt = (
             "Update the running summary below with the new memory entries. "
             "Preserve concrete facts, decisions, and names; drop redundant or "
@@ -71,27 +85,58 @@ class LLMInterface:
             f"[NEW ENTRIES TO FOLD IN]\n" + "\n".join(f"- {e}" for e in new_entries)
         )
         response = await litellm.acompletion(
-            model=f"{self.provider}/{self.model}",
+            model=formatted_model,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content or existing_summary
 
     def _mock_summarize(self, existing_summary: str, new_entries: list[str]) -> str:
-        """
-        Deterministic stand-in: concatenate + hard-truncate rather than a
-        real abstractive summary. Good enough to prove the compaction
-        plumbing works without a real model; swap is automatic once
-        USE_MOCK is False and credentials are configured.
-        """
         combined = (existing_summary + " " if existing_summary else "") + " ".join(new_entries)
         MAX_SUMMARY_CHARS = 800
         if len(combined) <= MAX_SUMMARY_CHARS:
             return combined
         return "…" + combined[-MAX_SUMMARY_CHARS:]
 
+    def _build_messages_payload(self, messages: list[str]) -> list[dict[str, Any]]:
+        formatted_messages: list[dict[str, Any]] = []
+
+        for m in messages:
+            if m.startswith("[TOOL RESULT: "):
+                # Tool result line: e.g. "[TOOL RESULT: python] 4"
+                header_end = m.find("]")
+                tool_header = m[len("[TOOL RESULT: "):header_end] if header_end != -1 else "tool"
+                tool_name = tool_header.split("]")[0].strip()
+                content = m[header_end + 1:].strip() if header_end != -1 else m
+
+                # Add assistant thought message so role="tool" matches previous call
+                formatted_messages.append({
+                    "role": "assistant",
+                    "content": f"Using tool {tool_name}...",
+                    "tool_calls": [{
+                        "id": f"call_{tool_name}",
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps({"input": "previous_step"})
+                        }
+                    }]
+                })
+
+                formatted_messages.append({
+                    "role": "tool",
+                    "tool_call_id": f"call_{tool_name}",
+                    "name": tool_name,
+                    "content": content,
+                })
+            else:
+                formatted_messages.append({"role": "user", "content": m})
+
+        return formatted_messages
 
     async def _litellm_reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
-        import litellm  # imported lazily so the mock path never needs it installed
+        import litellm
+
+        formatted_model = self._format_model_name()
 
         tool_defs = [
             {
@@ -109,26 +154,35 @@ class LLMInterface:
             for t in tools
         ]
 
+        formatted_messages = self._build_messages_payload(messages)
+
         response = await litellm.acompletion(
-            model=f"{self.provider}/{self.model}",
-            messages=[{"role": "user", "content": "\n\n".join(messages)}],
+            model=formatted_model,
+            messages=formatted_messages,
             tools=tool_defs or None,
         )
         choice = response.choices[0].message
 
-        if getattr(choice, "tool_calls", None):
-            call = choice.tool_calls[0]
-            args = json.loads(call.function.arguments)
-            return LLMDecision(action="tool_call", tool_name=call.function.name, tool_input=args.get("input", ""))
+        tool_calls = getattr(choice, "tool_calls", None)
+        if tool_calls:
+            call = tool_calls[0]
+            args_str = call.function.arguments if hasattr(call.function, "arguments") else "{}"
+            if isinstance(args_str, str):
+                try:
+                    args = json.loads(args_str)
+                except Exception:
+                    args = {"input": args_str}
+            elif isinstance(args_str, dict):
+                args = args_str
+            else:
+                args = {}
+
+            tool_input = args.get("input", "") if isinstance(args, dict) else str(args)
+            return LLMDecision(action="tool_call", tool_name=call.function.name, tool_input=tool_input)
 
         return LLMDecision(action="final_answer", answer=choice.content or "")
 
     async def _mock_reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
-        """
-        Deterministic stand-in: if a tool hasn't been called yet this turn
-        and tools are available, call the first one; otherwise answer.
-        Good enough to prove the plumbing without a real model.
-        """
         already_used_tool = any(m.startswith("[TOOL RESULT") for m in messages)
         if tools and not already_used_tool:
             tool = tools[0]
