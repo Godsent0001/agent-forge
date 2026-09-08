@@ -84,6 +84,28 @@ export const api = {
       if (keys.anthropic !== undefined) await keychain.save("anthropic", keys.anthropic);
       if (keys.openai !== undefined) await keychain.save("openai", keys.openai);
       if (keys.google !== undefined) await keychain.save("google", keys.google);
+
+      // Sync keys to python sidecar runtime process
+      const currentKeys = {
+        anthropic: (await keychain.get("anthropic")) ?? "",
+        openai: (await keychain.get("openai")) ?? "",
+        google: (await keychain.get("google")) ?? "",
+      };
+      await request("/settings/keys", {
+        method: "POST",
+        body: JSON.stringify(currentKeys),
+      }).catch(() => {});
+    },
+    syncKeysToBackend: async () => {
+      const currentKeys = {
+        anthropic: (await keychain.get("anthropic")) ?? "",
+        openai: (await keychain.get("openai")) ?? "",
+        google: (await keychain.get("google")) ?? "",
+      };
+      return request("/settings/keys", {
+        method: "POST",
+        body: JSON.stringify(currentKeys),
+      }).catch(() => {});
     },
   },
 };
