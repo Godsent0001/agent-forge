@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api/client";
+import { api, getApiBase } from "./api/client";
 import { AgentChat } from "./components/AgentChat";
 import { AgentEditor } from "./components/AgentEditor";
 import { AgentTree } from "./components/AgentTree";
@@ -9,10 +9,9 @@ import { useStore } from "./store/useStore";
 
 type BootState = "checking-sidecar" | "sidecar-down" | "loading-project" | "ready";
 
-const API_BASE = "http://127.0.0.1:8756";
-
 export default function App() {
   const [boot, setBoot] = useState<BootState>("checking-sidecar");
+  const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8756");
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
@@ -25,7 +24,9 @@ export default function App() {
       let sidecarUp = false;
       for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
         try {
-          const res = await fetch(`${API_BASE}/health`);
+          const apiBase = await getApiBase();
+          setActiveApiBase(apiBase);
+          const res = await fetch(`${apiBase}/health`);
           if (res.ok) {
             sidecarUp = true;
             break;
@@ -69,7 +70,7 @@ export default function App() {
         <div className="rounded-panel border border-slate-200 bg-white shadow-card px-8 py-6 max-w-md">
           <h1 className="text-lg font-bold text-status-error mb-2">Runtime unreachable</h1>
           <p className="text-sm text-slate-600 leading-relaxed">
-            The Python sidecar didn't respond on {API_BASE}. Check your terminal logs or ensure the Python backend is running on port 8756.
+            The Python sidecar didn't respond on {activeApiBase}. Check your terminal logs or ensure the Python backend is running properly.
           </p>
         </div>
       </div>
