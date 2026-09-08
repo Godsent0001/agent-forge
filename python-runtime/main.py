@@ -70,7 +70,7 @@ def main() -> None:
         port = sock.getsockname()[1]
         sock.close()
 
-    # Announce ready port for Tauri / parent process
+    # Announce ready port for parent Electron process
     print(f"AGENTFORGE_READY:{port}", flush=True)
     logger.info(f"AGENTFORGE_READY:{port}")
 

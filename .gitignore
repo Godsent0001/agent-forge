@@ -1,9 +1,10 @@
 # ================================
-# Node / React / Vite
+# Node / React / Vite / Electron
 # ================================
 
 node_modules/
 dist/
+dist-electron/
 .vite/
 *.log
 npm-debug.log*
@@ -54,20 +55,6 @@ htmlcov/
 *.sqlite3
 
 # ================================
-# Tauri / Rust
-# ================================
-
-src-tauri/target/
-target/
-
-# ================================
-# Tauri generated / local files
-# ================================
-
-src-tauri/gen/
-src-tauri/.tauri/
-
-# ================================
 # AgentForge Python runtime
 # ================================
 
@@ -76,12 +63,6 @@ python-runtime/__pycache__/
 python-runtime/*.db
 python-runtime/*.sqlite
 python-runtime/*.sqlite3
-
-# ================================
-# Sidecar launcher build artifacts
-# ================================
-
-sidecar-launcher/target/
 
 # ================================
 # OS files
