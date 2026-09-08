@@ -1,30 +1,10 @@
 import { keychain } from "./keychain";
-import { invoke } from "@tauri-apps/api/core";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
-let currentApiBase = "http://127.0.0.1:8756";
-let portInitPromise: Promise<void> | null = null;
-
-// Initialize backend dynamic port from Tauri if running in Tauri desktop environment
-if (typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)) {
-  portInitPromise = invoke<number>("get_backend_port")
-    .then((port) => {
-      if (port) {
-        currentApiBase = `http://127.0.0.1:${port}`;
-      }
-    })
-    .catch(() => {});
-}
-
-export function setApiBase(base: string) {
-  currentApiBase = base;
-}
+const API_BASE = "http://127.0.0.1:8756";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (portInitPromise) {
-    await portInitPromise;
-  }
-  const res = await fetch(`${currentApiBase}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
