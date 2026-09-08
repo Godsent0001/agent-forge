@@ -1,6 +1,6 @@
 """
 LLM interface. Agents call `llm.reason(...)`, never a provider SDK directly —
-this is the seam LiteLLM / Google GenAI plugs into, keeping provider-switching
+this is the seam LiteLLM plugs into, keeping provider-switching
 out of the agent/runtime logic entirely.
 """
 
@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger("agentforge.llm")
 
 USE_MOCK = False  # Default to real LLM calls; falls back to mock if LiteLLM call fails or no API keys are present
 
@@ -54,12 +57,13 @@ class LLMInterface:
 
     async def reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
         if USE_MOCK:
+            logger.info("USE_MOCK is True; using mock reasoner")
             return await self._mock_reason(messages, tools)
         try:
             return await self._litellm_reason(messages, tools)
         except Exception as e:
-            # Fall back to mock if real call fails
-            return await self._mock_reason(messages, tools)
+            logger.exception(f"LiteLLM reasoning error for provider={self.provider}, model={self.model}: {e}")
+            raise RuntimeError(f"LLM Reasoning Error ({self.provider}/{self.model}): {e}") from e
 
     async def summarize(self, existing_summary: str, new_entries: list[str]) -> str:
         """
@@ -69,7 +73,8 @@ class LLMInterface:
             return self._mock_summarize(existing_summary, new_entries)
         try:
             return await self._litellm_summarize(existing_summary, new_entries)
-        except Exception:
+        except Exception as e:
+            logger.exception(f"LiteLLM summarize error: {e}")
             return self._mock_summarize(existing_summary, new_entries)
 
     async def _litellm_summarize(self, existing_summary: str, new_entries: list[str]) -> str:
@@ -102,13 +107,11 @@ class LLMInterface:
 
         for m in messages:
             if m.startswith("[TOOL RESULT: "):
-                # Tool result line: e.g. "[TOOL RESULT: python] 4"
                 header_end = m.find("]")
                 tool_header = m[len("[TOOL RESULT: "):header_end] if header_end != -1 else "tool"
                 tool_name = tool_header.split("]")[0].strip()
                 content = m[header_end + 1:].strip() if header_end != -1 else m
 
-                # Add assistant thought message so role="tool" matches previous call
                 formatted_messages.append({
                     "role": "assistant",
                     "content": f"Using tool {tool_name}...",
@@ -138,6 +141,15 @@ class LLMInterface:
 
         formatted_model = self._format_model_name()
 
+        # Debug key existence
+        has_gemini = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+        has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        logger.info(
+            f"Reasoning call for model='{formatted_model}' (provider='{self.provider}', model='{self.model}'). "
+            f"API Keys available: gemini={has_gemini}, openai={has_openai}, anthropic={has_anthropic}"
+        )
+
         tool_defs = [
             {
                 "type": "function",
@@ -155,6 +167,8 @@ class LLMInterface:
         ]
 
         formatted_messages = self._build_messages_payload(messages)
+
+        logger.debug(f"Sending to litellm: messages_count={len(formatted_messages)}, tools_count={len(tool_defs)}")
 
         response = await litellm.acompletion(
             model=formatted_model,
@@ -178,8 +192,10 @@ class LLMInterface:
                 args = {}
 
             tool_input = args.get("input", "") if isinstance(args, dict) else str(args)
+            logger.info(f"LLM decided tool_call: tool_name='{call.function.name}', tool_input='{tool_input}'")
             return LLMDecision(action="tool_call", tool_name=call.function.name, tool_input=tool_input)
 
+        logger.info("LLM decided final_answer")
         return LLMDecision(action="final_answer", answer=choice.content or "")
 
     async def _mock_reason(self, messages: list[str], tools: list[ToolSpec]) -> LLMDecision:
