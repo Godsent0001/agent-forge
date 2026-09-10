@@ -1,23 +1,46 @@
+const getElectronAPI = () => {
+  if (typeof window !== "undefined" && window.electronAPI) {
+    return window.electronAPI;
+  }
+
+  return null;
+};
+
+const DEV_PREFIX = "agentforge_dev_key_";
+
 export const keychain = {
-  save: async (provider: string, key: string): Promise<void> => {
-    if (window.electronAPI) {
-      await window.electronAPI.saveApiKey(provider, key);
-    } else {
-      localStorage.setItem(`agentforge_key_${provider}`, key);
+  async save(provider: string, key: string): Promise<void> {
+    const electronAPI = getElectronAPI();
+
+    if (electronAPI) {
+      await electronAPI.saveApiKey(provider, key);
+      return;
     }
+
+    // Browser development only
+    sessionStorage.setItem(`${DEV_PREFIX}${provider}`, key);
   },
-  get: async (provider: string): Promise<string | null> => {
-    if (window.electronAPI) {
-      return await window.electronAPI.getApiKey(provider);
-    } else {
-      return localStorage.getItem(`agentforge_key_${provider}`);
+
+  async get(provider: string): Promise<string | null> {
+    const electronAPI = getElectronAPI();
+
+    if (electronAPI) {
+      return await electronAPI.getApiKey(provider);
     }
+
+    // Browser development only
+    return sessionStorage.getItem(`${DEV_PREFIX}${provider}`);
   },
-  remove: async (provider: string): Promise<void> => {
-    if (window.electronAPI) {
-      await window.electronAPI.deleteApiKey(provider);
-    } else {
-      localStorage.removeItem(`agentforge_key_${provider}`);
+
+  async remove(provider: string): Promise<void> {
+    const electronAPI = getElectronAPI();
+
+    if (electronAPI) {
+      await electronAPI.deleteApiKey(provider);
+      return;
     }
+
+    // Browser development only
+    sessionStorage.removeItem(`${DEV_PREFIX}${provider}`);
   },
 };

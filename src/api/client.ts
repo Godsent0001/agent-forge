@@ -1,7 +1,7 @@
 import { keychain } from "./keychain";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
-let currentApiBase = "http://127.0.0.1:8756";
+let currentApiBase = "http://127.0.0.1:8000";
 let portInitPromise: Promise<void> | null = null;
 
 function ensurePortInitialized(): Promise<void> {
@@ -18,9 +18,9 @@ function ensurePortInitialized(): Promise<void> {
           throw new Error("Could not connect to Python backend: " + (err as Error).message);
         }
       } else {
-        // Fallback for standalone web preview in dev
-        currentApiBase = "http://127.0.0.1:8756";
-      }
+  // Standalone browser development
+  currentApiBase = "http://127.0.0.1:8000";
+}
     })();
   }
   return portInitPromise;

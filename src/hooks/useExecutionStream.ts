@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExecutionEvent, ExecutionNode } from "../types";
-const WS_BASE = "ws://127.0.0.1:8756";
+const WS_BASE = "ws://127.0.0.1:8000";
 
 /**
  * Reduces the flat event stream into a tree the UI can render live.

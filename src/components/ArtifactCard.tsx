@@ -4,8 +4,8 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
 
   const fileUrl = cleanPath.startsWith("./output/")
-    ? `http://127.0.0.1:8756/files/${cleanPath.replace("./output/", "")}`
-    : `http://127.0.0.1:8756/files/${encodeURIComponent(filename)}`;
+    ? `http://127.0.0.1:8000/files/${cleanPath.replace("./output/", "")}`
+    : `http://127.0.0.1:8000/files/${encodeURIComponent(filename)}`;
 
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
   const isVideo = ["mp4", "webm"].includes(ext);

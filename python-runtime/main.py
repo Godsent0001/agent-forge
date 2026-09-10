@@ -49,8 +49,7 @@ def health() -> dict:
 def main() -> None:
     import sys
     import os
-    import socket
-
+  
     port = 0
     if "PORT" in os.environ:
         try:
@@ -64,11 +63,8 @@ def main() -> None:
             port = 0
 
     if port == 0:
-        # Ask OS for a free localhost port
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
+    # Default development port
+      port = 8000
 
     # Announce ready port for parent Electron process
     print(f"AGENTFORGE_READY:{port}", flush=True)

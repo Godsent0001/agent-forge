@@ -103,6 +103,19 @@ Desktop.ini
 *.rpm
 
 # ================================
+# Tauri / Rust build artifacts
+# ================================
+
+src-tauri/target/
+
+# ================================
+# PyInstaller build artifacts
+# ================================
+
+python-runtime/build/
+python-runtime/dist/
+
+# ================================
 # Temporary files
 # ================================
 

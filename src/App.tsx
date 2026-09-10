@@ -11,7 +11,7 @@ type BootState = "checking-sidecar" | "sidecar-down" | "loading-project" | "read
 
 export default function App() {
   const [boot, setBoot] = useState<BootState>("checking-sidecar");
-  const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8756");
+ const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8000");
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
