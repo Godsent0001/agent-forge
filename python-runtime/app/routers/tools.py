@@ -23,9 +23,4 @@ def list_tools(project_id: str, db: Session = Depends(get_db)):
 
 @router.delete("/{tool_id}")
 def delete_tool(tool_id: str, db: Session = Depends(get_db)):
-    tool = db.get(models.Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="Tool not found")
-    db.delete(tool)
-    db.commit()
-    return {"deleted": tool_id}
+    raise HTTPException(status_code=403, detail="Tool deletion capability has been disabled")

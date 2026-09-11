@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { getApiBase } from "../api/client";
 import type { ExecutionEvent, ExecutionNode } from "../types";
-const WS_BASE = "ws://127.0.0.1:8000";
 
 /**
  * Reduces the flat event stream into a tree the UI can render live.
@@ -56,15 +56,32 @@ export function useExecutionStream(executionId: string | null) {
     setEvents([]);
     if (!executionId) return;
 
-    const ws = new WebSocket(`${WS_BASE}/executions/${executionId}/stream`);
-    wsRef.current = ws;
+    let activeWs: WebSocket | null = null;
+    let cancelled = false;
 
-    ws.onmessage = (msg) => {
-      const event = JSON.parse(msg.data) as ExecutionEvent;
-      setEvents((prev) => [...prev, event]);
+    getApiBase().then((apiBase) => {
+      if (cancelled) return;
+      const wsBase = apiBase.replace(/^http/, "ws");
+      const ws = new WebSocket(`${wsBase}/executions/${executionId}/stream`);
+      activeWs = ws;
+      wsRef.current = ws;
+
+      ws.onmessage = (msg) => {
+        try {
+          const event = JSON.parse(msg.data) as ExecutionEvent;
+          setEvents((prev) => [...prev, event]);
+        } catch (err) {
+          console.error("Error parsing execution websocket message:", err);
+        }
+      };
+    });
+
+    return () => {
+      cancelled = true;
+      if (activeWs) {
+        activeWs.close();
+      }
     };
-
-    return () => ws.close();
   }, [executionId]);
 
   return { events, tree: reduceEvents(events) };

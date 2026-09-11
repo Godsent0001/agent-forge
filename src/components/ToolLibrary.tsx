@@ -5,7 +5,6 @@ import { ToolCatalogModal } from "./ToolCatalogModal";
 export function ToolLibrary({ onFeedback }: { onFeedback?: (msg: string) => void }) {
   const tools = useStore((s) => s.tools);
   const createTool = useStore((s) => s.createTool);
-  const deleteTool = useStore((s) => s.deleteTool);
   const attachToolToSelected = useStore((s) => s.attachToolToSelected);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
@@ -25,13 +24,6 @@ export function ToolLibrary({ onFeedback }: { onFeedback?: (msg: string) => void
     if (!selectedAgentId) return;
     await attachToolToSelected(toolId);
     onFeedback?.(`Tool "${toolName}" attached to ${agent?.name ?? "agent"}`);
-  };
-
-  const handleDeleteTool = async (toolId: string, toolName: string) => {
-    if (confirm(`Are you sure you want to delete tool "${toolName}"?`)) {
-      await deleteTool(toolId);
-      onFeedback?.(`Tool "${toolName}" deleted`);
-    }
   };
 
   return (
@@ -73,13 +65,6 @@ export function ToolLibrary({ onFeedback }: { onFeedback?: (msg: string) => void
                     {isAttachedToSelected ? "Attached" : "+ Attach"}
                   </button>
                 )}
-                <button
-                  onClick={() => handleDeleteTool(t.id, t.name)}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-600 transition-opacity"
-                  title="Delete Tool"
-                >
-                  ✕
-                </button>
               </div>
             </div>
           );
