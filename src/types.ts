@@ -16,6 +16,14 @@ export interface Tool {
   config: Record<string, unknown>;
 }
 
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "agent";
+  agentName?: string;
+  text: string;
+  timestamp: string;
+}
+
 export interface Agent {
   id: string;
   project_id: string;

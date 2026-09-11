@@ -86,11 +86,12 @@ export default function App() {
       />
       <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0">
         <AgentTree />
-        {activeTab === "chat" ? (
+        <div className={`min-w-0 h-full ${activeTab === "chat" ? "block" : "hidden"}`}>
           <AgentChat onRunExecution={setActiveExecutionId} />
-        ) : (
+        </div>
+        <div className={`min-w-0 h-full ${activeTab === "config" ? "block" : "hidden"}`}>
           <AgentEditor />
-        )}
+        </div>
         <ExecutionTree executionId={activeExecutionId} />
       </div>
     </div>

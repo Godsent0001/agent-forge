@@ -1,25 +1,21 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
+import type { ChatMessage } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
-
-interface ChatMessage {
-  id: string;
-  sender: "user" | "agent";
-  agentName?: string;
-  text: string;
-  timestamp: string;
-}
 
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
+  const chatMessages = useStore((s) => s.chatMessages);
+  const addChatMessage = useStore((s) => s.addChatMessage);
 
-  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   const [promptInput, setPromptInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   if (!selectedAgentId || !agent || !project) {
     return (
@@ -35,10 +31,18 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     );
   }
 
-  const agentMessages = messages[agent.id] || [];
+  const agentMessages = (agent && chatMessages[agent.id]) || [];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [agentMessages, isProcessing, agent?.id]);
 
   const handleSendMessage = async () => {
-    if (!promptInput.trim() || isProcessing) return;
+    if (!promptInput.trim() || isProcessing || !agent || !project) return;
 
     const userText = promptInput.trim();
     setPromptInput("");
@@ -51,11 +55,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
-    setMessages((prev) => ({
-      ...prev,
-      [agent.id]: [...(prev[agent.id] || []), userMsg],
-    }));
-
+    addChatMessage(agent.id, userMsg);
     setIsProcessing(true);
 
     try {
@@ -80,10 +80,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
-      setMessages((prev) => ({
-        ...prev,
-        [agent.id]: [...(prev[agent.id] || []), agentMsg],
-      }));
+      addChatMessage(agent.id, agentMsg);
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Failed to get agent response");
     } finally {
@@ -166,6 +163,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             Error: {chatError}
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Multi-Line Prompt Bar */}
