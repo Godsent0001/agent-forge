@@ -94,9 +94,13 @@ class RuntimeAgent:
             if tool is None:
                 raise AgentExecutionError(f"Agent {self.name} requested unknown tool '{tool_name}'")
 
-            tool_inputs = [inp.strip() for inp in (decision.tool_input or "").split("\n---\n") if inp.strip()]
+            raw_input = (decision.tool_input or "").strip()
+            if not raw_input or raw_input.lower() in ["none", "previous_step", "n/a", "{}"]:
+                raw_input = parent_prompt
+
+            tool_inputs = [inp.strip() for inp in raw_input.split("\n---\n") if inp.strip()]
             if not tool_inputs:
-                tool_inputs = [decision.tool_input or ""]
+                tool_inputs = [raw_input]
 
             if self.parallel_execution and len(tool_inputs) > 1:
                 async def _exec_single(inp: str):
@@ -107,13 +111,19 @@ class RuntimeAgent:
 
                 results = await asyncio.gather(*[_exec_single(inp) for inp in tool_inputs])
                 combined_result = "\n".join([f"Result {i+1}: {res}" for i, res in enumerate(results)])
-                messages.append(f"[TOOL RESULT: {tool.name}] (Parallel Execution)\n{combined_result}")
+                messages.append(
+                    f"[TOOL RESULT FOR CURRENT TASK: {tool.name}] (Parallel Execution)\n{combined_result}\n\n"
+                    f"CRITICAL DIRECTIVE: Use this tool result exclusively to complete the CURRENT USER TASK ({parent_prompt}). Do NOT revert to old topics in memory."
+                )
             else:
                 try:
-                    tool_result = await tool.execute(decision.tool_input or "", context=context)
+                    tool_result = await tool.execute(tool_inputs[0], context=context)
                 except ToolExecutionError as e:
                     tool_result = f"ERROR: {e}"
-                messages.append(f"[TOOL RESULT: {tool.name}] {tool_result}")
+                messages.append(
+                    f"[TOOL RESULT FOR CURRENT TASK: {tool.name}]\n{tool_result}\n\n"
+                    f"CRITICAL DIRECTIVE: Use this tool result exclusively to complete the CURRENT USER TASK ({parent_prompt}). Do NOT revert to old topics in memory."
+                )
 
         await self._write_memory(f"Task '{parent_prompt}' -> {final_answer}")
         await context.emit("AgentCompleted", agent_name=self.name, data={"result": final_answer})

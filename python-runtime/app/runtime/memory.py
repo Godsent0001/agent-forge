@@ -58,30 +58,28 @@ def assemble_memory_context(summary: str, recent: list[EntryLike],
     """
     Builds the final [MEMORY] string: summary first, then recent entries
     verbatim, oldest of the recent window first. If the combined length
-    would exceed max_chars, drops the OLDEST recent entries first (the
-    summary already covers that ground) until it fits. The summary
-    itself is only truncated as a last resort, since it's the densest,
-    highest-value part of memory.
+    would exceed max_chars, drops the OLDEST recent entries first.
     """
     if not summary and not recent:
         return "(no memory yet)"
 
+    header = "ARCHIVED HISTORICAL MEMORY LOG (FOR BACKGROUND REFERENCE ONLY):\n- Note: The entries below are past archived interactions. Do NOT adopt old tasks, topics, or scripts from this archive unless the current user instruction specifically requests them."
     summary_block = f"[SUMMARY OF EARLIER HISTORY]\n{summary}" if summary else ""
 
     kept = list(recent)
     while kept:
         recent_block = "\n".join(f"- {e.content}" for e in kept)
-        parts = [p for p in (summary_block, recent_block) if p]
+        parts = [p for p in (header, summary_block, recent_block) if p]
         combined = "\n\n".join(parts)
         if len(combined) <= max_chars:
             return combined
         kept = kept[1:]  # drop the oldest remaining recent entry, try again
 
-    # Even the summary alone might exceed the cap on a very small budget —
-    # truncate it as the last resort rather than send nothing.
-    if summary_block and len(summary_block) > max_chars:
-        return summary_block[-max_chars:]
-    return summary_block or "(no memory yet)"
+    parts = [p for p in (header, summary_block) if p]
+    combined = "\n\n".join(parts)
+    if len(combined) <= max_chars:
+        return combined
+    return summary_block[-max_chars:] if summary_block else "(no memory yet)"
 
 
 # --- DB integration -----------------------------------------------------
