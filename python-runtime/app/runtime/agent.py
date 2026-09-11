@@ -62,12 +62,14 @@ class RuntimeAgent:
             tools_summary_lines.append(f"- Tool/Sub-agent '{t.name}': {t.description}")
         tools_summary = "\n".join(tools_summary_lines) if tools_summary_lines else "No tools or sub-agents attached."
 
+        memory_text = await self._read_memory()
+
         layers = [
             f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
+            f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
             f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
-            f"[TOOL-USE SCHEMA] {self.tool_use_schema}",
-            f"[PARENT PROMPT] {parent_prompt}",
-            f"[MEMORY] {await self._read_memory()}",
+            f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
+            f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{parent_prompt}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
         ]
         messages = list(layers)
         tool_specs = [ToolSpec(name=t.name, description=t.description) for t in self.tools.values()]

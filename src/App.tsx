@@ -78,18 +78,18 @@ export default function App() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-950">
+    <div className="h-screen w-screen flex flex-col bg-surface-950 overflow-hidden">
       <TopBar
         onRun={setActiveExecutionId}
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
-      <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0">
+      <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0 overflow-hidden">
         <AgentTree />
-        <div className={`min-w-0 h-full ${activeTab === "chat" ? "block" : "hidden"}`}>
+        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "chat" ? "flex flex-col" : "hidden"}`}>
           <AgentChat onRunExecution={setActiveExecutionId} />
         </div>
-        <div className={`min-w-0 h-full ${activeTab === "config" ? "block" : "hidden"}`}>
+        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "config" ? "flex flex-col" : "hidden"}`}>
           <AgentEditor />
         </div>
         <ExecutionTree executionId={activeExecutionId} />
