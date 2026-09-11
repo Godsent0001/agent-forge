@@ -102,6 +102,7 @@ export const api = {
         body: JSON.stringify({ project_id, root_agent_id, task }),
       }),
     get: (id: string) => request<ExecutionResult>(`/executions/${id}`),
+    getEvents: (id: string) => request<any[]>(`/executions/${id}/events`),
   },
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
