@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import { SettingsModal } from "./SettingsModal";
 
-export function TopBar({ onRun }: { onRun: (executionId: string) => void }) {
+export function TopBar({ onRun }: { onRun: (taskText: string) => void }) {
   const projects = useStore((s) => s.projects);
   const project = useStore((s) => s.project);
   const switchProject = useStore((s) => s.switchProject);
@@ -29,16 +29,9 @@ export function TopBar({ onRun }: { onRun: (executionId: string) => void }) {
 
   const handleRun = async () => {
     if (!project || !selectedAgentId || !task.trim()) return;
-    setRunning(true);
-    setError(null);
-    try {
-      const execution = await api.executions.run(project.id, selectedAgentId, task.trim());
-      onRun(execution.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start execution");
-    } finally {
-      setRunning(false);
-    }
+    const taskToSubmit = task.trim();
+    setTask("");
+    onRun(taskToSubmit);
   };
 
   return (

@@ -59,6 +59,14 @@ export function useExecutionStream(executionId: string | null) {
     setEvents([]);
     if (!executionId) return;
 
+    // Fetch existing historical events first
+    fetch(`${WS_BASE.replace("ws://", "http://")}/executions/${executionId}/events`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((historicalEvents: ExecutionEvent[]) => {
+        setEvents(historicalEvents);
+      })
+      .catch(() => {});
+
     const ws = new WebSocket(`${WS_BASE}/executions/${executionId}/stream`);
     wsRef.current = ws;
 

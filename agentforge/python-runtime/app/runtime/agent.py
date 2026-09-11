@@ -60,9 +60,14 @@ class RuntimeAgent:
     async def run(self, parent_prompt: str, *, context: ExecutionContext) -> str:
         await context.emit("AgentStarted", agent_name=self.name, data={"task": parent_prompt})
 
+        available_tools_desc = "\n".join([f"- {t.name}: {t.description}" for t in self.tools.values()])
+        if not available_tools_desc:
+            available_tools_desc = "(No tools or subagents attached)"
+
         layers = [
             f"[SYSTEM PROMPT] {self.system_prompt}",
             f"[TOOL-USE SCHEMA] {self.tool_use_schema}",
+            f"[AVAILABLE TOOLS & SUBAGENTS]\n{available_tools_desc}",
             f"[PARENT PROMPT] {parent_prompt}",
             f"[MEMORY] {self._read_memory()}",
         ]

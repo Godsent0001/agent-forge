@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api/client";
 import { AgentEditor } from "./components/AgentEditor";
 import { AgentTree } from "./components/AgentTree";
+import { ChatSection, ChatMessage } from "./components/ChatSection";
 import { ExecutionTree } from "./components/ExecutionTree";
 import { TopBar } from "./components/TopBar";
 import { useStore } from "./store/useStore";
@@ -15,6 +16,11 @@ export default function App() {
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"chat" | "config">("chat");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const selectedAgentId = useStore((s) => s.selectedAgentId);
+  const agents = useStore((s) => s.agents);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,12 +81,77 @@ export default function App() {
     );
   }
 
+  const handleRunTask = async (taskText: string) => {
+    const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      sender: "user",
+      content: taskText,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setIsExecuting(true);
+
+    try {
+      const project = useStore.getState().project;
+      if (!project || !selectedAgentId) return;
+      const execution = await api.executions.run(project.id, selectedAgentId, taskText);
+      setActiveExecutionId(execution.id);
+
+      const agentMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: "agent",
+        agentName: selectedAgent?.name ?? "Agent",
+        content: execution.final_output || "(Execution completed with no output)",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setChatMessages((prev) => [...prev, agentMsg]);
+    } catch (err) {
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: "agent",
+        agentName: selectedAgent?.name ?? "Agent",
+        content: `Error: ${err instanceof Error ? err.message : "Execution failed"}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      <TopBar onRun={setActiveExecutionId} />
-      <div className="flex-1 grid grid-cols-[260px_1fr_320px] min-h-0">
+    <div className="h-full flex flex-col bg-surface-950 text-neutral-100">
+      <TopBar onRun={handleRunTask} />
+      <div className="px-4 py-1.5 border-b border-white/5 bg-surface-900 flex items-center justify-between text-xs">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode("chat")}
+            className={`px-3 py-1 rounded transition-colors ${
+              viewMode === "chat" ? "bg-accent-500 text-white font-medium" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            💬 Chat Mode
+          </button>
+          <button
+            onClick={() => setViewMode("config")}
+            className={`px-3 py-1 rounded transition-colors ${
+              viewMode === "config" ? "bg-accent-500 text-white font-medium" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            ⚙️ Agent & Tool Builder
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 grid grid-cols-[260px_1fr_320px] min-h-0 overflow-hidden">
         <AgentTree />
-        <AgentEditor />
+        <div className="flex flex-col h-full min-h-0 bg-surface-950">
+          {viewMode === "chat" ? (
+            <ChatSection messages={chatMessages} running={isExecuting} />
+          ) : (
+            <AgentEditor />
+          )}
+        </div>
         <ExecutionTree executionId={activeExecutionId} />
       </div>
     </div>
