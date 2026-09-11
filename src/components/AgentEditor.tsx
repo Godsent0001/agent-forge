@@ -65,7 +65,7 @@ export function AgentEditor() {
       setSaveSuccess(null);
       setLinkError(null);
     }
-  }, [agent?.id, agent?.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agent?.id, agent?.name, agent?.description, agent?.provider, agent?.model, agent?.memory_enabled, agent?.system_prompt, agent?.tool_use_schema]);
 
   if (!selectedAgentId || !agent) {
     return (
