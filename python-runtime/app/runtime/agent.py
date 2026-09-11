@@ -64,13 +64,27 @@ class RuntimeAgent:
 
         memory_text = await self._read_memory()
 
-        layers = [
-            f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
-            f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
-            f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
-            f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
-            f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{parent_prompt}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
-        ]
+        if "[RECENT CONVERSATION HISTORY]" in parent_prompt:
+            parts = parent_prompt.split("[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]")
+            history_part = parts[0].strip()
+            user_part = parts[1].strip() if len(parts) > 1 else parent_prompt
+
+            layers = [
+                f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
+                f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
+                f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
+                f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
+                history_part,
+                f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{user_part}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
+            ]
+        else:
+            layers = [
+                f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
+                f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
+                f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
+                f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
+                f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{parent_prompt}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
+            ]
         messages = list(layers)
         tool_specs = [ToolSpec(name=t.name, description=t.description) for t in self.tools.values()]
 

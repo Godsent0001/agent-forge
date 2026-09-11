@@ -59,7 +59,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setIsProcessing(true);
 
     try {
-      const execution = await api.executions.run(project.id, agent.id, userText);
+      // Build recent conversation context from chat history
+      const historyTurns = agentMessages
+        .slice(-10)
+        .map((m) => `${m.sender === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .join("\n\n");
+
+      const fullTask = historyTurns
+        ? `[RECENT CONVERSATION HISTORY]\n${historyTurns}\n\n[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n${userText}`
+        : userText;
+
+      const execution = await api.executions.run(project.id, agent.id, fullTask);
       onRunExecution(execution.id);
 
       // Poll for completion to append agent output into chat
