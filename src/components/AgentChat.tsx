@@ -91,6 +91,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       };
 
       addChatMessage(agent.id, agentMsg);
+
+      // Refresh agent state in store to retrieve newly synthesized learned_experience
+      useStore.getState().updateAgent(agent.id, {});
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Failed to get agent response");
     } finally {

@@ -60,6 +60,7 @@ class AgentCreate(BaseModel):
     system_prompt: str = ""
     tool_use_schema: str = ""
     memory_enabled: bool = False
+    learned_experience: str = ""
 
 
 class AgentUpdate(BaseModel):
@@ -70,6 +71,7 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     tool_use_schema: str | None = None
     memory_enabled: bool | None = None
+    learned_experience: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -83,6 +85,7 @@ class AgentOut(BaseModel):
     system_prompt: str
     tool_use_schema: str
     memory_enabled: bool
+    learned_experience: str
     created_at: datetime
     tool_ids: list[str] = Field(default_factory=list)
     child_agent_ids: list[str] = Field(default_factory=list)
