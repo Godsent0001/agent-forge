@@ -115,7 +115,22 @@ class LLMInterface:
         formatted_messages: list[dict[str, Any]] = []
 
         for m in messages:
-            if m.startswith("[TOOL RESULT: "):
+            if (
+                m.startswith("[SYSTEM PROMPT]")
+                or m.startswith("[AVAILABLE TOOLS AND SUB-AGENTS]")
+                or m.startswith("[TOOL-USE SCHEMA]")
+                or m.startswith("[MEMORY CONTEXT")
+            ):
+                formatted_messages.append({
+                    "role": "system",
+                    "content": m,
+                })
+            elif m.startswith("[CURRENT USER INSTRUCTION") or m.startswith("[PARENT PROMPT]"):
+                formatted_messages.append({
+                    "role": "user",
+                    "content": m,
+                })
+            elif m.startswith("[TOOL RESULT: "):
                 header_end = m.find("]")
                 tool_header = m[len("[TOOL RESULT: "):header_end] if header_end != -1 else "tool"
                 tool_name = tool_header.split("]")[0].strip()

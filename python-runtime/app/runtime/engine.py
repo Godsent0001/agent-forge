@@ -41,10 +41,11 @@ class ExecutionEngine:
 
         for link in agent_row.child_links:
             child_runtime_agent = self._build_agent(link.child_agent_id)
+            desc = link.description or child_runtime_agent.system_prompt or f"Sub-agent {child_runtime_agent.name}"
             agent_tool = AgentTool(
                 agent=child_runtime_agent,
                 name=child_runtime_agent.name.lower().replace(" ", "_"),
-                description=link.description or f"Delegate a task to {child_runtime_agent.name}.",
+                description=f"Sub-agent tool '{child_runtime_agent.name}'. Goal/Role: {desc}. Input: Task string for the sub-agent. Returns final result string.",
             )
             tools[agent_tool.name] = agent_tool
 

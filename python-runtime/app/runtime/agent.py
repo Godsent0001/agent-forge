@@ -57,12 +57,34 @@ class RuntimeAgent:
     async def run(self, parent_prompt: str, *, context: ExecutionContext) -> str:
         await context.emit("AgentStarted", agent_name=self.name, data={"task": parent_prompt})
 
-        layers = [
-            f"[SYSTEM PROMPT] {self.system_prompt}",
-            f"[TOOL-USE SCHEMA] {self.tool_use_schema}",
-            f"[PARENT PROMPT] {parent_prompt}",
-            f"[MEMORY] {await self._read_memory()}",
-        ]
+        tools_summary_lines = []
+        for t in self.tools.values():
+            tools_summary_lines.append(f"- Tool/Sub-agent '{t.name}': {t.description}")
+        tools_summary = "\n".join(tools_summary_lines) if tools_summary_lines else "No tools or sub-agents attached."
+
+        memory_text = await self._read_memory()
+
+        if "[RECENT CONVERSATION HISTORY]" in parent_prompt:
+            parts = parent_prompt.split("[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]")
+            history_part = parts[0].strip()
+            user_part = parts[1].strip() if len(parts) > 1 else parent_prompt
+
+            layers = [
+                f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
+                f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
+                f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
+                f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
+                history_part,
+                f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{user_part}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
+            ]
+        else:
+            layers = [
+                f"[SYSTEM PROMPT] You are agent '{self.name}'. {self.system_prompt or 'You are a helpful AI agent.'}",
+                f"[TOOL-USE SCHEMA] {self.tool_use_schema or 'No additional schema rules.'}",
+                f"[AVAILABLE TOOLS AND SUB-AGENTS]\n{tools_summary}\n\nInstructions: You have access to the above tools and sub-agents. Whenever a task requires using a tool or delegating to a sub-agent, choose the appropriate tool/sub-agent and provide the required input parameter. Once the tool or sub-agent returns its output, review it and return your final response to answer the user's request.",
+                f"[MEMORY CONTEXT - LOWER PRIORITY BACKGROUND HISTORICAL CONTEXT]\n{memory_text}",
+                f"[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n{parent_prompt}\n\nCRITICAL DIRECTIVE: The above CURRENT USER INSTRUCTION is your top priority. Do NOT get stuck on old tasks from memory if the user is asking for something new or updated. Respond directly to this new instruction.",
+            ]
         messages = list(layers)
         tool_specs = [ToolSpec(name=t.name, description=t.description) for t in self.tools.values()]
 
@@ -86,9 +108,13 @@ class RuntimeAgent:
             if tool is None:
                 raise AgentExecutionError(f"Agent {self.name} requested unknown tool '{tool_name}'")
 
-            tool_inputs = [inp.strip() for inp in (decision.tool_input or "").split("\n---\n") if inp.strip()]
+            raw_input = (decision.tool_input or "").strip()
+            if not raw_input or raw_input.lower() in ["none", "previous_step", "n/a", "{}"]:
+                raw_input = parent_prompt
+
+            tool_inputs = [inp.strip() for inp in raw_input.split("\n---\n") if inp.strip()]
             if not tool_inputs:
-                tool_inputs = [decision.tool_input or ""]
+                tool_inputs = [raw_input]
 
             if self.parallel_execution and len(tool_inputs) > 1:
                 async def _exec_single(inp: str):
@@ -99,13 +125,19 @@ class RuntimeAgent:
 
                 results = await asyncio.gather(*[_exec_single(inp) for inp in tool_inputs])
                 combined_result = "\n".join([f"Result {i+1}: {res}" for i, res in enumerate(results)])
-                messages.append(f"[TOOL RESULT: {tool.name}] (Parallel Execution)\n{combined_result}")
+                messages.append(
+                    f"[TOOL RESULT FOR CURRENT TASK: {tool.name}] (Parallel Execution)\n{combined_result}\n\n"
+                    f"CRITICAL DIRECTIVE: Use this tool result exclusively to complete the CURRENT USER TASK ({parent_prompt}). Do NOT revert to old topics in memory."
+                )
             else:
                 try:
-                    tool_result = await tool.execute(decision.tool_input or "", context=context)
+                    tool_result = await tool.execute(tool_inputs[0], context=context)
                 except ToolExecutionError as e:
                     tool_result = f"ERROR: {e}"
-                messages.append(f"[TOOL RESULT: {tool.name}] {tool_result}")
+                messages.append(
+                    f"[TOOL RESULT FOR CURRENT TASK: {tool.name}]\n{tool_result}\n\n"
+                    f"CRITICAL DIRECTIVE: Use this tool result exclusively to complete the CURRENT USER TASK ({parent_prompt}). Do NOT revert to old topics in memory."
+                )
 
         await self._write_memory(f"Task '{parent_prompt}' -> {final_answer}")
         await context.emit("AgentCompleted", agent_name=self.name, data={"result": final_answer})

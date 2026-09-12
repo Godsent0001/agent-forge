@@ -17,8 +17,8 @@ export const keychain = {
       return;
     }
 
-    // Browser development only
-    sessionStorage.setItem(`${DEV_PREFIX}${provider}`, key);
+    // Browser development fallback
+    localStorage.setItem(`${DEV_PREFIX}${provider}`, key);
   },
 
   async get(provider: string): Promise<string | null> {
@@ -28,8 +28,8 @@ export const keychain = {
       return await electronAPI.getApiKey(provider);
     }
 
-    // Browser development only
-    return sessionStorage.getItem(`${DEV_PREFIX}${provider}`);
+    // Browser development fallback
+    return localStorage.getItem(`${DEV_PREFIX}${provider}`);
   },
 
   async remove(provider: string): Promise<void> {
@@ -40,7 +40,7 @@ export const keychain = {
       return;
     }
 
-    // Browser development only
-    sessionStorage.removeItem(`${DEV_PREFIX}${provider}`);
+    // Browser development fallback
+    localStorage.removeItem(`${DEV_PREFIX}${provider}`);
   },
 };

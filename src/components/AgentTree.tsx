@@ -10,7 +10,6 @@ export function AgentTree({ onOpenConfig }: { onOpenConfig?: () => void }) {
   const selectAgent = useStore((s) => s.selectAgent);
   const createAgent = useStore((s) => s.createAgent);
   const deleteAgent = useStore((s) => s.deleteAgent);
-  const deleteTool = useStore((s) => s.deleteTool);
   const detachToolFromAgent = useStore((s) => s.detachToolFromAgent);
   const detachChildFromAgent = useStore((s) => s.detachChildFromAgent);
 
@@ -87,7 +86,13 @@ export function AgentTree({ onOpenConfig }: { onOpenConfig?: () => void }) {
                 : "text-slate-700 hover:bg-slate-100/80 border-transparent"
             }`}
         >
-          <div className="flex items-center gap-1.5 truncate min-w-0 pr-1">
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              selectAgent(agent.id);
+            }}
+            className="flex items-center gap-1.5 truncate min-w-0 pr-1"
+          >
             <button
               onClick={(e) => toggleExpand(`${parentId || "root"}-${agent.id}`, e)}
               className={`p-0.5 rounded hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 transition-transform ${
@@ -240,18 +245,6 @@ export function AgentTree({ onOpenConfig }: { onOpenConfig?: () => void }) {
                       <span>✂️</span> Detach from Agent
                     </button>
                     <div className="border-t border-slate-100 my-1" />
-                    <button
-                      onClick={async () => {
-                        if (confirm(`Delete tool "${tool.name}" from library?`)) {
-                          await deleteTool(tool.id);
-                          setActiveMenu(null);
-                          showFeedback(`Tool "${tool.name}" deleted`);
-                        }
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2"
-                    >
-                      <span>🗑️</span> Delete Tool
-                    </button>
                   </div>
                 )}
               </div>

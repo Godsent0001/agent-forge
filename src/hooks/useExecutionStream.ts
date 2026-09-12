@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { api, getApiBase } from "../api/client";
 import type { ExecutionEvent, ExecutionNode } from "../types";
-const WS_BASE = "ws://127.0.0.1:8000";
 
 /**
  * Reduces the flat event stream into a tree the UI can render live.
@@ -56,15 +56,72 @@ export function useExecutionStream(executionId: string | null) {
     setEvents([]);
     if (!executionId) return;
 
-    const ws = new WebSocket(`${WS_BASE}/executions/${executionId}/stream`);
-    wsRef.current = ws;
+    let activeWs: WebSocket | null = null;
+    let cancelled = false;
+    let pollInterval: any = null;
 
-    ws.onmessage = (msg) => {
-      const event = JSON.parse(msg.data) as ExecutionEvent;
-      setEvents((prev) => [...prev, event]);
+    const addEvents = (incoming: ExecutionEvent[]) => {
+      setEvents((prev) => {
+        const existingKeys = new Set(prev.map((e) => `${e.type}-${e.agent_name}-${e.tool_name}-${e.timestamp}`));
+        const newEvents = incoming.filter((e) => !existingKeys.has(`${e.type}-${e.agent_name}-${e.tool_name}-${e.timestamp}`));
+        if (newEvents.length === 0) return prev;
+        return [...prev, ...newEvents];
+      });
     };
 
-    return () => ws.close();
+    const fetchInitial = async () => {
+      try {
+        const initial = await api.executions.getEvents(executionId);
+        if (!cancelled && initial.length > 0) {
+          addEvents(initial);
+        }
+      } catch (err) {
+        console.error("Error fetching execution events:", err);
+      }
+    };
+
+    fetchInitial();
+
+    getApiBase().then((apiBase) => {
+      if (cancelled) return;
+      const wsBase = apiBase.replace(/^http/, "ws");
+      const ws = new WebSocket(`${wsBase}/executions/${executionId}/stream`);
+      activeWs = ws;
+      wsRef.current = ws;
+
+      ws.onmessage = (msg) => {
+        try {
+          const event = JSON.parse(msg.data) as ExecutionEvent;
+          addEvents([event]);
+        } catch (err) {
+          console.error("Error parsing execution websocket message:", err);
+        }
+      };
+    });
+
+    // Periodically reconcile until execution is finished
+    pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const latest = await api.executions.getEvents(executionId);
+        if (!cancelled && latest.length > 0) {
+          addEvents(latest);
+          if (latest.some((e) => e.type === "ExecutionCompleted")) {
+            clearInterval(pollInterval);
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      if (pollInterval) clearInterval(pollInterval);
+      if (activeWs) {
+        activeWs.close();
+      }
+    };
   }, [executionId]);
 
   return { events, tree: reduceEvents(events) };

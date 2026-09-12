@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api } from "../api/client";
-import type { Agent, Project, Tool } from "../types";
+import type { Agent, ChatMessage, Project, Tool } from "../types";
 
 interface StoreState {
   projects: Project[];
@@ -8,6 +8,8 @@ interface StoreState {
   agents: Agent[];
   tools: Tool[];
   selectedAgentId: string | null;
+  chatMessages: Record<string, ChatMessage[]>;
+  addChatMessage: (agentId: string, msg: ChatMessage) => void;
 
   fetchProjects: () => Promise<Project[]>;
   switchProject: (projectId: string) => Promise<void>;
@@ -34,6 +36,16 @@ export const useStore = create<StoreState>((set, get) => ({
   agents: [],
   tools: [],
   selectedAgentId: null,
+  chatMessages: {},
+
+  addChatMessage: (agentId, msg) => {
+    set((state) => ({
+      chatMessages: {
+        ...state.chatMessages,
+        [agentId]: [...(state.chatMessages[agentId] || []), msg],
+      },
+    }));
+  },
 
   fetchProjects: async () => {
     const projects = await api.projects.list();
@@ -72,7 +84,7 @@ export const useStore = create<StoreState>((set, get) => ({
       api.agents.list(project.id),
       api.tools.list(project.id),
     ]);
-    set({ agents, tools });
+    set({ agents, tools, selectedAgentId: agents[0]?.id ?? null });
   },
 
   selectAgent: (id) => set({ selectedAgentId: id }),
