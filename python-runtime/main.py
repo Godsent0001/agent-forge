@@ -8,6 +8,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import os
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
 from app.db import init_db
 from app.routers import agents, executions, projects, settings, tools
 from app.routers import catalog as catalog_router
@@ -17,6 +21,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("agentforge")
+
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +39,8 @@ app.include_router(tools.router)
 app.include_router(executions.router)
 app.include_router(catalog_router.router)
 app.include_router(settings.router)
+
+app.mount("/files", StaticFiles(directory=str(OUTPUT_DIR)), name="files")
 
 app.add_middleware(
     CORSMiddleware,
