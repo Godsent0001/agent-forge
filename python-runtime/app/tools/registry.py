@@ -20,15 +20,17 @@ from app.tools.audio import AudioAlignmentTool, AudioMixerTool, AudioProcessingT
 from app.tools.base import Tool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
 from app.tools.character import (
-    BodyPoseTool, CharacterAssetManagerTool, CharacterPerformanceTool, CharacterRigTool,
-    EyeEngineTool, FacialExpressionTool, FacialPerformanceTool, GestureEngineTool, LipSyncTool,
+    BodyPoseTool, CharacterAssetManagerTool, CharacterDesignerTool, CharacterPerformanceTool,
+    CharacterPreviewTool, CharacterRigTool, EyeEngineTool, FacialExpressionTool,
+    FacialPerformanceTool, GestureEngineTool, LipSyncTool,
 )
 from app.tools.composition import CompositionEngineTool, EffectsEngineTool
 from app.tools.filesystem import FileSystemTool
 from app.tools.graphics import (
     CaptionEngineTool, DataVisualizationTool, DebateGraphicsTool, EvidenceGraphicsTool,
-    HeadlineCardTool, TypographyEngineTool, VisualAssetManagerTool,
+    HeadlineCardTool, PropDesignerTool, TypographyEngineTool, VisualAssetManagerTool,
 )
+from app.tools.scene import EnvironmentDesignerTool, LightingEngineTool, SceneBuilderTool, SceneTemplateManagerTool
 from app.tools.http_request import HttpRequestTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
@@ -53,6 +55,8 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "audio_alignment": AudioAlignmentTool,
     "audio_mixer": AudioMixerTool,
     # Character
+    "character_designer": CharacterDesignerTool,
+    "character_preview": CharacterPreviewTool,
     "lip_sync": LipSyncTool,
     "eye_engine": EyeEngineTool,
     "facial_expression": FacialExpressionTool,
@@ -62,8 +66,11 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "character_performance": CharacterPerformanceTool,
     "character_rig": CharacterRigTool,
     # Scene
+    "environment_designer": EnvironmentDesignerTool,
     "scene_builder": SceneBuilderTool,
     "lighting_engine": LightingEngineTool,
+    # Graphics
+    "prop_designer": PropDesignerTool,
     # Camera
     "camera_director": CameraDirectorTool,
     "camera_animation": CameraAnimationTool,
@@ -107,12 +114,20 @@ def build_tool(kind: str, config: dict) -> Tool:
         return FileSystemTool(root_dir=config.get("root_dir", "./files"))
     if kind == "voice_generator":
         return VoiceGeneratorTool(voices_dir=config.get("voices_dir", "./assets/voices"))
+    if kind == "character_designer":
+        return CharacterDesignerTool(characters_dir=config.get("characters_dir", "./assets/characters"))
+    if kind == "character_preview":
+        return CharacterPreviewTool(characters_dir=config.get("characters_dir", "./assets/characters"))
     if kind == "character_asset_manager":
         return CharacterAssetManagerTool(characters_dir=config.get("characters_dir", "./assets/characters"))
+    if kind == "environment_designer":
+        return EnvironmentDesignerTool(environments_dir=config.get("environments_dir", "./assets/environments"))
+    if kind == "prop_designer":
+        return PropDesignerTool(props_dir=config.get("props_dir", "./assets/props"))
     if kind == "scene_template_manager":
         return SceneTemplateManagerTool(templates_dir=config.get("templates_dir", "./assets/scene_templates"))
     if kind == "visual_asset_manager":
-        return VisualAssetManagerTool(assets_dir=config.get("assets_dir", "./assets/visuals"))
+        return VisualAssetManagerTool(assets_dir=config.get("assets_dir", "./assets"))
     if kind == "render_queue":
         return RenderQueueTool(queue_path=config.get("queue_path", "./output/render_queue.json"))
     if kind == "cache_engine":

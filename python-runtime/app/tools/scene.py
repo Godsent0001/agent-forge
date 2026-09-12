@@ -104,3 +104,89 @@ class LightingEngineTool(Tool):
             raise ToolExecutionError(f"Unknown lighting preset '{preset_name}'. Known: {', '.join(self.PRESETS)}")
 
         return to_json_output({"preset": preset_name, "lighting": preset})
+
+
+import re
+from PIL import Image, ImageDraw, ImageFont
+
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[-\s]+", "_", text)
+
+
+class EnvironmentDesignerTool(Tool):
+    name = "environment_designer"
+    description = "Create reusable visual environment assets (debate hall, presidential stage, TV studio, courtroom, etc.)."
+
+    def __init__(self, environments_dir: str = "./assets/environments"):
+        self._root = Path(environments_dir)
+
+    async def execute(self, input: str, *, context: Any) -> str:
+        params = parse_json_input(input)
+        name = params.get("name") or "Debate Stage"
+        env_id = params.get("environment_id") or params.get("id") or _slugify(name)
+        env_type = params.get("type") or params.get("preset") or "debate_hall"
+        desc = params.get("description", "")
+        lighting_preset = params.get("lighting_preset", "dramatic")
+
+        env_dir = self._root / env_id
+        env_dir.mkdir(parents=True, exist_ok=True)
+
+        metadata = {
+            "environment_id": env_id,
+            "name": name,
+            "type": env_type,
+            "description": desc,
+            "lighting_preset": lighting_preset,
+            "visual_style": params.get("visual_style", "2D vector/cartoon"),
+        }
+
+        meta_path = env_dir / "metadata.json"
+        meta_path.write_text(json.dumps(metadata, indent=2))
+
+        asset_path = str(env_dir / "asset.png")
+        w, h = 1920, 1080
+        img = Image.new("RGB", (w, h), color=(15, 23, 42))
+        draw = ImageDraw.Draw(img)
+
+        # Environment backdrop graphics based on type
+        if env_type in ["presidential_stage", "debate_hall"]:
+            # Dark background with spotlight beams & podium silhouettes
+            draw.rectangle([0, 0, w, h], fill=(15, 23, 42))
+            draw.polygon([(0, 0), (w // 3, h), (0, h)], fill=(30, 58, 138))
+            draw.polygon([(w, 0), (2 * w // 3, h), (w, h)], fill=(30, 58, 138))
+            draw.rectangle([100, h - 250, w - 100, h - 50], fill=(30, 41, 59), outline=(99, 102, 241), width=4)
+        elif env_type == "tv_studio":
+            draw.rectangle([0, 0, w, h], fill=(24, 24, 27))
+            draw.rectangle([200, 150, w - 200, h - 300], fill=(39, 39, 42), outline=(168, 85, 247), width=6)
+            draw.text((w // 2, 250), "STUDIO BROADCAST", fill=(168, 85, 247), anchor="ms")
+        elif env_type == "courtroom":
+            draw.rectangle([0, 0, w, h], fill=(69, 26, 3))
+            draw.rectangle([100, h - 350, w - 100, h - 50], fill=(120, 53, 15), outline=(217, 119, 6), width=6)
+        else:
+            # Generic stage / hall
+            draw.rectangle([0, 0, w, h], fill=(30, 41, 59))
+            draw.rectangle([50, 50, w - 50, h - 50], outline=(148, 163, 184), width=4)
+
+        # Title overlay
+        try:
+            font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
+            font_sub = ImageFont.truetype("DejaVuSans.ttf", 28)
+        except OSError:
+            font_title = font_sub = ImageFont.load_default()
+
+        draw.text((w // 2, h // 2 - 20), name.upper(), fill=(255, 255, 255), font=font_title, anchor="ms")
+        draw.text((w // 2, h // 2 + 40), f"Environment Type: {env_type} | Lighting: {lighting_preset}", fill=(203, 213, 225), font=font_sub, anchor="ms")
+
+        img.save(asset_path)
+
+        return to_json_output({
+            "environment_id": env_id,
+            "name": name,
+            "type": env_type,
+            "metadata_path": str(meta_path),
+            "asset_path": asset_path,
+            "status": "created",
+        })

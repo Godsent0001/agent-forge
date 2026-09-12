@@ -69,6 +69,14 @@ CATALOG: list[CatalogEntry] = [
                  "real"),
 
     # --- Character -------------------------------------------------------
+    CatalogEntry("character_designer", "Character Designer", "character",
+                 "Creates unique character assets from detailed attributes or descriptions "
+                 "(gender, skin tone, hair, clothing, features) with permanent ID.",
+                 "real"),
+    CatalogEntry("character_preview", "Character Preview", "character",
+                 "Renders visual preview PNG inspection of characters across different "
+                 "poses and facial expressions before animation.",
+                 "real"),
     CatalogEntry("lip_sync", "Lip-Sync Engine", "character",
                  "Converts word/phoneme timing into mouth-shape (viseme) "
                  "animation data. Approximate heuristic mapping, not a trained model.",
@@ -107,6 +115,10 @@ CATALOG: list[CatalogEntry] = [
                  "stub"),
 
     # --- Scene -----------------------------------------------------------
+    CatalogEntry("environment_designer", "Environment Designer", "scene",
+                 "Creates reusable visual environment assets (debate halls, presidential "
+                 "stages, TV studios, courtrooms) with metadata and rendered visuals.",
+                 "real"),
     CatalogEntry("scene_template_manager", "Scene Template Manager", "scene",
                  "Manages reusable environment templates: background, lighting "
                  "preset, character positions, camera positions, prop/graphic zones.",
@@ -131,9 +143,13 @@ CATALOG: list[CatalogEntry] = [
                  "real"),
 
     # --- Graphics ----------------------------------------------------------
+    CatalogEntry("prop_designer", "Prop Designer", "graphics",
+                 "Creates reusable visual prop assets (podiums, microphones, lecterns, "
+                 "chairs, debate timers, TV screens) as PNGs with metadata.",
+                 "real"),
     CatalogEntry("visual_asset_manager", "Visual Asset Manager", "graphics",
-                 "Manages non-character visual assets: logos, photos, icons, "
-                 "maps, screenshots — loading, cropping, scaling, caching.",
+                 "Manages and retrieves visual assets across characters, environments, "
+                 "props, and graphics by ID.",
                  "real"),
     CatalogEntry("evidence_graphics", "Evidence Graphics Engine", "graphics",
                  "Renders an evidence card image (stat + claim + source) as a PNG.",
