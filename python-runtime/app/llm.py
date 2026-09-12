@@ -77,6 +77,95 @@ class LLMInterface:
             logger.exception(f"LiteLLM summarize error: {e}")
             return self._mock_summarize(existing_summary, new_entries)
 
+    async def synthesize_learned_experience(
+        self,
+        agent_name: str,
+        existing_learned_experience: str,
+        task_input: str,
+        execution_steps: list[str],
+        final_answer: str,
+    ) -> str:
+        """
+        Retransform and update the single-page learned experience & first-person reflection
+        from the agent's recent task execution, results, feedback, and actions.
+        """
+        if USE_MOCK:
+            return self._mock_synthesize_learned_experience(
+                agent_name, existing_learned_experience, task_input, execution_steps, final_answer
+            )
+        try:
+            return await self._litellm_synthesize_learned_experience(
+                agent_name, existing_learned_experience, task_input, execution_steps, final_answer
+            )
+        except Exception as e:
+            logger.exception(f"LiteLLM synthesize_learned_experience error: {e}")
+            return self._mock_synthesize_learned_experience(
+                agent_name, existing_learned_experience, task_input, execution_steps, final_answer
+            )
+
+    async def _litellm_synthesize_learned_experience(
+        self,
+        agent_name: str,
+        existing_learned_experience: str,
+        task_input: str,
+        execution_steps: list[str],
+        final_answer: str,
+    ) -> str:
+        import litellm
+
+        formatted_model = self._format_model_name()
+        steps_text = "\n".join(f"- Step: {step}" for step in execution_steps) if execution_steps else "(No tool calls)"
+        prompt = (
+            f"You are agent '{agent_name}'. Reflect deeply on your recent actions, tool results, errors, feedback, "
+            "and final outcome for the task below. Synthesize and update your ongoing single-page Learned Experience document.\n\n"
+            "CRITICAL INSTRUCTIONS FOR LEARNED EXPERIENCE:\n"
+            "1. Output format: Write in the FIRST PERSON ('I', 'my actions', 'I learned that...'). "
+            "Make it feel like an authentic reflection of living and experiencing the world.\n"
+            "2. High value filter: Do NOT include fluff, transcripts, or irrelevant mundane facts. "
+            "Extract only high-value learnings, strategy reflections, insights, mistakes to avoid, and rules that will help you make better decisions in future tasks.\n"
+            "3. Single page constraint: Keep the entire output unified and retransformed into a SINGLE PAGE (maximum ~2,500 to 3,000 characters total). "
+            "Merge new learnings with previous experiences, rewriting or dropping superseded or lower-priority details so the text remains concise and coherent.\n\n"
+            f"[PREVIOUS LEARNED EXPERIENCE]\n{existing_learned_experience or '(No previous experience stored yet)'}\n\n"
+            f"[RECENT TASK COMPLETED]\n{task_input}\n\n"
+            f"[EXECUTION HISTORY & TOOL RESULTS]\n{steps_text}\n\n"
+            f"[FINAL ANSWER / OUTCOME]\n{final_answer}\n\n"
+            "Output ONLY the updated, single-page first-person Learned Experience document text."
+        )
+
+        gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if gemini_key:
+            os.environ["GEMINI_API_KEY"] = gemini_key
+            os.environ["GOOGLE_API_KEY"] = gemini_key
+
+        kwargs: dict[str, Any] = {
+            "model": formatted_model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if gemini_key and formatted_model.startswith("gemini/"):
+            kwargs["api_key"] = gemini_key
+
+        response = await litellm.acompletion(**kwargs)
+        return response.choices[0].message.content or existing_learned_experience
+
+    def _mock_synthesize_learned_experience(
+        self,
+        agent_name: str,
+        existing_learned_experience: str,
+        task_input: str,
+        execution_steps: list[str],
+        final_answer: str,
+    ) -> str:
+        new_reflection = f"Through executing '{task_input[:50]}', I learned that clear strategy and tool selection are essential for achieving valid outcomes."
+        if existing_learned_experience:
+            combined = existing_learned_experience + "\n" + new_reflection
+        else:
+            combined = f"I am {agent_name}. " + new_reflection
+
+        MAX_CHARS = 2500
+        if len(combined) <= MAX_CHARS:
+            return combined
+        return combined[-MAX_CHARS:]
+
     async def _litellm_summarize(self, existing_summary: str, new_entries: list[str]) -> str:
         import litellm
 
@@ -120,6 +209,7 @@ class LLMInterface:
                 or m.startswith("[AVAILABLE TOOLS AND SUB-AGENTS]")
                 or m.startswith("[TOOL-USE SCHEMA]")
                 or m.startswith("[MEMORY CONTEXT")
+                or m.startswith("[LEARNED EXPERIENCE & REFLECTION")
             ):
                 formatted_messages.append({
                     "role": "system",

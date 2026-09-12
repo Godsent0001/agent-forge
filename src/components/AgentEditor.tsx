@@ -52,6 +52,7 @@ export function AgentEditor() {
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [toolUseSchema, setToolUseSchema] = useState("");
+  const [learnedExperience, setLearnedExperience] = useState("");
 
   useEffect(() => {
     if (agent) {
@@ -62,10 +63,11 @@ export function AgentEditor() {
       setMemoryEnabled(agent.memory_enabled ?? false);
       setSystemPrompt(agent.system_prompt ?? "");
       setToolUseSchema(agent.tool_use_schema ?? "");
+      setLearnedExperience(agent.learned_experience ?? "");
       setSaveSuccess(null);
       setLinkError(null);
     }
-  }, [agent?.id, agent?.name, agent?.description, agent?.provider, agent?.model, agent?.memory_enabled, agent?.system_prompt, agent?.tool_use_schema]);
+  }, [agent?.id, agent?.name, agent?.description, agent?.provider, agent?.model, agent?.memory_enabled, agent?.system_prompt, agent?.tool_use_schema, agent?.learned_experience]);
 
   if (!selectedAgentId || !agent) {
     return (
@@ -102,6 +104,7 @@ export function AgentEditor() {
         memory_enabled: memoryEnabled,
         system_prompt: systemPrompt,
         tool_use_schema: toolUseSchema,
+        learned_experience: learnedExperience,
       });
       triggerSaveFeedback("Configuration saved successfully!");
     } catch (e) {
@@ -275,6 +278,17 @@ export function AgentEditor() {
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={4}
           placeholder="You are an expert software architecture agent..."
+          className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-xs
+            font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-500 resize-y shadow-sm"
+        />
+      </Field>
+
+      <Field label="Learned Experience & Reflection" hint="Single page of accumulated learnings, self-reflections, and insights retransformed across executions.">
+        <textarea
+          value={learnedExperience}
+          onChange={(e) => setLearnedExperience(e.target.value)}
+          rows={5}
+          placeholder="I have learned through my past experiences that..."
           className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-xs
             font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-500 resize-y shadow-sm"
         />

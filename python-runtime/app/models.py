@@ -79,6 +79,10 @@ class Agent(Base):
     # accumulates to trigger the first compaction.
     memory_summary: Mapped[str] = mapped_column(Text, default="")
 
+    # Accumulated single-page learned experience & first-person reflection,
+    # retransformed after each execution.
+    learned_experience: Mapped[str] = mapped_column(Text, default="")
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="agents")

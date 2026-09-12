@@ -34,6 +34,7 @@ export interface Agent {
   system_prompt: string;
   tool_use_schema: string;
   memory_enabled: boolean;
+  learned_experience?: string;
   created_at: string;
   // Client-side only, populated from link endpoints — not sent to the API directly.
   tool_ids?: string[];
