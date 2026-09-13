@@ -30,11 +30,85 @@ def _font(size: int):
     return ImageFont.load_default()
 
 
+import json
+import re
+
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[-\s]+", "_", text)
+
+
+class PropDesignerTool(Tool):
+    name = "prop_designer"
+    description = "Create reusable visual prop assets (podium, microphone, chair, desk, table, lectern, TV screen, books, debate timer)."
+
+    def __init__(self, props_dir: str = "./assets/props"):
+        self._root = Path(props_dir)
+
+    async def execute(self, input: str, *, context: Any) -> str:
+        from PIL import Image, ImageDraw
+
+        params = parse_json_input(input)
+        name = params.get("name") or "Podium"
+        prop_id = params.get("prop_id") or params.get("id") or _slugify(name)
+        kind = params.get("kind") or params.get("type") or "podium"
+        desc = params.get("description", "")
+        material = params.get("material", "wood")
+
+        prop_dir = self._root / prop_id
+        prop_dir.mkdir(parents=True, exist_ok=True)
+
+        metadata = {
+            "prop_id": prop_id,
+            "name": name,
+            "kind": kind,
+            "material": material,
+            "description": desc,
+        }
+
+        meta_path = prop_dir / "metadata.json"
+        meta_path.write_text(json.dumps(metadata, indent=2))
+
+        asset_path = str(prop_dir / "asset.png")
+        w, h = 600, 600
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Draw prop graphic based on kind
+        if kind in ["podium", "lectern"]:
+            draw.polygon([(180, 200), (420, 200), (380, 520), (220, 520)], fill=(69, 26, 3, 255), outline=(217, 119, 6, 255), width=4)
+            draw.rectangle([150, 170, 450, 200], fill=(120, 53, 15, 255))
+        elif kind == "microphone":
+            draw.rectangle([285, 250, 315, 480], fill=(71, 85, 105, 255))
+            draw.ellipse([270, 180, 330, 250], fill=(148, 163, 184, 255))
+            draw.ellipse([240, 480, 360, 520], fill=(30, 41, 59, 255))
+        elif kind in ["tv_screen", "timer", "debate_timer"]:
+            draw.rectangle([100, 150, 500, 450], fill=(15, 23, 42, 255), outline=(99, 102, 241, 255), width=6)
+            draw.text((w // 2, h // 2), "00:00", font=_font(48), fill=(239, 68, 68, 255), anchor="mm")
+        else:
+            draw.rectangle([150, 200, 450, 480], fill=(51, 65, 85, 255), outline=(203, 213, 225, 255), width=4)
+
+        draw.text((w // 2, 80), name, font=_font(28), fill=(255, 255, 255, 255), anchor="mm")
+
+        img.save(asset_path)
+
+        return to_json_output({
+            "prop_id": prop_id,
+            "name": name,
+            "kind": kind,
+            "metadata_path": str(meta_path),
+            "asset_path": asset_path,
+            "status": "created",
+        })
+
+
 class VisualAssetManagerTool(Tool):
     name = "visual_asset_manager"
-    description = "Manage non-character visual assets: logos, photos, icons, charts, screenshots."
+    description = "Manage and retrieve visual assets across characters, environments, props, and graphics by ID."
 
-    def __init__(self, assets_dir: str = "./assets/visuals"):
+    def __init__(self, assets_dir: str = "./assets"):
         self._root = Path(assets_dir)
         self._root.mkdir(parents=True, exist_ok=True)
 
@@ -43,19 +117,69 @@ class VisualAssetManagerTool(Tool):
 
         params = parse_json_input(input)
         action = params.get("action", "list")
+        asset_id = params.get("asset_id") or params.get("id") or params.get("name")
 
-        if action == "list":
-            return to_json_output({"assets": [p.name for p in self._root.iterdir() if p.is_file()]})
+        if action in ["list", "list_assets"]:
+            category = params.get("category")  # characters | environments | props | visuals
+            results = {}
 
-        if action == "info":
-            name = params.get("name")
-            path = self._root / (name or "")
-            if not path.exists():
-                raise ToolExecutionError(f"No such asset: {name}")
-            with Image.open(path) as img:
-                return to_json_output({"name": name, "size": img.size, "format": img.format})
+            categories = ["characters", "environments", "props", "visuals"]
+            if category and category in categories:
+                categories = [category]
 
-        raise ToolExecutionError(f"Unknown action '{action}'. Use list or info.")
+            for cat in categories:
+                cat_dir = self._root / cat
+                cat_items = []
+                if cat_dir.exists():
+                    for p in cat_dir.iterdir():
+                        if p.is_dir():
+                            cat_items.append(p.name)
+                        elif p.is_file():
+                            cat_items.append(p.name)
+                results[cat] = cat_items
+
+            return to_json_output({"assets": results})
+
+        if action in ["get", "info"]:
+            if not asset_id:
+                raise ToolExecutionError("visual_asset_manager 'get' requires 'asset_id' or 'name'")
+
+            # Search in characters, environments, props, visuals
+            for cat in ["characters", "environments", "props", "visuals"]:
+                target_dir = self._root / cat / asset_id
+                if target_dir.exists() and target_dir.is_dir():
+                    meta_file = target_dir / "metadata.json"
+                    if not meta_file.exists():
+                        meta_file = target_dir / "profile.json"
+
+                    metadata = json.loads(meta_file.read_text()) if meta_file.exists() else {}
+                    asset_file = target_dir / "asset.png"
+                    if not asset_file.exists():
+                        asset_file = target_dir / "preview.png"
+
+                    return to_json_output({
+                        "asset_id": asset_id,
+                        "category": cat,
+                        "metadata": metadata,
+                        "asset_path": str(asset_file) if asset_file.exists() else None,
+                        "directory": str(target_dir),
+                    })
+
+                # Check direct file in visuals
+                file_path = self._root / cat / asset_id
+                if file_path.exists() and file_path.is_file():
+                    with Image.open(file_path) as img:
+                        return to_json_output({
+                            "asset_id": asset_id,
+                            "category": cat,
+                            "path": str(file_path),
+                            "size": img.size,
+                            "format": img.format,
+                        })
+
+            raise ToolExecutionError(f"No asset found matching '{asset_id}'.")
+
+        raise ToolExecutionError(f"Unknown action '{action}'. Use list or get.")
 
 
 class EvidenceGraphicsTool(Tool):
