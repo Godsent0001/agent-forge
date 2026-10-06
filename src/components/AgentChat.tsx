@@ -68,14 +68,20 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       const execution = await api.executions.run(project.id, agent.id, fullTask);
       onRunExecution(execution.id);
 
-      // Poll for completion to append agent output into chat
+      // Poll until the execution reaches a terminal state. The API now returns
+      // immediately with status=running, so do not turn an unfinished execution
+      // into a fake final chat response after a fixed timeout.
       let completedExecution = execution;
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 300; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         completedExecution = await api.executions.get(execution.id);
         if (completedExecution.status === "completed" || completedExecution.status === "error") {
           break;
         }
+      }
+
+      if (completedExecution.status !== "completed" && completedExecution.status !== "error") {
+        throw new Error("Execution is still running. Check the execution tree for live progress.");
       }
 
       const agentMsg: ChatMessage = {
