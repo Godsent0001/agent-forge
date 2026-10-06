@@ -1,22 +1,25 @@
-"""
-Database setup. SQLite is the source of truth (per the spec: this is a
-local desktop app, no Mongo/Redis/cloud infra in V1).
+"""SQLite database setup and Alembic-backed schema initialization."""
 
-Schema changes go through Alembic migrations (see alembic/), not
-create_all() in production — create_all() here is only a Phase-0
-convenience until the first migration exists.
-"""
-
+import os
+import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Lives next to the executable in production; for now, relative to this file.
-DB_PATH = Path(__file__).resolve().parent.parent / "agentforge.db"
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+DB_PATH = Path(os.environ.get(
+    "AGENTFORGE_DB_PATH",
+    Path(__file__).resolve().parent.parent / "agentforge.db",
+))
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -24,19 +27,23 @@ class Base(DeclarativeBase):
     pass
 
 
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    if dbapi_connection.__class__.__module__.split(".")[0] != "sqlite3":
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
+
 def init_db() -> None:
-    # Import models here so they're registered on Base.metadata before
-    # create_all runs, without creating an import cycle.
     from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-
-    # Lightweight migration check for existing databases
-    with engine.connect() as conn:
-        from sqlalchemy import inspect, text
-        inspector = inspect(conn)
-        if "agents" in inspector.get_table_names():
-            columns = [c["name"] for c in inspector.get_columns("agents")]
-            if "learned_experience" not in columns:
-                conn.execute(text("ALTER TABLE agents ADD COLUMN learned_experience TEXT DEFAULT ''"))
-                conn.commit()
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    command.upgrade(cfg, "head")
