@@ -71,7 +71,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       // Poll until the execution reaches a terminal state. The API now returns
       // immediately with status=running, so do not turn an unfinished execution
       // into a fake final chat response after a fixed timeout.
-      let completedExecution = execution;
+      let completedExecution = await api.executions.get(execution.id);
       for (let i = 0; i < 300; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         completedExecution = await api.executions.get(execution.id);
