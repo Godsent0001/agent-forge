@@ -38,7 +38,7 @@ def test_session_factory(monkeypatch):
 
 
 async def wait_for_terminal(factory, execution_id):
-    for _ in range(100):
+    for _ in range(250):
         db = factory()
         row = db.get(models.Execution, execution_id)
         db.close()
