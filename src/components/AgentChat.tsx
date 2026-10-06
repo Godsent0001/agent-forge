@@ -17,6 +17,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const agentMessages = agent ? chatMessages[agent.id] || [] : [];
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [agentMessages, isProcessing, agent?.id]);
+
   if (!selectedAgentId || !agent || !project) {
     return (
       <div className="h-full flex items-center justify-center text-slate-500 text-sm bg-surface-950 p-6">
@@ -30,16 +36,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
     );
   }
-
-  const agentMessages = (agent && chatMessages[agent.id]) || [];
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [agentMessages, isProcessing, agent?.id]);
 
   const handleSendMessage = async () => {
     if (!promptInput.trim() || isProcessing || !agent || !project) return;
