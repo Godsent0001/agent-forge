@@ -50,13 +50,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export interface ExecutionResult {
   id: string;
-  project_id: string;
-  root_agent_id: string;
-  input_task: string;
+  project_id?: string;
+  root_agent_id?: string | null;
+  input_task?: string;
   final_output: string;
   status: string;
+  totals?: Record<string, unknown>;
+  error?: string | null;
   started_at: string;
-  completed_at: string | null;
+  ended_at: string | null;
+  completed_at?: string | null;
 }
 
 export const api = {
@@ -97,12 +100,15 @@ export const api = {
   },
   executions: {
     run: (project_id: string, root_agent_id: string, task: string) =>
-      request<ExecutionResult>("/executions", {
+      request<{ id: string; status: "running" }>("/v2/executions", {
         method: "POST",
         body: JSON.stringify({ project_id, root_agent_id, task }),
       }),
-    get: (id: string) => request<ExecutionResult>(`/executions/${id}`),
-    getEvents: (id: string) => request<any[]>(`/executions/${id}/events`),
+    get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
+    getEvents: (id: string, after_seq = 0) =>
+      request<import("../types").ExecutionEvent[]>(
+        `/v2/executions/${id}/events?after_seq=${after_seq}`,
+      ),
   },
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
