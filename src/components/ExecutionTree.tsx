@@ -7,6 +7,9 @@ const STATUS_DOT: Record<ExecutionStatus, string> = {
   running: "bg-status-running animate-pulse",
   completed: "bg-status-success",
   error: "bg-status-error",
+  cancelled: "bg-status-error",
+  budget_exceeded: "bg-status-error",
+  interrupted: "bg-status-error",
 };
 
 export function ExecutionTree({ executionId }: { executionId: string | null }) {
