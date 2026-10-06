@@ -44,20 +44,24 @@ function reduceEvents(events: ExecutionEvent[]): ExecutionNode[] {
 export function useExecutionStream(executionId: string | null) {
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const eventsRef = useRef<ExecutionEvent[]>([]);
 
   useEffect(() => {
     setEvents([]);
+    eventsRef.current = [];
     if (!executionId) return;
 
     let cancelled = false;
     let pollInterval: ReturnType<typeof setInterval> | null = null;
 
     const addEvents = (incoming: ExecutionEvent[]) => {
-      setEvents((prev) => {
-        const lastSeq = prev.length ? prev[prev.length - 1].seq : 0;
-        const fresh = incoming.filter((event) => event.seq > lastSeq);
-        return fresh.length ? [...prev, ...fresh] : prev;
-      });
+      if (!incoming.length) return;
+      const merged = [...eventsRef.current, ...incoming];
+      const unique = new Map<number, ExecutionEvent>();
+      for (const event of merged) unique.set(event.seq, event);
+      const ordered = [...unique.values()].sort((a, b) => a.seq - b.seq);
+      eventsRef.current = ordered;
+      setEvents(ordered);
     };
 
     const startPolling = () => {
@@ -65,19 +69,15 @@ export function useExecutionStream(executionId: string | null) {
       pollInterval = setInterval(async () => {
         if (cancelled) return;
         try {
-          const lastSeq = eventsRef.current.length ? eventsRef.current[eventsRef.current.length - 1].seq : 0;
+          const lastSeq = eventsRef.current.length
+            ? eventsRef.current[eventsRef.current.length - 1].seq
+            : 0;
           const latest = await api.executions.getEvents(executionId, lastSeq);
           if (!cancelled) addEvents(latest);
         } catch (err) {
           console.error("Error reconciling execution events:", err);
         }
       }, 1000);
-    };
-
-    const eventsRef = { current: [] as ExecutionEvent[] };
-    const trackedAddEvents = (incoming: ExecutionEvent[]) => {
-      addEvents(incoming);
-      eventsRef.current = [...eventsRef.current, ...incoming].sort((a, b) => a.seq - b.seq);
     };
 
     getApiBase().then((apiBase) => {
@@ -90,7 +90,7 @@ export function useExecutionStream(executionId: string | null) {
 
       ws.onmessage = (msg) => {
         try {
-          trackedAddEvents([JSON.parse(msg.data) as ExecutionEvent]);
+          addEvents([JSON.parse(msg.data) as ExecutionEvent]);
         } catch (err) {
           console.error("Error parsing execution websocket message:", err);
         }
