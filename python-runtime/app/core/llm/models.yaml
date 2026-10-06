@@ -1,0 +1,76 @@
+models:
+  - provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    tier: strong
+    kind: chat
+    context_window: 200000
+    supports_tools: true
+    supports_vision: true
+    price_in: 3.00
+    price_out: 15.00
+    price_cache_read: 0.30
+    price_cache_write: 3.75
+
+  - provider: anthropic
+    model: claude-3-5-haiku-20241022
+    tier: fast
+    kind: chat
+    context_window: 200000
+    supports_tools: true
+    supports_vision: true
+    price_in: 0.80
+    price_out: 4.00
+    price_cache_read: 0.08
+    price_cache_write: 1.00
+
+  - provider: openai
+    model: gpt-4o
+    tier: strong
+    kind: chat
+    context_window: 128000
+    supports_tools: true
+    supports_vision: true
+    price_in: 2.50
+    price_out: 10.00
+    price_cache_read: 1.25
+
+  - provider: openai
+    model: gpt-4o-mini
+    tier: fast
+    kind: chat
+    context_window: 128000
+    supports_tools: true
+    supports_vision: true
+    price_in: 0.15
+    price_out: 0.60
+    price_cache_read: 0.075
+
+  - provider: openai
+    model: text-embedding-3-small
+    tier: fast
+    kind: embedding
+    context_window: 8191
+    supports_tools: false
+    supports_vision: false
+    price_in: 0.02
+    price_out: 0.00
+
+  - provider: ollama
+    model: llama3.2
+    tier: fast
+    kind: chat
+    context_window: 32768
+    supports_tools: true
+    supports_vision: false
+    price_in: 0.0
+    price_out: 0.0
+
+  - provider: ollama
+    model: nomic-embed-text
+    tier: fast
+    kind: embedding
+    context_window: 8192
+    supports_tools: false
+    supports_vision: false
+    price_in: 0.0
+    price_out: 0.0
