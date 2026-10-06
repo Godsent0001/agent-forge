@@ -60,6 +60,14 @@ class FakeRunner:
                 await asyncio.sleep(0.01)
 
             cancel.raise_if_cancelled()
+            await emit(EventDraft(
+                type="span_ended",
+                span_id=span,
+                parent_span_id=None,
+                kind="agent",
+                status="ok",
+                data={"output_preview": f"FakeRunner completed: {req.task}"[:500]},
+            ))
             return RunResult(
                 status="completed",
                 final_output=f"FakeRunner completed: {req.task}",
@@ -85,12 +93,3 @@ class FakeRunner:
                 data={"output_preview": str(exc)},
             ))
             raise
-        else:
-            await emit(EventDraft(
-                type="span_ended",
-                span_id=span,
-                parent_span_id=None,
-                kind="agent",
-                status="ok",
-                data={"output_preview": "completed"},
-            ))
