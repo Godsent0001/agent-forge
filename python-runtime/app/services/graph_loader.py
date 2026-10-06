@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import models
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
-from app.contracts.naming import dedupe_names, sanitize_tool_name
+from app.contracts.naming import dedupe_names
 
 
 def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentGraph:
