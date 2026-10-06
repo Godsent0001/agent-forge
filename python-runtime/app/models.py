@@ -1,21 +1,9 @@
-"""
-Phase 1 — Core data model.
-
-Project / Agent / Tool / AgentToolLink (junction enabling tool reuse) /
-AgentAgentLink (junction enabling agent-as-tool) / Execution /
-ExecutionEventRow / MemoryEntry.
-
-Cycle detection lives in app/graph.py, not here — this file only defines
-storage shape. Validation happens at the service layer before a row
-is ever written.
-"""
-
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, JSON, String, Boolean, DateTime, Text, UniqueConstraint, Index
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -35,23 +23,28 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String, nullable=False)
     parallel_execution: Mapped[bool] = mapped_column(Boolean, default=False)
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
-    agents: Mapped[list["Agent"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-    tools: Mapped[list["Tool"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-    executions: Mapped[list["Execution"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    agents: Mapped[list["Agent"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", passive_deletes=True
+    )
+    tools: Mapped[list["Tool"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", passive_deletes=True
+    )
+    executions: Mapped[list["Execution"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class Tool(Base):
-    """A normal, non-agent tool (Web Search, Python, File System, ...)."""
-
     __tablename__ = "tools"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
-    kind: Mapped[str] = mapped_column(String, nullable=False)  # "web_search" | "python" | "http_request" | ...
+    kind: Mapped[str] = mapped_column(String, nullable=False)
     input_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     output_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -63,79 +56,83 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
-
     provider: Mapped[str] = mapped_column(String, default="anthropic")
     model: Mapped[str] = mapped_column(String, default="")
-
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     tool_use_schema: Mapped[str] = mapped_column(Text, default="")
     memory_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # Rolling summary of memory entries that have aged out of the verbatim
-    # recent-window (see app/runtime/memory.py). Empty until enough history
-    # accumulates to trigger the first compaction.
+    lessons_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
     memory_summary: Mapped[str] = mapped_column(Text, default="")
-
-    # Accumulated single-page learned experience & first-person reflection,
-    # retransformed after each execution.
     learned_experience: Mapped[str] = mapped_column(Text, default="")
-
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="agents")
-
     tool_links: Mapped[list["AgentToolLink"]] = relationship(
-        back_populates="agent", cascade="all, delete-orphan", passive_deletes=True, foreign_keys="AgentToolLink.agent_id"
+        back_populates="agent",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="AgentToolLink.agent_id",
     )
     child_links: Mapped[list["AgentAgentLink"]] = relationship(
-        back_populates="parent", cascade="all, delete-orphan", passive_deletes=True, foreign_keys="AgentAgentLink.parent_agent_id"
+        back_populates="parent",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="AgentAgentLink.parent_agent_id",
     )
-    parent_links: Mapped[list["AgentAgentLink"]] = relationship(\n        back_populates="child", cascade="all, delete-orphan", passive_deletes=True,\n        foreign_keys="AgentAgentLink.child_agent_id"\n    )\n    memory_entries: Mapped[list["MemoryEntry"]] = relationship(back_populates="agent", cascade="all, delete-orphan", passive_deletes=True)
+    parent_links: Mapped[list["AgentAgentLink"]] = relationship(
+        back_populates="child",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="AgentAgentLink.child_agent_id",
+    )
+    memory_entries: Mapped[list["MemoryEntry"]] = relationship(
+        back_populates="agent", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class AgentToolLink(Base):
-    """Junction: agent -> normal tool. Many-to-many, tools are reused across agents."""
-
     __tablename__ = "agent_tool_links"
+    __table_args__ = (UniqueConstraint("agent_id", "tool_id", name="uq_agent_tool"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
-    tool_id: Mapped[str] = mapped_column(ForeignKey("tools.id"))
+    tool_id: Mapped[str] = mapped_column(ForeignKey("tools.id", ondelete="CASCADE"))
 
     agent: Mapped[Agent] = relationship(back_populates="tool_links", foreign_keys=[agent_id])
     tool: Mapped[Tool] = relationship()
 
 
 class AgentAgentLink(Base):
-    """
-    Junction: parent agent -> child agent, i.e. 'child is available to parent
-    as an agent-tool'. This is the edge cycle detection runs against.
-    """
-
     __tablename__ = "agent_agent_links"
+    __table_args__ = (
+        UniqueConstraint("parent_agent_id", "child_agent_id", name="uq_agent_child"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    parent_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
-    child_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
-    description: Mapped[str] = mapped_column(Text, default="")  # how the child is described as a tool
+    parent_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    child_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    description: Mapped[str] = mapped_column(Text, default="")
 
     parent: Mapped[Agent] = relationship(back_populates="child_links", foreign_keys=[parent_agent_id])
-    child: Mapped[Agent] = relationship(foreign_keys=[child_agent_id])
+    child: Mapped[Agent] = relationship(back_populates="parent_links", foreign_keys=[child_agent_id])
 
 
 class MemoryEntry(Base):
     __tablename__ = "memory_entries"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String, default="fact")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_execution_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executions.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    # True once this entry has been folded into Agent.memory_summary — it
-    # stays in the table for provenance/future search, it just stops being
-    # sent to the LLM verbatim.
     summarized: Mapped[bool] = mapped_column(Boolean, default=False)
 
     agent: Mapped[Agent] = relationship(back_populates="memory_entries")
@@ -145,26 +142,40 @@ class Execution(Base):
     __tablename__ = "executions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"))
-    root_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    root_agent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
     input_task: Mapped[str] = mapped_column(Text, default="")
     final_output: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String, default="running")  # running | completed | error
+    status: Mapped[str] = mapped_column(String, default="running")
+    totals: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_graph_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="executions")
-    events: Mapped[list["ExecutionEventRow"]] = relationship(back_populates="execution", cascade="all, delete-orphan", passive_deletes=True)
+    events: Mapped[list["ExecutionEventRow"]] = relationship(
+        back_populates="execution", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class ExecutionEventRow(Base):
-    """Persisted copy of every ExecutionEvent, so the tree UI can be
-    replayed after the fact, not just watched live."""
-
     __tablename__ = "execution_events"
+    __table_args__ = (
+        Index("ix_execution_events_execution_seq", "execution_id", "seq"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    execution_id: Mapped[str] = mapped_column(ForeignKey("executions.id"))
+    execution_id: Mapped[str] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(nullable=False)
+    span_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    parent_span_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
     type: Mapped[str] = mapped_column(String, nullable=False)
     agent_name: Mapped[str | None] = mapped_column(String, nullable=True)
     tool_name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -173,4 +184,6 @@ class ExecutionEventRow(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     execution: Mapped[Execution] = relationship(back_populates="events")
-\n\nIndex("ix_execution_events_execution_seq", ExecutionEventRow.execution_id, ExecutionEventRow.seq)\nIndex("ix_memory_entries_agent_created", MemoryEntry.agent_id, MemoryEntry.created_at)\nAgentToolLink.__table_args__ = (UniqueConstraint("agent_id", "tool_id", name="uq_agent_tool"),)\nAgentAgentLink.__table_args__ = (UniqueConstraint("parent_agent_id", "child_agent_id", name="uq_agent_child"),)\n
+
+
+Index("ix_memory_entries_agent_created", MemoryEntry.agent_id, MemoryEntry.created_at)
