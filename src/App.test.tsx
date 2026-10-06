@@ -1,14 +1,18 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchProjects = vi.fn();
-const loadProject = vi.fn();
+const { fetchProjects, loadProject, syncKeysToBackend, createProject } = vi.hoisted(() => ({
+  fetchProjects: vi.fn(),
+  loadProject: vi.fn(),
+  syncKeysToBackend: vi.fn(),
+  createProject: vi.fn(),
+}));
 
 vi.mock("./api/client", () => ({
   getApiBase: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
   api: {
-    settings: { syncKeysToBackend: vi.fn().mockResolvedValue(undefined) },
-    projects: { create: vi.fn() },
+    settings: { syncKeysToBackend },
+    projects: { create: createProject },
   },
 }));
 
