@@ -3,9 +3,9 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from .events import EventDraft
-from .graph import AgentGraph
+from .graph import AgentGraph, ToolBinding
 from .run import RunRequest, RunResult
-from .tools import Permission, RunWorkspace, Tool, ToolBinding
+from .tools import Permission, RunWorkspace, Tool
 
 
 Emit = Callable[[EventDraft], Awaitable[None]]
