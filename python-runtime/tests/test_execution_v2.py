@@ -18,6 +18,7 @@ from app.contracts.run import RunOptions, RunRequest
 def test_session_factory(monkeypatch):
     engine = create_engine(
         f"sqlite:///file:execution_test_{uuid4().hex}?mode=memory&cache=shared&uri=true",
+        connect_args={"check_same_thread": False},
         poolclass=QueuePool,
     )
     Base.metadata.create_all(engine)
