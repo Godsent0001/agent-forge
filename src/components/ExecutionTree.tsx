@@ -13,8 +13,14 @@ export function ExecutionTree({ executionId }: { executionId: string | null }) {
   const { events, tree } = useExecutionStream(executionId);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
-  const selectedEvents = selectedLabel
-    ? events.filter((e) => (e.agent_name ?? e.tool_name) === selectedLabel)
+  const selectedNodeId = selectedLabel
+    ? tree.flatMap((root) => {
+        const nodes = [root, ...root.children];
+        return nodes;
+      }).find((node) => node.label === selectedLabel)?.id
+    : null;
+  const selectedEvents = selectedNodeId
+    ? events.filter((e) => e.span_id === selectedNodeId)
     : [];
 
   const renderNode = (node: any) => (
@@ -63,9 +69,9 @@ export function ExecutionTree({ executionId }: { executionId: string | null }) {
 
 function EventLine({ event }: { event: ExecutionEvent }) {
   const note =
-    (event.data?.task as string | undefined) ??
-    (event.data?.result as string | undefined) ??
-    (event.data?.note as string | undefined) ??
+    (event.data?.input_preview as string | undefined) ??
+    (event.data?.output_preview as string | undefined) ??
+    (event.data?.result_preview as string | undefined) ??
     "";
   return (
     <p className="text-xs text-slate-500 mb-1 truncate">
