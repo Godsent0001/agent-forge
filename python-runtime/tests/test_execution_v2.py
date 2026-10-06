@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 
 from app import models
 from app.db import Base
@@ -17,9 +17,8 @@ from app.contracts.run import RunOptions, RunRequest
 @pytest.fixture()
 def test_session_factory(monkeypatch):
     engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        f"sqlite:///file:execution_test_{uuid4().hex}?mode=memory&cache=shared&uri=true",
+        poolclass=QueuePool,
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
