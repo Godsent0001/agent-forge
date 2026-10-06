@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import models, schemas
 from app.deps import get_db
@@ -28,7 +28,7 @@ def _build_agent_out(agent: models.Agent) -> schemas.AgentOut:
 
 @router.get("", response_model=list[schemas.AgentOut])
 def list_agents(project_id: str, db: Session = Depends(get_db)):
-    agents = db.query(models.Agent).filter(models.Agent.project_id == project_id).all()
+    agents = (db.query(models.Agent).options(selectinload(models.Agent.tool_links), selectinload(models.Agent.child_links)).filter(models.Agent.project_id == project_id).all())
     return [_build_agent_out(a) for a in agents]
 
 
