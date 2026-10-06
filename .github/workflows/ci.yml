@@ -25,7 +25,7 @@ jobs:
       # Test dependencies were added after the committed lockfile was created.
       # npm install refreshes the lockfile in the ephemeral CI workspace before tests.
       - name: Install frontend dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Typecheck
         run: npm run typecheck
