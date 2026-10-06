@@ -41,21 +41,32 @@ export interface Agent {
   child_agent_ids?: string[];
 }
 
-export type ExecutionStatus = "idle" | "running" | "completed" | "error";
+export type ExecutionStatus =
+  | "idle"
+  | "running"
+  | "completed"
+  | "error"
+  | "cancelled"
+  | "budget_exceeded"
+  | "interrupted";
 
 export interface ExecutionEvent {
+  execution_id: string;
+  seq: number;
+  ts: string;
   type: string;
-  agent_name: string | null;
-  tool_name: string | null;
-  depth: number;
+  span_id?: string | null;
+  parent_span_id?: string | null;
+  kind?: "agent" | "llm_call" | "tool_call" | null;
+  name?: string | null;
+  status?: "ok" | "error" | "cancelled" | null;
   data: Record<string, unknown>;
-  timestamp: string;
 }
 
 export interface ExecutionNode {
   id: string;
   label: string;
-  kind: "agent" | "tool";
+  kind: "agent" | "llm_call" | "tool_call";
   status: ExecutionStatus;
   depth: number;
   children: ExecutionNode[];
