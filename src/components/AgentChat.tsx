@@ -75,12 +75,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       for (let i = 0; i < 300; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         completedExecution = await api.executions.get(execution.id);
-        if (completedExecution.status === "completed" || completedExecution.status === "error") {
+        if (["completed", "error", "cancelled", "budget_exceeded", "interrupted"].includes(completedExecution.status)) {
           break;
         }
       }
 
-      if (completedExecution.status !== "completed" && completedExecution.status !== "error") {
+      if (completedExecution.status !== "completed") {
         throw new Error("Execution is still running. Check the execution tree for live progress.");
       }
 
@@ -88,7 +88,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         id: (Date.now() + 1).toString(),
         sender: "agent",
         agentName: agent.name,
-        text: completedExecution.final_output || "Task processed with no explicit final output.",
+        text:
+          completedExecution.final_output ||
+          completedExecution.error ||
+          "Task processed with no explicit final output.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
