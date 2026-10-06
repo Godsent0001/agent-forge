@@ -15,6 +15,8 @@ from fastapi.staticfiles import StaticFiles
 from app.db import init_db
 from app.routers import agents, executions, projects, settings, tools
 from app.routers import catalog as catalog_router
+from app.routers import executions_v2
+from app.services.executions import manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,14 +31,17 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database...")
     init_db()
-    logger.info("Database initialized successfully.")
+    interrupted = manager.mark_running_interrupted()
+    logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
+    await manager.shutdown()
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
 app.include_router(agents.router)
 app.include_router(tools.router)
 app.include_router(executions.router)
+app.include_router(executions_v2.router)
 app.include_router(catalog_router.router)
 app.include_router(settings.router)
 
