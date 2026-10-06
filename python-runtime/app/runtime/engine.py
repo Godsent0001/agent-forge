@@ -68,7 +68,7 @@ class ExecutionEngine:
         RuntimeAgent.__init__(runtime_agent, agent_row, llm, tools, self._db, parallel_execution=parallel_execution)
         return runtime_agent
 
-    async def run(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
+    def create_execution(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
         execution = models.Execution(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -78,6 +78,22 @@ class ExecutionEngine:
         )
         self._db.add(execution)
         self._db.commit()
+        return execution
+
+    async def run(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
+        execution = self.create_execution(project_id, root_agent_id, task)
+        return await self.run_existing(execution.id, project_id, root_agent_id, task)
+
+    async def run_existing(
+        self,
+        execution_id: str,
+        project_id: str,
+        root_agent_id: str,
+        task: str,
+    ) -> models.Execution:
+        execution = self._db.get(models.Execution, execution_id)
+        if execution is None:
+            raise ValueError(f"Execution {execution_id} not found")
 
         async def sink(event: ExecutionEvent) -> None:
             row = models.ExecutionEventRow(
