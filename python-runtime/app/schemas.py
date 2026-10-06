@@ -26,6 +26,7 @@ class ProjectOut(BaseModel):
     id: str
     name: str
     parallel_execution: bool
+    settings: dict = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -60,6 +61,8 @@ class AgentCreate(BaseModel):
     system_prompt: str = ""
     tool_use_schema: str = ""
     memory_enabled: bool = False
+    lessons_enabled: bool = False
+    params: dict = Field(default_factory=dict)
     learned_experience: str = ""
 
 
@@ -71,6 +74,8 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     tool_use_schema: str | None = None
     memory_enabled: bool | None = None
+    lessons_enabled: bool | None = None
+    params: dict | None = None
     learned_experience: str | None = None
 
 
@@ -85,6 +90,8 @@ class AgentOut(BaseModel):
     system_prompt: str
     tool_use_schema: str
     memory_enabled: bool
+    lessons_enabled: bool
+    params: dict
     learned_experience: str
     created_at: datetime
     tool_ids: list[str] = Field(default_factory=list)
@@ -126,9 +133,12 @@ class ExecutionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     project_id: str
-    root_agent_id: str
+    root_agent_id: str | None
     input_task: str
     final_output: str
     status: str
     started_at: datetime
     completed_at: datetime | None
+    ended_at: datetime | None = None
+    totals: dict = Field(default_factory=dict)
+    error: str | None = None
