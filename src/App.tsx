@@ -86,11 +86,16 @@ export default function App() {
       />
       <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0 overflow-hidden">
         <AgentTree />
-        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "chat" ? "flex flex-col" : "hidden"}`}>
-          <AgentChat onRunExecution={setActiveExecutionId} />
-        </div>
-        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "config" ? "flex flex-col" : "hidden"}`}>
-          <AgentEditor />
+        <div className="min-w-0 h-full overflow-hidden">
+          {activeTab === "chat" ? (
+            <div className="h-full flex flex-col">
+              <AgentChat onRunExecution={setActiveExecutionId} />
+            </div>
+          ) : (
+            <div className="h-full flex flex-col">
+              <AgentEditor />
+            </div>
+          )}
         </div>
         <ExecutionTree executionId={activeExecutionId} />
       </div>
