@@ -61,22 +61,27 @@ The project must at minimum be checked for:
 - Production Vite build.
 - Frontend test suite once the Vitest infrastructure is present.
 
-The project currently exposes:
+The frontend now exposes:
 
 ```bash
+npm run typecheck
+npm run test:run
 npm run build
 ```
 
-The current `package.json` does **not yet expose** the planned `test` or `typecheck` scripts, so those should not be claimed as passing until the corresponding tooling/scripts actually exist.
+Vitest runs in jsdom with React Testing Library and jest-dom. The current committed npm lockfile predates these test dependencies, so CI currently uses `npm install` to refresh the lockfile in its ephemeral workspace before running the gates. This is a temporary reproducibility gap to close by committing the regenerated lockfile.
 
 ### Python runtime
 
-The project plan specifies the Python test suite should be run with:
+The runtime test suite is configured with pytest and pytest-asyncio. The CI job currently runs the locked runtime environment and injects the test-only packages without modifying the committed lockfile:
 
 ```bash
 cd python-runtime
-uv run pytest -m "not live"
+uv sync --frozen --no-dev
+uv run --with pytest --with pytest-asyncio pytest -m "not live"
 ```
+
+This is also a temporary lockfile gap: the next cleanup should add the test dependency group to `pyproject.toml` and regenerate `uv.lock`.
 
 Live LLM tests must not be part of normal CI because they can spend money. They are intended for deliberate/manual runs with a cheap model and hard budgets.
 
@@ -349,16 +354,14 @@ npm test -- --run
 npm run build
 ```
 
-The frontend test infrastructure is expected to use:
+The frontend test infrastructure now uses:
 
 - Vitest
 - jsdom
 - Testing Library for React
 - jest-dom
 
-The frontend configuration should use a jsdom test environment.
-
-A smoke test should exist once the D-02 testing baseline is implemented.
+The frontend configuration uses a jsdom test environment, and `src/App.test.tsx` provides the first workspace bootstrap/layout smoke test.
 
 ### CI rule
 
@@ -462,7 +465,7 @@ For external tooling, use the current official documentation for the installed v
 
 **Last known UI change:** App layout correction in `src/App.tsx`.
 
-**Immediate next action:** test the current layout change before stacking another UI change.
+**Immediate next action:** regenerate and commit the npm/uv lockfiles for the new test dependencies, then run the new CI gates and continue into execution lifecycle fixes.
 
 **Merge policy:** feature branch → automated/manual verification → PR → repository owner/friend approval → merge to `main`.
 
