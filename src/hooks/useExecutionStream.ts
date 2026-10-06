@@ -75,7 +75,6 @@ export function useExecutionStream(executionId: string | null) {
     };
 
     const eventsRef = { current: [] as ExecutionEvent[] };
-    const originalSetEvents = setEvents;
     const trackedAddEvents = (incoming: ExecutionEvent[]) => {
       addEvents(incoming);
       eventsRef.current = [...eventsRef.current, ...incoming].sort((a, b) => a.seq - b.seq);
