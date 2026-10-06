@@ -13,12 +13,15 @@ export function ExecutionTree({ executionId }: { executionId: string | null }) {
   const { events, tree } = useExecutionStream(executionId);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
-  const selectedNodeId = selectedLabel
-    ? tree.flatMap((root) => {
-        const nodes = [root, ...root.children];
-        return nodes;
-      }).find((node) => node.label === selectedLabel)?.id
-    : null;
+  const findNode = (nodes: typeof tree): string | null => {
+    for (const node of nodes) {
+      if (node.label === selectedLabel) return node.id;
+      const childId = findNode(node.children);
+      if (childId) return childId;
+    }
+    return null;
+  };
+  const selectedNodeId = selectedLabel ? findNode(tree) : null;
   const selectedEvents = selectedNodeId
     ? events.filter((e) => e.span_id === selectedNodeId)
     : [];
