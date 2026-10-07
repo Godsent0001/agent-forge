@@ -27,6 +27,10 @@ from app.core.spans import span
 logger = logging.getLogger(__name__)
 
 
+class AgentCycleError(RuntimeError):
+    """Raised when delegation would re-enter an active agent."""
+
+
 class RunnerCore:
     """Core Runner implementation handling agent trees, tool execution, spans, and budgets."""
 
@@ -146,10 +150,10 @@ class RunnerCore:
         budget.check_limits()
 
         if agent_id in active_agent_ids:
-            raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
+            raise AgentCycleError(f"Cycle detected in agent graph for agent '{agent_id}'")
 
         if depth > req.options.max_depth:
-            raise RuntimeError(f"Maximum delegation depth reached ({depth} > {req.options.max_depth})")
+            raise RuntimeError("maximum delegation depth reached, answer yourself")
 
         spec = graph.agents[agent_id]
         active_agent_ids.add(agent_id)
@@ -250,7 +254,9 @@ class RunnerCore:
                                 "tool_call_id": tc.id,
                                 "content": "ERROR: Loop detected. You have called this exact tool with identical arguments 3 times. Provide a final response without tools.",
                             })
-                            continue
+                            return await self._force_text_turn(
+                                spec, messages, agent_span_id, emit, budget
+                            )
 
                         tool_call_tuples.append(tc)
 
@@ -441,6 +447,8 @@ class RunnerCore:
                         active_agent_ids=active_agent_ids,
                     )
                     return res
+                except AgentCycleError:
+                    raise
                 except Exception as exc:
                     return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
 
@@ -473,7 +481,10 @@ class RunnerCore:
             try:
                 input_cls = getattr(tool_obj, "Input", None)
                 if input_cls:
-                    args_inst = input_cls(**tc.arguments)
+                    try:
+                        args_inst = input_cls(**tc.arguments)
+                    except Exception as exc:
+                        return f"ERROR: invalid arguments for '{tc.name}': {exc}"
                 else:
                     args_inst = tc.arguments
 
