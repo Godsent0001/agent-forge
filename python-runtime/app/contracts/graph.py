@@ -1,18 +1,22 @@
-from pydantic import BaseModel, Field
+"""C-4: the agent graph as the core sees it. Pure data (see docs/CONTRACTS.md)."""
+from typing import Literal
+
+from pydantic import BaseModel
 
 
 class LLMParams(BaseModel):
     temperature: float | None = 0.2
     max_tokens: int | None = None
     timeout_s: int = 60
+    reasoning: Literal["off", "low", "medium", "high"] = "off"   # thinking effort, if the model supports it
 
 
 class ToolBinding(BaseModel):
-    id: str
-    kind: str
-    name: str
-    description: str | None = None
-    config: dict = Field(default_factory=dict)
+    id: str                      # tools.id (the row)
+    kind: str                    # "web_search", "python", ...
+    name: str                    # name shown to the model; sanitized and unique within the agent
+    description: str | None = None   # overrides Tool.default_description when set
+    config: dict = {}
 
 
 class ChildLink(BaseModel):
@@ -27,12 +31,12 @@ class AgentSpec(BaseModel):
     provider: str
     model: str
     system_prompt: str = ""
-    tool_guidance: str = ""
+    tool_guidance: str = ""      # DB column is still `tool_use_schema`; the loader maps it
     memory_enabled: bool = False
     lessons_enabled: bool = False
-    params: LLMParams = Field(default_factory=LLMParams)
-    tools: list[ToolBinding] = Field(default_factory=list)
-    children: list[ChildLink] = Field(default_factory=list)
+    params: LLMParams = LLMParams()
+    tools: list[ToolBinding] = []
+    children: list[ChildLink] = []
 
 
 class AgentGraph(BaseModel):
