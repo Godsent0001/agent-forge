@@ -109,6 +109,10 @@ export const api = {
       request<import("../types").ExecutionEvent[]>(
         `/v2/executions/${id}/events?after_seq=${after_seq}`,
       ),
+    cancel: (id: string) =>
+      request<{ status: string }>(`/v2/executions/${id}/cancel`, {
+        method: "POST",
+      }),
   },
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
