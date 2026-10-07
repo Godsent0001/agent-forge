@@ -791,3 +791,79 @@ async def test_runner_cycle_stops_with_error_status():
 
     assert result.status == "error"
     assert "Cycle detected" in result.error
+
+
+@pytest.mark.asyncio
+async def test_runner_sub_agent_trace_passes_contract_checker():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Delegating.",
+            tool_calls=[ToolCall(id="trace-1", name="research_child", arguments={"task": "research"})],
+        ),
+        LLMTurn(text="Research complete."),
+        LLMTurn(text="Final answer."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="CEO",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="research_child")],
+            ),
+            "research_child": AgentSpec(
+                id="research_child",
+                name="Research",
+                provider="fake",
+                model="fake-model",
+            ),
+        },
+    )
+
+    drafts = []
+
+    async def emit(draft):
+        drafts.append(draft)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_trace",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Trace delegation",
+            ),
+            graph=graph,
+            emit=emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    events = [
+        RunEvent(
+            execution_id="exec_trace",
+            seq=seq,
+            ts="2026-10-07T12:00:00Z",
+            type=draft.type,
+            span_id=draft.span_id,
+            parent_span_id=draft.parent_span_id,
+            kind=draft.kind,
+            name=draft.name,
+            status=draft.status,
+            data=draft.data,
+        )
+        for seq, draft in enumerate(drafts, 1)
+    ]
+
+    assert result.status == "completed"
+    assert check_events(events, platform_events=False) == []
