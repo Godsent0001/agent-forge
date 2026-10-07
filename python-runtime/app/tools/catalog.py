@@ -46,6 +46,7 @@ SHELVES: dict[str, str] = {
     "asset_cache": "Asset & Cache",
     "qc": "Quality Control",
     "orchestration": "Orchestration",
+    "video": "Video Sources",
 }
 
 
@@ -242,6 +243,10 @@ CATALOG: list[CatalogEntry] = [
                  "real"),
 
     # --- Orchestration -------------------------------------------------
+    CatalogEntry("video_source", "Video Source", "video",
+                 "Searches yt-dlp-supported video hosts and returns source metadata for clip selection.",
+                 "real"),
+
     CatalogEntry("pipeline_orchestrator", "Pipeline Orchestrator", "orchestration",
                  "Coordinates the full script-to-mp4 pipeline stage by stage: "
                  "voice -> alignment -> lip-sync -> performance -> graphics -> "
