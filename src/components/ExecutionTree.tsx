@@ -14,17 +14,17 @@ const STATUS_DOT: Record<ExecutionStatus, string> = {
 
 export function ExecutionTree({ executionId }: { executionId: string | null }) {
   const { events, tree } = useExecutionStream(executionId);
-  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const findNode = (nodes: typeof tree): string | null => {
+  const findNode = (nodes: typeof tree): (typeof tree)[number] | null => {
     for (const node of nodes) {
-      if (node.label === selectedLabel) return node.id;
-      const childId = findNode(node.children);
-      if (childId) return childId;
+      if (node.id === selectedNodeId) return node;
+      const child = findNode(node.children);
+      if (child) return child;
     }
     return null;
   };
-  const selectedNodeId = selectedLabel ? findNode(tree) : null;
+  const selectedNode = selectedNodeId ? findNode(tree) : null;
   const selectedEvents = selectedNodeId
     ? events.filter((e) => e.span_id === selectedNodeId)
     : [];
@@ -32,10 +32,10 @@ export function ExecutionTree({ executionId }: { executionId: string | null }) {
   const renderNode = (node: any) => (
     <div key={node.id}>
       <button
-        onClick={() => setSelectedLabel(node.label)}
+        onClick={() => setSelectedNodeId(node.id)}
         style={{ paddingLeft: `${12 + node.depth * 16}px` }}
         className={`w-full text-left py-1.5 pr-3 text-sm flex items-center gap-2 rounded-md transition-colors duration-150 my-0.5
-          ${selectedLabel === node.label ? "bg-slate-200/80 font-medium text-slate-800" : "hover:bg-slate-100 text-slate-600"}`}
+          ${selectedNodeId === node.id ? "bg-slate-200/80 font-medium text-slate-800" : "hover:bg-slate-100 text-slate-600"}`}
       >
         <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[node.status as ExecutionStatus]}`} />
         <span className="truncate">{node.label}</span>
@@ -61,9 +61,9 @@ export function ExecutionTree({ executionId }: { executionId: string | null }) {
         {tree.map(renderNode)}
       </div>
 
-      {selectedLabel && (
+      {selectedNode && (
         <div className="border-t border-slate-200 p-3 max-h-56 overflow-y-auto bg-slate-50">
-          <p className="text-xs font-bold text-slate-700 mb-2">{selectedLabel}</p>
+          <p className="text-xs font-bold text-slate-700 mb-2">{selectedNode.label}</p>
           {selectedEvents.map((e, i) => (
             <EventLine key={i} event={e} />
           ))}
