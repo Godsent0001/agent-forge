@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import type { ChatMessage } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
+import { executionToolMessages } from "../utils/executionToolMessages";
 
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
@@ -60,7 +61,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       // Build recent conversation context from chat history
       const historyTurns = agentMessages
         .slice(-10)
-        .map((m) => `${m.sender === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .map((m) => {
+          if (m.sender === "user") return `User: ${m.text}`;
+          if (m.sender === "tool") return `Tool (${m.toolName}) result: ${m.toolOutput}`;
+          return `Assistant: ${m.text}`;
+        })
         .join("\n\n");
 
       const fullTask = historyTurns
@@ -90,6 +95,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       if (completedExecution.status !== "completed") {
         throw new Error("Execution did not complete. Check the execution tree for details.");
+      }
+
+      const executionEvents = await api.executions.getEvents(execution.id);
+      const toolMessages = executionToolMessages(executionEvents);
+      for (const toolMessage of toolMessages) {
+        addChatMessage(agent.id, toolMessage);
       }
 
       const agentMsg: ChatMessage = {
@@ -171,24 +182,53 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           >
             <div className="flex items-center gap-2 mb-1 px-1">
               <span className="text-[11px] font-bold text-slate-500">
-                {msg.sender === "user" ? "You" : msg.agentName || "Agent"}
+                {msg.sender === "user"
+                  ? "You"
+                  : msg.sender === "tool"
+                    ? `Tool · ${msg.toolName}`
+                    : msg.agentName || "Agent"}
               </span>
               <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
             </div>
 
-            <div
-              className={`max-w-2xl rounded-2xl p-4 shadow-sm border ${
-                msg.sender === "user"
-                  ? "bg-accent-500 text-white border-accent-600 rounded-tr-none"
-                  : "bg-white text-slate-800 border-slate-200 rounded-tl-none"
-              }`}
-            >
-              {msg.sender === "user" ? (
-                <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">{msg.text}</p>
-              ) : (
-                <ArtifactViewer content={msg.text} />
-              )}
-            </div>
+            {msg.sender === "tool" ? (
+              <div className="max-w-2xl w-full rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-[11px] font-semibold text-slate-700">Tool result</span>
+                  <span className={`text-[10px] font-semibold uppercase ${
+                    msg.toolStatus === "ok"
+                      ? "text-emerald-600"
+                      : msg.toolStatus === "cancelled"
+                        ? "text-amber-600"
+                        : "text-red-600"
+                  }`}>
+                    {msg.toolStatus}
+                  </span>
+                </div>
+                {msg.toolInput && (
+                  <p className="text-[11px] text-slate-500 mb-2 break-words">
+                    <span className="font-semibold text-slate-600">Input:</span> {msg.toolInput}
+                  </p>
+                )}
+                <pre className="whitespace-pre-wrap break-words text-xs text-slate-700 font-mono">
+                  {msg.toolOutput}
+                </pre>
+              </div>
+            ) : (
+              <div
+                className={`max-w-2xl rounded-2xl p-4 shadow-sm border ${
+                  msg.sender === "user"
+                    ? "bg-accent-500 text-white border-accent-600 rounded-tr-none"
+                    : "bg-white text-slate-800 border-slate-200 rounded-tl-none"
+                }`}
+              >
+                {msg.sender === "user" ? (
+                  <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">{msg.text}</p>
+                ) : (
+                  <ArtifactViewer content={msg.text} />
+                )}
+              </div>
+            )}
           </div>
         ))}
 
