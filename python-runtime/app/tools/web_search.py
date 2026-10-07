@@ -11,9 +11,12 @@ you have API credentials.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+import logging
 from typing import Any
 
 from app.tools.base import Tool, ToolExecutionError
+
+logger = logging.getLogger(__name__)
 
 SearchFn = Callable[[str], Awaitable[list[dict]]]
 
@@ -35,8 +38,8 @@ async def _real_search_backend(query: str) -> list[dict]:
                 })
         if results:
             return results
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("ddgs search backend unavailable: %s", exc)
 
     try:
         import httpx
@@ -60,13 +63,12 @@ async def _real_search_backend(query: str) -> list[dict]:
                     })
                 if results:
                     return results
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("HTTP search fallback unavailable: %s", exc)
 
-    return [
-        {"title": f"Search result for '{query}' #1", "url": "https://duckduckgo.com/?q=" + query, "snippet": f"Information regarding '{query}'."},
-        {"title": f"Search result for '{query}' #2", "url": "https://en.wikipedia.org/wiki/Special:Search?search=" + query, "snippet": f"Search topic details for '{query}'."},
-    ]
+    raise ToolExecutionError(
+        "No search backend available. Install 'ddgs' or configure an HTTP search backend."
+    )
 
 
 class WebSearchTool(Tool):
