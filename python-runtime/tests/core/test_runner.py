@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 import pytest
 from pathlib import Path
@@ -273,3 +274,143 @@ async def test_runner_sub_agent_delegation():
 
         assert res.status == "completed"
         assert "$10B" in res.final_output
+
+
+class FailingToolFactory:
+    def build(self, binding: ToolBinding) -> Tool:
+        class FailingTool(Tool):
+            kind = binding.kind
+            default_description = "Failing test tool"
+
+            async def run(self, args: dict, ctx: Any) -> ToolResult:
+                raise RuntimeError("simulated tool failure")
+
+        return FailingTool()
+
+
+class SlowToolFactory:
+    def build(self, binding: ToolBinding) -> Tool:
+        class SlowTool(Tool):
+            kind = binding.kind
+            default_description = "Slow test tool"
+
+            async def run(self, args: dict, ctx: Any) -> ToolResult:
+                await asyncio.sleep(30)
+                return ToolResult(ok=True, content="unexpected completion")
+
+        return SlowTool()
+
+
+@pytest.mark.asyncio
+async def test_runner_tool_failure_is_returned_to_model_and_run_recovers():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Calling the tool.",
+            tool_calls=[ToolCall(id="fail-1", name="failing_tool", arguments={})],
+        ),
+        LLMTurn(text="I recovered after the tool failed."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Recovery Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="failing_tool", name="failing_tool")],
+            )
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        req = RunRequest(
+            execution_id="exec_fail",
+            project_id="proj_1",
+            root_agent_id="root_1",
+            task="Use the failing tool and recover",
+        )
+
+        result = await runner.run(
+            req=req,
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=FailingToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "recovered" in result.final_output
+    assert len(fake_llm.received_calls) == 2
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert tool_messages
+    assert "tool crashed (RuntimeError: simulated tool failure)" in tool_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_runner_cancel_closes_tool_and_agent_spans():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Starting slow work.",
+            tool_calls=[ToolCall(id="slow-1", name="slow_tool", arguments={})],
+        ),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Slow Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="slow_tool", name="slow_tool")],
+            )
+        },
+    )
+
+    events = []
+    async def emit(draft):
+        events.append(draft)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        req = RunRequest(
+            execution_id="exec_cancel",
+            project_id="proj_1",
+            root_agent_id="root_1",
+            task="Cancel this run",
+        )
+
+        task = asyncio.create_task(
+            runner.run(
+                req=req,
+                graph=graph,
+                emit=emit,
+                cancel=MockCancelToken(),
+                approvals=MockApprovalGate(),
+                workspace=MockWorkspace(Path(tmpdir)),
+                tools=SlowToolFactory(),
+                memory=None,
+                lessons=None,
+                intents=None,
+                run_history=None,
+            )
+        )
+        await asyncio.sleep(0.01)
+        task.cancel()
+        result = await task
+
+    assert result.status == "cancelled"
+    started = {event.span_id for event in events if event.type == "span_started"}
+    ended = {event.span_id: event for event in events if event.type == "span_ended"}
+    assert started == set(ended)
+    assert all(event.status == "cancelled" for event in ended.values())
