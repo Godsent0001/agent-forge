@@ -88,6 +88,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         }
       }
 
+      const executionEvents = await api.executions.getEvents(execution.id);
+      const toolMessages = executionToolMessages(executionEvents);
+      for (const toolMessage of toolMessages) {
+        addChatMessage(agent.id, toolMessage);
+      }
+
       if (completedExecution.status === "cancelled") {
         setChatError("Execution cancelled.");
         return;
@@ -95,12 +101,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       if (completedExecution.status !== "completed") {
         throw new Error("Execution did not complete. Check the execution tree for details.");
-      }
-
-      const executionEvents = await api.executions.getEvents(execution.id);
-      const toolMessages = executionToolMessages(executionEvents);
-      for (const toolMessage of toolMessages) {
-        addChatMessage(agent.id, toolMessage);
       }
 
       const agentMsg: ChatMessage = {
