@@ -40,6 +40,7 @@ from app.tools.rendering import FinalRendererTool, PreviewRendererTool, RenderQu
 from app.tools.scene import LightingEngineTool, SceneBuilderTool, SceneTemplateManagerTool
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
 from app.tools.web_search import WebSearchTool
+from app.tools.video_source import VideoSourceTool
 
 # kind -> zero-arg factory. Config-driven ones (paths mostly) are handled
 # in the branches below build_tool() for clarity.
@@ -48,6 +49,7 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "web_search": WebSearchTool,
     "python": PythonExecTool,
     "http_request": HttpRequestTool,
+    "video_source": VideoSourceTool,
     # Audio
     "audio_processing": AudioProcessingTool,
     "audio_alignment": AudioAlignmentTool,
