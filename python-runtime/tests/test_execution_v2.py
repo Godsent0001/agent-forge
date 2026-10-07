@@ -48,6 +48,21 @@ async def wait_for_terminal(factory, execution_id):
     raise AssertionError("execution did not reach a terminal state")
 
 
+async def wait_for_events(factory, execution_id):
+    for _ in range(250):
+        db = factory()
+        events = db.execute(
+            select(models.ExecutionEventRow)
+            .where(models.ExecutionEventRow.execution_id == execution_id)
+            .order_by(models.ExecutionEventRow.seq)
+        ).scalars().all()
+        db.close()
+        if events and events[-1].type == "execution_ended":
+            return events
+        await asyncio.sleep(0.02)
+    raise AssertionError("execution_ended event was not persisted")
+
+
 @pytest.mark.asyncio
 async def test_slow_post_path_returns_immediately_and_trace_is_sequenced(test_session_factory):
     factory, (project_id, agent_id) = test_session_factory
@@ -70,13 +85,7 @@ async def test_slow_post_path_returns_immediately_and_trace_is_sequenced(test_se
     row = await wait_for_terminal(factory, req.execution_id)
     assert row.status == "completed"
 
-    db = factory()
-    events = db.execute(
-        select(models.ExecutionEventRow)
-        .where(models.ExecutionEventRow.execution_id == req.execution_id)
-        .order_by(models.ExecutionEventRow.seq)
-    ).scalars().all()
-    db.close()
+    events = await wait_for_events(factory, req.execution_id)
 
     assert [event.seq for event in events] == list(range(1, len(events) + 1))
     assert events[0].type == "execution_started"
