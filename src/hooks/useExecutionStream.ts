@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, getApiBase } from "../api/client";
 import type { ExecutionEvent, ExecutionNode, ExecutionStatus } from "../types";
 
-function reduceEvents(events: ExecutionEvent[]): ExecutionNode[] {
+export function reduceEvents(events: ExecutionEvent[]): ExecutionNode[] {
   const nodes = new Map<string, ExecutionNode>();
   const roots: ExecutionNode[] = [];
 
