@@ -176,3 +176,30 @@ async def test_v2_runner_wires_graph_workspace_and_fake_llm(test_session_factory
     assert all(event.status == "ok" for event in ended_spans.values())
 
     await manager.shutdown()
+
+
+def test_startup_cleanup_marks_stale_running_execution_interrupted(test_session_factory):
+    factory, (project_id, agent_id) = test_session_factory
+    db = factory()
+    execution = models.Execution(
+        id=str(uuid4()),
+        project_id=project_id,
+        root_agent_id=agent_id,
+        input_task="stale run",
+        status="running",
+        agent_graph_snapshot={},
+    )
+    db.add(execution)
+    db.commit()
+    execution_id = execution.id
+    db.close()
+
+    manager = ExecutionManager()
+    assert manager.mark_running_interrupted() == 1
+
+    db = factory()
+    row = db.get(models.Execution, execution_id)
+    db.close()
+
+    assert row.status == "interrupted"
+    assert row.ended_at is not None
