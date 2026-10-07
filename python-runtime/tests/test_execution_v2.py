@@ -203,3 +203,92 @@ def test_startup_cleanup_marks_stale_running_execution_interrupted(test_session_
 
     assert row.status == "interrupted"
     assert row.ended_at is not None
+
+
+def _build_test_api(monkeypatch, factory):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.routers import executions_v2
+
+    manager = ExecutionManager()
+    monkeypatch.setattr(executions_service, "SessionLocal", factory)
+    monkeypatch.setattr(executions_v2, "SessionLocal", factory)
+    monkeypatch.setattr(executions_v2, "manager", manager)
+
+    app = FastAPI()
+    app.include_router(executions_v2.router)
+    return TestClient(app), manager
+
+
+def test_http_post_returns_immediately_and_get_reaches_terminal(test_session_factory, monkeypatch):
+    factory, (project_id, agent_id) = test_session_factory
+    client, manager = _build_test_api(monkeypatch, factory)
+
+    started = time.perf_counter()
+    response = client.post(
+        "/v2/executions",
+        json={
+            "project_id": project_id,
+            "root_agent_id": agent_id,
+            "task": "slow HTTP task",
+            "options": {"scenario": "sleep_3s"},
+        },
+    )
+    elapsed = time.perf_counter() - started
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "running"
+    assert elapsed < 0.2
+
+    for _ in range(180):
+        detail = client.get(f"/v2/executions/{payload['id']}")
+        assert detail.status_code == 200
+        if detail.json()["status"] != "running":
+            break
+        time.sleep(0.025)
+    else:
+        pytest.fail("HTTP execution did not reach a terminal state")
+
+    assert detail.json()["status"] == "completed"
+    client.close()
+
+
+def test_websocket_stream_replays_without_duplicates(test_session_factory, monkeypatch):
+    factory, (project_id, agent_id) = test_session_factory
+    client, manager = _build_test_api(monkeypatch, factory)
+
+    response = client.post(
+        "/v2/executions",
+        json={
+            "project_id": project_id,
+            "root_agent_id": agent_id,
+            "task": "trace task",
+            "options": {"scenario": "tool_call"},
+        },
+    )
+    assert response.status_code == 200
+    execution_id = response.json()["id"]
+
+    received = []
+    with client.websocket_connect(f"/v2/executions/{execution_id}/stream") as websocket:
+        while True:
+            event = websocket.receive_json()
+            received.append(event)
+            if event["type"] == "execution_ended":
+                break
+
+    seqs = [event["seq"] for event in received]
+    assert seqs == list(range(1, len(seqs) + 1))
+
+    with client.websocket_connect(
+        f"/v2/executions/{execution_id}/stream?after_seq=2"
+    ) as websocket:
+        replayed = []
+        expected = [event for event in received if event["seq"] > 2]
+        for _ in expected:
+            replayed.append(websocket.receive_json())
+
+    assert [event["seq"] for event in replayed] == [event["seq"] for event in expected]
+    assert all(event["seq"] > 2 for event in replayed)
+    client.close()
