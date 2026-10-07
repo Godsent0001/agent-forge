@@ -527,7 +527,8 @@ async def test_runner_unknown_tool_is_recoverable():
 
     assert result.status == "completed"
     assert "continue" in result.final_output
-    assert "ERROR: unknown tool 'missing_tool'" in fake_llm.received_calls[1]["messages"][-1]["content"]
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert "ERROR: unknown tool 'missing_tool'" in tool_messages[-1]["content"]
 
 
 @pytest.mark.asyncio
@@ -575,7 +576,8 @@ async def test_runner_invalid_tool_args_are_recoverable():
 
     assert result.status == "completed"
     assert "corrected" in result.final_output
-    assert "ERROR: invalid arguments for 'schema_tool'" in fake_llm.received_calls[1]["messages"][-1]["content"]
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert "ERROR: invalid arguments for 'schema_tool'" in tool_messages[-1]["content"]
 
 
 @pytest.mark.asyncio
