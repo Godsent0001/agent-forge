@@ -323,10 +323,12 @@ class RunnerCore:
                                     budget=budget,
                                     active_agent_ids=active_agent_ids,
                                 )
+                            except AgentCycleError:
+                                raise
                             except Exception as exc:
                                 content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
-                            messages.append({
+                            messages.append({}
                                 "role": "tool",
                                 "tool_call_id": tc.id,
                                 "content": content,
