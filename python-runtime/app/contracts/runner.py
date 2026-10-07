@@ -1,57 +1,33 @@
-from asyncio import CancelledError
+"""C-5: the Runner and what the platform gives it. Protocols (see docs/CONTRACTS.md)."""
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Protocol
 
 from .events import EventDraft
 from .graph import AgentGraph, ToolBinding
+from .memory import IntentStore, LessonStore, MemoryStore, RunHistory
 from .run import RunRequest, RunResult
-from .tools import Permission, RunWorkspace, Tool
-
+from .tools import CancelToken, Permission, RunWorkspace, Tool
 
 Emit = Callable[[EventDraft], Awaitable[None]]
-
-
-class CancelToken(Protocol):
-    @property
-    def cancelled(self) -> bool: ...
-
-    def raise_if_cancelled(self) -> None: ...
+Clock = Callable[[], datetime]          # returns timezone-aware UTC; tests pass a fake
 
 
 class ApprovalGate(Protocol):
-    async def check(
-        self,
-        *,
-        tool: str,
-        permissions: set[Permission],
-        args_preview: str,
-        span_id: str,
-        force: bool = False,
-        reason: str = "",
-    ) -> bool: ...
+    async def check(self, *, tool: str, permissions: set[Permission], args_preview: str,
+                    span_id: str, force: bool = False, reason: str = "") -> bool: ...
+    # True = go ahead, False = denied. The gate emits approval_requested / approval_resolved itself.
 
 
 class ToolFactory(Protocol):
     def build(self, binding: ToolBinding) -> Tool: ...
 
 
-class MemoryStore(Protocol):
-    async def recall(self, agent_id: str, query: str, budget_tokens: int) -> list[object]: ...
-    async def add(self, agent_id: str, items: list[object]) -> None: ...
-    async def summary(self, agent_id: str) -> str: ...
-    async def set_summary(self, agent_id: str, text: str) -> None: ...
-
-
 class Runner(Protocol):
-    async def run(
-        self,
-        req: RunRequest,
-        *,
-        graph: AgentGraph,
-        emit: Emit,
-        cancel: CancelToken,
-        approvals: ApprovalGate,
-        memory: MemoryStore,
-        workspace: RunWorkspace,
-        tools: ToolFactory,
-    ) -> RunResult: ...
+    async def run(self, req: RunRequest, *, graph: AgentGraph, emit: Emit, cancel: CancelToken,
+                  approvals: ApprovalGate, workspace: RunWorkspace, tools: ToolFactory,
+                  memory: MemoryStore, lessons: LessonStore, intents: IntentStore,
+                  run_history: RunHistory, clock: Clock | None = None) -> RunResult: ...
+
+
+__all__ = ["Emit", "Clock", "CancelToken", "ApprovalGate", "ToolFactory", "Runner"]
