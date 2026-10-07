@@ -412,7 +412,7 @@ class RunnerCore:
                 "tool_name": tc.name,
                 "tool_call_id": tc.id,
                 "args": json.dumps(tc.arguments)[:2000],
-            }):
+            }) as tool_span_id:
             budget.record_tool_call()
 
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
