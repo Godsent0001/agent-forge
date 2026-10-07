@@ -48,3 +48,84 @@ async def test_video_source_clamps_result_limit():
     await tool.execute('{"query":"clips","limit":99}', context=None)
 
     assert seen["limit"] == 10
+
+
+def test_yt_dlp_backend_uses_search_prefix_and_metadata(monkeypatch):
+    import sys
+    import types
+
+    calls = {}
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            calls["opts"] = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, target, download):
+            calls["target"] = target
+            calls["download"] = download
+            return {
+                "entries": [
+                    {
+                        "id": "video-1",
+                        "title": "Example clip",
+                        "webpage_url": "https://example.com/video-1",
+                        "duration": 42,
+                        "uploader": "Example",
+                        "thumbnail": "https://example.com/thumb.jpg",
+                        "extractor_key": "Example",
+                    }
+                ]
+            }
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=FakeYoutubeDL))
+
+    from app.tools.video_source import _yt_dlp_search
+
+    result = _yt_dlp_search("history clip", 3)
+
+    assert calls["target"] == "ytsearch3:history clip"
+    assert calls["download"] is False
+    assert calls["opts"]["skip_download"] is True
+    assert calls["opts"]["noplaylist"] is True
+    assert result[0]["title"] == "Example clip"
+    assert result[0]["url"] == "https://example.com/video-1"
+
+
+def test_yt_dlp_backend_accepts_direct_urls(monkeypatch):
+    import sys
+    import types
+
+    calls = {}
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, target, download):
+            calls["target"] = target
+            return {
+                "id": "direct-1",
+                "title": "Direct video",
+                "webpage_url": target,
+            }
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=FakeYoutubeDL))
+
+    from app.tools.video_source import _yt_dlp_search
+
+    result = _yt_dlp_search("https://example.com/video", 1)
+
+    assert calls["target"] == "https://example.com/video"
+    assert result[0]["id"] == "direct-1"
