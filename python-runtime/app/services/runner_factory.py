@@ -11,7 +11,10 @@ def get_runner() -> Runner:
         return FakeRunner()
 
     if mode == "v2":
+        from app.core.llm.fake import FakeLLM
         from app.core.runner import build_runner
-        return build_runner()
+
+        use_fake_llm = os.environ.get("AGENTFORGE_FAKE_LLM", "").lower() in {"1", "true", "yes", "on"}
+        return build_runner(fake_llm=FakeLLM() if use_fake_llm else None)
 
     raise RuntimeError(f"Unsupported runner mode: {mode!r}; expected fake or v2")
