@@ -656,3 +656,9 @@ class DummyToolContext:
         self.workspace = workspace
         self.cancel = cancel
         self.config = config
+
+
+
+def build_runner():
+    """Build the production v2 runner used by the service integration seam."""
+    return RunnerCore()
