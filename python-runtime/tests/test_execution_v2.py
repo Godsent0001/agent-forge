@@ -115,3 +115,55 @@ async def test_cancel_closes_agent_span(test_session_factory):
     assert span_ends
     assert any(event.status == "cancelled" for event in span_ends)
     await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_v2_runner_wires_graph_workspace_and_fake_llm(test_session_factory, monkeypatch):
+    factory, (project_id, agent_id) = test_session_factory
+
+    from app.core.llm.fake import FakeLLM
+    from app.core.llm.types import LLMTurn
+    from app.core.runner import RunnerCore
+
+    monkeypatch.setattr(
+        executions_service,
+        "get_runner",
+        lambda: RunnerCore(fake_llm=FakeLLM([
+            LLMTurn(text="v2 integration answer"),
+        ])),
+    )
+
+    manager = ExecutionManager()
+    req = RunRequest(
+        execution_id=str(uuid4()),
+        project_id=project_id,
+        root_agent_id=agent_id,
+        task="exercise the v2 runner",
+    )
+
+    response = manager.start(req)
+    assert response == {"id": req.execution_id, "status": "running"}
+
+    row = await wait_for_terminal(factory, req.execution_id)
+    assert row.status == "completed"
+    assert row.final_output == "v2 integration answer"
+
+    db = factory()
+    events = db.execute(
+        select(models.ExecutionEventRow)
+        .where(models.ExecutionEventRow.execution_id == req.execution_id)
+        .order_by(models.ExecutionEventRow.seq)
+    ).scalars().all()
+    db.close()
+
+    assert events[0].type == "execution_started"
+    assert events[-1].type == "execution_ended"
+
+    spans = [event for event in events if event.type == "span_started"]
+    assert [event.kind for event in spans] == ["agent", "llm_call"]
+
+    ended_spans = {event.span_id: event for event in events if event.type == "span_ended"}
+    assert all(event.span_id in ended_spans for event in spans)
+    assert all(event.status == "ok" for event in ended_spans.values())
+
+    await manager.shutdown()
