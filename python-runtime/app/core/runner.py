@@ -83,7 +83,6 @@ class RunnerCore:
                 active_agent_ids=active_agent_ids,
             )
 
-            # Memory extraction at end of successful root run
             if root_spec.memory_enabled and memory:
                 await self._extract_memories(
                     root_spec=root_spec,
@@ -167,8 +166,6 @@ class RunnerCore:
                     "input_preview": task[:2000],
                 },
             ) as agent_span_id:
-
-                # 1. Memory recall
                 memory_block = ""
                 if spec.memory_enabled and memory:
                     try:
@@ -182,12 +179,10 @@ class RunnerCore:
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
 
-                # 2. Recent problem runs
                 recent_runs_block = ""
                 if req.options.memory.episodic and run_history and depth == 0:
                     recent_runs_block = await build_recent_runs_block(run_history, spec.id)
 
-                # 3. Due reminders
                 reminders_block = ""
                 if req.options.memory.intents and intents and depth == 0:
                     now_utc = datetime.now(timezone.utc)
@@ -196,12 +191,10 @@ class RunnerCore:
                         reminders_block = "\n".join(f"- {i.text}" for i in due_intents)
                         await intents.mark_fired([i.id for i in due_intents], now_utc)
 
-                # 4. Lessons
                 lessons_block = ""
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
-                # 5. Build prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -216,7 +209,6 @@ class RunnerCore:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
                 messages.append({"role": "user", "content": task})
 
-                # 6. Assemble tools
                 native_tool_specs, tool_instances = self._assemble_tools(spec, graph, tools_factory, memory, intents, run_history)
 
                 iterations = 0
@@ -232,7 +224,6 @@ class RunnerCore:
                             spec, messages, agent_span_id, emit, budget
                         )
 
-                    # LLM Call
                     turn = await self._execute_llm_turn(
                         spec=spec,
                         messages=messages,
@@ -248,7 +239,6 @@ class RunnerCore:
                     if not turn.tool_calls:
                         return turn.text or ""
 
-                    # Dispatch Tool Calls
                     tool_call_tuples = []
                     for tc in turn.tool_calls:
                         tool_key = f"{tc.name}:{json.dumps(tc.arguments, sort_keys=True)}"
@@ -359,7 +349,7 @@ class RunnerCore:
                 "model": spec.model,
                 "message_count": len(messages),
             },
-        ) as llm_span_id:
+        ):
             if self.fake_llm:
                 turn = await self.fake_llm.complete(
                     messages=messages,
@@ -422,8 +412,7 @@ class RunnerCore:
                 "tool_name": tc.name,
                 "tool_call_id": tc.id,
                 "args": json.dumps(tc.arguments)[:2000],
-            },
-        ) as tool_span_id:
+            }):
             budget.record_tool_call()
 
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
@@ -524,7 +513,6 @@ class RunnerCore:
         for child in spec.children:
             raw_names.append(sanitize_tool_name(child.agent_id))
 
-        # Memory & intent tool bindings
         if spec.memory_enabled and run_history:
             raw_names.append("recall_run")
         if intents:
@@ -622,8 +610,7 @@ class RunnerCore:
             name="memory_extract",
             parent_span_id=parent_span_id,
             data={"provider": root_spec.provider, "model": "fast"},
-        ) as extract_span_id:
-
+        ):
             user_msgs = [req.task] + [
                 m.content if hasattr(m, "content") else m.get("content", "")
                 for m in req.history
@@ -658,7 +645,6 @@ class DummyToolContext:
         self.config = config
 
 
-
-def build_runner():
-    """Build the production v2 runner used by the service integration seam."""
-    return RunnerCore()
+def build_runner(fake_llm: FakeLLM | None = None):
+    """Build the v2 runner; tests/integration may inject a FakeLLM."""
+    return RunnerCore(fake_llm=fake_llm)
