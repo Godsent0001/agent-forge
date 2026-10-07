@@ -53,7 +53,11 @@ describe("executionToolMessages", () => {
       event({ seq: 5, type: "span_ended", span_id: "tool-1", name: "web_search", status: "error", data: { result_preview: "network failed" } }),
     ]);
 
-    expect(messages.map((m) => m.toolName)).toEqual(["python", "web_search"]);
-    expect(messages[1].toolStatus).toBe("error");
+    expect(messages.filter((m) => m.sender === "tool").map((m) => m.toolName)).toEqual(["python", "web_search"]);
+    const failed = messages.find((m) => m.sender === "tool" && m.toolName === "web_search");
+    expect(failed?.sender).toBe("tool");
+    if (failed?.sender === "tool") {
+      expect(failed.toolStatus).toBe("error");
+    }
   });
 });
