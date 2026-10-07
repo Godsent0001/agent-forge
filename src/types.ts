@@ -16,13 +16,30 @@ export interface Tool {
   config: Record<string, unknown>;
 }
 
-export interface ChatMessage {
-  id: string;
-  sender: "user" | "agent";
-  agentName?: string;
-  text: string;
-  timestamp: string;
-}
+export type ChatMessage =
+  | {
+      id: string;
+      sender: "user";
+      text: string;
+      timestamp: string;
+    }
+  | {
+      id: string;
+      sender: "agent";
+      agentName?: string;
+      text: string;
+      timestamp: string;
+    }
+  | {
+      id: string;
+      sender: "tool";
+      toolName: string;
+      toolInput: string;
+      toolOutput: string;
+      toolStatus: "ok" | "error" | "cancelled";
+      text: string;
+      timestamp: string;
+    };
 
 export interface Agent {
   id: string;
@@ -36,7 +53,6 @@ export interface Agent {
   memory_enabled: boolean;
   learned_experience?: string;
   created_at: string;
-  // Client-side only, populated from link endpoints — not sent to the API directly.
   tool_ids?: string[];
   child_agent_ids?: string[];
 }
