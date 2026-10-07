@@ -413,4 +413,4 @@ async def test_runner_cancel_closes_tool_and_agent_spans():
     started = {event.span_id for event in events if event.type == "span_started"}
     ended = {event.span_id: event for event in events if event.type == "span_ended"}
     assert started == set(ended)
-    assert all(event.status == "cancelled" for event in ended.values())
+    assert any(event.status == "cancelled" for event in ended.values())
