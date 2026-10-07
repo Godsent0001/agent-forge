@@ -14,6 +14,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [promptInput, setPromptInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +68,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         : userText;
 
       const execution = await api.executions.run(project.id, agent.id, fullTask);
+      setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
 
       // Poll until the execution reaches a terminal state. The API now returns
@@ -80,8 +83,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         }
       }
 
+      if (completedExecution.status === "cancelled") {
+        setChatError("Execution cancelled.");
+        return;
+      }
+
       if (completedExecution.status !== "completed") {
-        throw new Error("Execution is still running. Check the execution tree for live progress.");
+        throw new Error("Execution did not complete. Check the execution tree for details.");
       }
 
       const agentMsg: ChatMessage = {
@@ -103,6 +111,20 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setChatError(e instanceof Error ? e.message : "Failed to get agent response");
     } finally {
       setIsProcessing(false);
+      setIsCancelling(false);
+      setActiveExecutionId(null);
+    }
+  };
+
+  const handleCancelExecution = async () => {
+    if (!activeExecutionId || isCancelling) return;
+    setIsCancelling(true);
+    setChatError(null);
+    try {
+      await api.executions.cancel(activeExecutionId);
+    } catch (e) {
+      setIsCancelling(false);
+      setChatError(e instanceof Error ? e.message : "Failed to stop execution");
     }
   };
 
@@ -201,13 +223,24 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             disabled={isProcessing}
             className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none py-1.5 px-2 min-h-[38px] max-h-32 overflow-y-auto"
           />
-          <button
-            onClick={handleSendMessage}
-            disabled={!promptInput.trim() || isProcessing}
-            className="bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
-          >
-            <span>Send</span> ➔
-          </button>
+          {isProcessing ? (
+            <button
+              onClick={handleCancelExecution}
+              disabled={!activeExecutionId || isCancelling}
+              className="bg-red-500 hover:bg-red-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
+              aria-label="Stop execution"
+            >
+              <span>{isCancelling ? "Stopping…" : "Stop"}</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleSendMessage}
+              disabled={!promptInput.trim()}
+              className="bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
+            >
+              <span>Send</span> ➔
+            </button>
+          )}
         </div>
       </div>
     </div>
