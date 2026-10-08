@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +14,7 @@ from app.contracts.run import RunRequest, RunResult, Totals
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
+from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
@@ -22,6 +24,7 @@ from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
+from app.core.skills.types import SkillManifest
 from app.core.spans import span
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,7 @@ class RunnerCore:
             )
 
         active_agent_ids: set[str] = set()
+        agent_revision_counts: dict[str, int] = {}
 
         try:
             final_output = await self._run_agent(
@@ -81,9 +85,9 @@ class RunnerCore:
                 run_history=run_history,
                 budget=budget,
                 active_agent_ids=active_agent_ids,
+                agent_revision_counts=agent_revision_counts,
             )
 
-            # Memory extraction at end of successful root run
             if root_spec.memory_enabled and memory:
                 await self._extract_memories(
                     root_spec=root_spec,
@@ -142,6 +146,8 @@ class RunnerCore:
         run_history: RunHistory,
         budget: BudgetTracker,
         active_agent_ids: set[str],
+        agent_revision_counts: dict[str, int],
+        skill_manifest: SkillManifest | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
@@ -151,6 +157,12 @@ class RunnerCore:
 
         if depth > req.options.max_depth:
             raise RuntimeError(f"Maximum delegation depth reached ({depth} > {req.options.max_depth})")
+
+        # Revision counter safeguard against ping-pong cascades
+        rev_count = agent_revision_counts.get(agent_id, 0) + 1
+        agent_revision_counts[agent_id] = rev_count
+        if rev_count > 10:
+            raise RuntimeError(f"Maximum revision loop count exceeded for agent '{agent_id}' ({rev_count} > 10)")
 
         spec = graph.agents[agent_id]
         active_agent_ids.add(agent_id)
@@ -201,7 +213,7 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
-                # 5. Build prompt
+                # 5. Build system prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -209,6 +221,7 @@ class RunnerCore:
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
                     history_summary_block=history_summary,
+                    skill_manifest=skill_manifest,
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -289,6 +302,7 @@ class RunnerCore:
                                     run_history=run_history,
                                     budget=budget,
                                     active_agent_ids=active_agent_ids,
+                                    agent_revision_counts=agent_revision_counts,
                                 )
                                 for tc in tool_call_tuples
                             ],
@@ -326,6 +340,7 @@ class RunnerCore:
                                     run_history=run_history,
                                     budget=budget,
                                     active_agent_ids=active_agent_ids,
+                                    agent_revision_counts=agent_revision_counts,
                                 )
                             except Exception as exc:
                                 content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
@@ -412,6 +427,7 @@ class RunnerCore:
         run_history: RunHistory,
         budget: BudgetTracker,
         active_agent_ids: set[str],
+        agent_revision_counts: dict[str, int],
     ) -> str:
         async with span(
             emit,
@@ -428,13 +444,22 @@ class RunnerCore:
 
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
             if child_link:
-                child_task = tc.arguments.get("task", tc.arguments.get("input", ""))
+                task_id = f"task_{tc.id}"
+                child_instruction = tc.arguments.get("task", tc.arguments.get("instruction", tc.arguments.get("input", "")))
+
+                directive = TaskDirective(
+                    task_id=task_id,
+                    sender_id=spec.id,
+                    recipient_id=child_link.agent_id,
+                    instruction=child_instruction,
+                )
+
                 try:
-                    res = await self._run_agent(
+                    res_text = await self._run_agent(
                         agent_id=child_link.agent_id,
                         graph=graph,
                         req=req,
-                        task=child_task,
+                        task=directive.instruction,
                         history=[],
                         history_summary="",
                         parent_span_id=tool_span_id,
@@ -450,8 +475,24 @@ class RunnerCore:
                         run_history=run_history,
                         budget=budget,
                         active_agent_ids=active_agent_ids,
+                        agent_revision_counts=agent_revision_counts,
                     )
-                    return res
+
+                    # Save full sub-agent output and return Claim-Check envelope
+                    artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
+                    uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
+
+                    headline = res_text[:300].replace("\n", " ").strip()
+                    envelope = ClaimCheckEnvelope(
+                        task_id=task_id,
+                        sender_id=child_link.agent_id,
+                        recipient_id=spec.id,
+                        status="COMPLETED",
+                        summary=ClaimCheckSummary(headline=headline),
+                        result_artifact_uri=uri,
+                    )
+                    return envelope.model_dump_json(indent=2)
+
                 except Exception as exc:
                     return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
 
@@ -524,7 +565,6 @@ class RunnerCore:
         for child in spec.children:
             raw_names.append(sanitize_tool_name(child.agent_id))
 
-        # Memory & intent tool bindings
         if spec.memory_enabled and run_history:
             raw_names.append("recall_run")
         if intents:

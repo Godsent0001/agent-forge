@@ -1,6 +1,7 @@
 """Prompt architecture v2: constructs structured system prompts for LLM calls."""
 from typing import Any
 from app.contracts.graph import AgentSpec
+from app.core.skills.types import SkillManifest
 
 
 def build_system_prompt(
@@ -11,6 +12,7 @@ def build_system_prompt(
     plan_block: str = "",
     lessons_block: str = "",
     history_summary_block: str = "",
+    skill_manifest: SkillManifest | None = None,
 ) -> str:
     """Build a structured system prompt with stable content first and volatile content last."""
     sections: list[str] = []
@@ -33,33 +35,37 @@ def build_system_prompt(
     )
     sections.append(f"<instructions>\n{instructions}\n</instructions>")
 
-    # 3. Tool guidance
+    # 3. Operational runbook from skill if present
+    if skill_manifest and skill_manifest.runbook_markdown:
+        sections.append(f"<operational_runbook skill=\"{skill_manifest.name}\">\n{skill_manifest.runbook_markdown.strip()}\n</operational_runbook>")
+
+    # 4. Tool guidance
     if spec.tool_guidance:
         sections.append(f"<tool_guidance>\n{spec.tool_guidance.strip()}\n</tool_guidance>")
 
-    # 4. Lessons
+    # 5. Lessons
     if spec.lessons_enabled and lessons_block:
         sections.append(f"<lessons>\n{lessons_block.strip()}\n</lessons>")
 
     # --- Volatile content ---
 
-    # 5. Plan block
+    # 6. Plan block
     if plan_block:
         sections.append(f"<plan>\n{plan_block.strip()}\n</plan>")
 
-    # 6. Reminders
+    # 7. Reminders
     if reminders_block:
         sections.append(f"<reminders>\n{reminders_block.strip()}\n</reminders>")
 
-    # 7. Memory recall
+    # 8. Memory recall
     if spec.memory_enabled and memory_block:
         sections.append(f"<memory>\n{memory_block.strip()}\n</memory>")
 
-    # 8. Episodic recent runs
+    # 9. Episodic recent runs
     if recent_runs_block:
         sections.append(f"<recent_runs trust=\"untrusted\">\n{recent_runs_block.strip()}\n</recent_runs>")
 
-    # 9. History summary
+    # 10. History summary
     if history_summary_block:
         sections.append(f"<conversation_summary>\n{history_summary_block.strip()}\n</conversation_summary>")
 
