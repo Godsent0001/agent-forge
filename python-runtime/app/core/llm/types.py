@@ -18,6 +18,12 @@ class ImagePart(BaseModel):
 ContentPart = TextPart | ImagePart
 
 
+class LLMParams(BaseModel):
+    timeout_s: float = 60.0
+    temperature: float | None = 0.2
+    max_tokens: int | None = 4096
+
+
 class ToolSpec(BaseModel):
     name: str
     description: str
