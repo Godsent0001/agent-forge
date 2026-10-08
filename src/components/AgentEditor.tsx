@@ -53,21 +53,27 @@ export function AgentEditor() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [toolUseSchema, setToolUseSchema] = useState("");
   const [learnedExperience, setLearnedExperience] = useState("");
+  const [learnedExperienceDirty, setLearnedExperienceDirty] = useState(false);
 
   useEffect(() => {
-    if (agent) {
-      setName(agent.name ?? "");
-      setDescription(agent.description ?? "");
-      setProvider(agent.provider ?? "anthropic");
-      setModel(agent.model ?? "");
-      setMemoryEnabled(agent.memory_enabled ?? false);
-      setSystemPrompt(agent.system_prompt ?? "");
-      setToolUseSchema(agent.tool_use_schema ?? "");
-      setLearnedExperience(agent.learned_experience ?? "");
-      setSaveSuccess(null);
-      setLinkError(null);
-    }
-  }, [agent?.id, agent?.name, agent?.description, agent?.provider, agent?.model, agent?.memory_enabled, agent?.system_prompt, agent?.tool_use_schema, agent?.learned_experience]);
+    if (!agent) return;
+    setName(agent.name ?? "");
+    setDescription(agent.description ?? "");
+    setProvider(agent.provider ?? "anthropic");
+    setModel(agent.model ?? "");
+    setMemoryEnabled(agent.memory_enabled ?? false);
+    setSystemPrompt(agent.system_prompt ?? "");
+    setToolUseSchema(agent.tool_use_schema ?? "");
+    setLearnedExperience(agent.learned_experience ?? "");
+    setLearnedExperienceDirty(false);
+    setSaveSuccess(null);
+    setLinkError(null);
+  }, [agent?.id]);
+
+  useEffect(() => {
+    if (!agent || learnedExperienceDirty) return;
+    setLearnedExperience(agent.learned_experience ?? "");
+  }, [agent?.learned_experience, agent?.id, learnedExperienceDirty]);
 
   if (!selectedAgentId || !agent) {
     return (
@@ -96,16 +102,17 @@ export function AgentEditor() {
 
   const handleSaveAll = async () => {
     try {
-      await updateAgent(agent.id, {
-        name,
-        description,
-        provider,
-        model,
-        memory_enabled: memoryEnabled,
-        system_prompt: systemPrompt,
-        tool_use_schema: toolUseSchema,
-        learned_experience: learnedExperience,
-      });
+      const patch: Parameters<typeof updateAgent>[1] = {};
+      if (name !== (agent.name ?? "")) patch.name = name;
+      if (description !== (agent.description ?? "")) patch.description = description;
+      if (provider !== (agent.provider ?? "anthropic")) patch.provider = provider;
+      if (model !== (agent.model ?? "")) patch.model = model;
+      if (memoryEnabled !== (agent.memory_enabled ?? false)) patch.memory_enabled = memoryEnabled;
+      if (systemPrompt !== (agent.system_prompt ?? "")) patch.system_prompt = systemPrompt;
+      if (toolUseSchema !== (agent.tool_use_schema ?? "")) patch.tool_use_schema = toolUseSchema;
+      if (learnedExperience !== (agent.learned_experience ?? "")) patch.learned_experience = learnedExperience;
+      if (Object.keys(patch).length > 0) await updateAgent(agent.id, patch);
+      setLearnedExperienceDirty(false);
       triggerSaveFeedback("Configuration saved successfully!");
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : "Failed to save configuration");
@@ -286,7 +293,7 @@ export function AgentEditor() {
       <Field label="Learned Experience & Reflection" hint="Single page of accumulated learnings, self-reflections, and insights retransformed across executions.">
         <textarea
           value={learnedExperience}
-          onChange={(e) => setLearnedExperience(e.target.value)}
+          onChange={(e) => { setLearnedExperience(e.target.value); setLearnedExperienceDirty(true); }}
           rows={5}
           placeholder="I have learned through my past experiences that..."
           className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-xs
