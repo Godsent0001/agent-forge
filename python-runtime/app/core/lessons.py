@@ -13,8 +13,8 @@ class InMemoryLessonStore:
 
     async def active(self, agent_id: str, limit: int) -> list[Lesson]:
         items = [
-            l for l in self.lessons.values()
-            if l.agent_id == agent_id and l.status == "active"
+            lesson for lesson in self.lessons.values()
+            if lesson.agent_id == agent_id and lesson.status == "active"
         ]
         items.sort(key=lambda x: x.created_at, reverse=True)
         return items[:limit]
@@ -31,7 +31,7 @@ async def format_lessons_block(store: LessonStore, agent_id: str, limit: int = 5
         items = await store.active(agent_id, limit)
         if not items:
             return ""
-        lines = [f"- {l.text}" for l in items]
+        lines = [f"- {lesson.text}" for lesson in items]
         return "\n".join(lines)
     except Exception:
         return ""
