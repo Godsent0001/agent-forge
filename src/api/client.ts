@@ -15,6 +15,7 @@ function ensurePortInitialized(): Promise<void> {
           }
         } catch (err) {
           console.error("Failed to acquire Python backend port from Electron:", err);
+          portInitPromise = null;
           throw new Error("Could not connect to Python backend: " + (err as Error).message);
         }
       } else {
@@ -43,6 +44,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(body) as { detail?: unknown };
+      if (typeof parsed.detail === "string") throw new Error(parsed.detail);
+    } catch (error) {
+      if (error instanceof Error && error.message !== body) throw error;
+    }
     throw new Error(`${options?.method ?? "GET"} ${path} failed: ${res.status} ${body}`);
   }
   return res.json();
