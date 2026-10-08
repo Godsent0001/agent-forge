@@ -13,6 +13,10 @@ export default defineConfig({
       ignored: ["**/python-runtime/**"],
     },
   },
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
