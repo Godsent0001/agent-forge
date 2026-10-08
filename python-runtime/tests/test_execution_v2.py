@@ -218,12 +218,15 @@ def _build_test_api(monkeypatch, factory):
 
     app = FastAPI()
     app.include_router(executions_v2.router)
-    return TestClient(app), manager
+    client = TestClient(app)
+    client.__enter__()
+    return client, manager
 
 
 def test_http_post_returns_immediately_and_get_reaches_terminal(test_session_factory, monkeypatch):
     factory, (project_id, agent_id) = test_session_factory
     client, manager = _build_test_api(monkeypatch, factory)
+    monkeypatch.setattr(manager, 'shutdown', lambda: None)
 
     started = time.perf_counter()
     response = client.post(
