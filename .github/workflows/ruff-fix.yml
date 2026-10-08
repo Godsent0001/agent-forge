@@ -20,7 +20,7 @@ jobs:
       - run: git fetch origin dev/kenny-ui
       - run: git reset --hard origin/dev/kenny-ui
       - run: cd python-runtime && uv sync --frozen --group dev
-      - run: cd python-runtime && uv run ruff check . --fix
+      - run: cd python-runtime && uv run ruff check . --fix --unsafe-fixes
       - run: cd python-runtime && uv run ruff format .
       - run: |
           git config user.name "github-actions[bot]"
