@@ -103,12 +103,6 @@ Desktop.ini
 *.rpm
 
 # ================================
-# Tauri / Rust build artifacts
-# ================================
-
-src-tauri/target/
-
-# ================================
 # PyInstaller build artifacts
 # ================================
 
@@ -123,3 +117,11 @@ python-runtime/dist/
 *.temp
 *.bak
 *.old
+
+# AgentForge user/runtime data
+python-runtime/output/
+python-runtime/cache/
+python-runtime/assets/
+python-runtime/projects/
+python-runtime/files/
+python-runtime/production_config.json
