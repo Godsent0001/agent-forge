@@ -1,21 +1,10 @@
-import { useEffect, useState } from "react";
-import { getApiBase } from "../api/client";
+import { useApiBase } from "../api/useApiBase";
 
 export function ArtifactCard({ filepath }: { filepath: string }) {
   const cleanPath = filepath.trim().replace(/^['"]|['"]$/g, "");
   const filename = cleanPath.split(/[\\/]/).pop() || cleanPath;
   const ext = filename.split(".").pop()?.toLowerCase() || "";
-  const [apiBase, setApiBase] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    getApiBase().then((base) => {
-      if (active) setApiBase(base);
-    }).catch(() => {
-      if (active) setApiBase(null);
-    });
-    return () => { active = false; };
-  }, []);
+  const apiBase = useApiBase();
 
   const relativePath = cleanPath.startsWith("./output/")
     ? cleanPath.slice("./output/".length)
