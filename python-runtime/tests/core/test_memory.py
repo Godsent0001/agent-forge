@@ -12,7 +12,6 @@ from app.core.llm.types import LLMTurn
 @pytest.mark.asyncio
 async def test_memory_recall_and_pinned():
     store = InMemoryStore()
-    now = datetime.now(timezone.utc)
 
     await store.add("agent_1", [
         MemoryCandidate(text="User works on Orion project", kind="fact", evidence="work on Orion"),
