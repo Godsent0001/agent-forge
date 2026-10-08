@@ -15,10 +15,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: dev/kenny-ui
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - uses: astral-sh/setup-uv@v7
+      - run: git fetch origin dev/kenny-ui
+      - run: git reset --hard origin/dev/kenny-ui
       - run: npm install --package-lock-only --ignore-scripts
       - run: cd python-runtime && uv lock
       - run: |
