@@ -114,7 +114,7 @@ class ExecutionEngine:
                 "data": event.data,
             })
 
-        context = ExecutionContext(execution_id=execution.id, sink=sink)
+        context = ExecutionContext(execution_id=execution.id, visited_agent_ids=(root_agent_id,), sink=sink)
 
         try:
             await context.emit("ExecutionStarted")
