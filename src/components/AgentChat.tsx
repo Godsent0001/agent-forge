@@ -42,6 +42,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleSendMessage = async () => {
     if (!promptInput.trim() || isProcessing || !agent || !project) return;
+    if (!agent.model?.trim()) {
+      setChatError("Pick a model in Config before starting a chat.");
+      return;
+    }
 
     const userText = promptInput.trim();
     setPromptInput("");
@@ -150,7 +154,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800 text-sm leading-tight truncate">{agent.name}</h3>
             <p className="text-xs text-slate-500 truncate">
-              {agent.description || `${agent.provider} / ${agent.model}`}
+              {agent.description || `${agent.provider} / ${agent.model || "No model selected"}`}
             </p>
           </div>
         </div>
