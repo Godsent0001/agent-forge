@@ -465,10 +465,25 @@ For external tooling, use the current official documentation for the installed v
 
 **Last known UI change:** App layout correction in `src/App.tsx`.
 
-**Immediate next action:** regenerate and commit the npm/uv lockfiles for the new test dependencies, then run the new CI gates and continue into execution lifecycle fixes.
+**Immediate next action:** verify the Crawl4AI-backed web search change in CI, then continue into the D-04 execution lifecycle/API/WebSocket verification work.
 
 **Merge policy:** feature branch → automated/manual verification → PR → repository owner/friend approval → merge to `main`.
 
 **Core rule:**
 
 > If it has not been tested, it is not finished.
+
+
+---
+
+## 15. Web search backend
+
+The runtime `web_search` tool now uses the Crawl4AI Cloud `/search` endpoint.
+
+Required runtime configuration:
+- `CRAWL4AI_KEY` — Crawl4AI API key.
+- `CRAWL4AI_URL` — optional base URL; defaults to `https://api.crawl4ai.com`.
+
+The tool remains dependency-injectable in tests, so automated tests do not make live search requests. Live/manual verification should confirm that a configured Crawl4AI key returns ranked results and that failures surface as explicit tool errors.
+
+Reference the current official Crawl4AI API documentation for endpoint and response-shape changes.
