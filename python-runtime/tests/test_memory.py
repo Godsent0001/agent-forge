@@ -1,5 +1,7 @@
 import pytest
+
 from app.core.memory.compaction import compact_conversation, should_compact_conversation
+
 
 @pytest.mark.asyncio
 async def test_compaction_summarizes_older_turns():

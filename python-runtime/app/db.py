@@ -4,11 +4,12 @@ import os
 import sys
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+from alembic import command
 
 DB_PATH = Path(os.environ.get(
     "AGENTFORGE_DB_PATH",

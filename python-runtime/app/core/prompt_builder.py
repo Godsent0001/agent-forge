@@ -1,5 +1,4 @@
 """Prompt architecture v2: constructs structured system prompts for LLM calls."""
-from typing import Any
 from app.contracts.graph import AgentSpec
 
 

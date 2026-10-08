@@ -1,9 +1,16 @@
 """S-02: the contracts parse, the example trace is valid, and the checker catches each rule."""
 import re
-from datetime import datetime, timezone
 
-from app.contracts import (AgentGraph, AgentSpec, MemoryOptions, RunOptions, RunRequest, RunResult,
-                           ToolResult, dedupe_names, sanitize_tool_name, TOOL_NAME_RE)
+from app.contracts import (
+    TOOL_NAME_RE,
+    AgentGraph,
+    AgentSpec,
+    RunRequest,
+    RunResult,
+    ToolResult,
+    dedupe_names,
+    sanitize_tool_name,
+)
 from app.contracts.checks import check_events, example_events
 from app.contracts.events import RunEvent
 

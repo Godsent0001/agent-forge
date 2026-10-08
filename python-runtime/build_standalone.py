@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 
+
 def main():
     python_runtime_dir = os.path.abspath(os.path.dirname(__file__))
     os.chdir(python_runtime_dir)

@@ -17,7 +17,12 @@ from app import models
 from app.llm import LLMInterface
 from app.runtime.agent import RuntimeAgent
 from app.runtime.agent_tool import AgentTool
-from app.runtime.context import CycleDetectedError, ExecutionContext, ExecutionEvent, RecursionLimitError
+from app.runtime.context import (
+    CycleDetectedError,
+    ExecutionContext,
+    ExecutionEvent,
+    RecursionLimitError,
+)
 from app.tools.base import Tool
 from app.tools.registry import build_tool
 from app.ws import manager

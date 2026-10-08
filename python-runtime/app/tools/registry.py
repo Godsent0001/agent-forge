@@ -13,34 +13,67 @@ descriptions shown in the picker UI).
 from __future__ import annotations
 
 from app.tools.asset_cache import (
-    AssetCacheStoreTool, CacheEngineTool, DependencyEngineTool,
-    ProductionConfigTool, ProjectManagerTool,
+    AssetCacheStoreTool,
+    CacheEngineTool,
+    DependencyEngineTool,
+    ProductionConfigTool,
+    ProjectManagerTool,
 )
-from app.tools.audio import AudioAlignmentTool, AudioMixerTool, AudioProcessingTool, VoiceGeneratorTool
+from app.tools.audio import (
+    AudioAlignmentTool,
+    AudioMixerTool,
+    AudioProcessingTool,
+    VoiceGeneratorTool,
+)
 from app.tools.base import Tool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
 from app.tools.character import (
-    BodyPoseTool, CharacterAssetManagerTool, CharacterPerformanceTool, CharacterRigTool,
-    EyeEngineTool, FacialExpressionTool, FacialPerformanceTool, GestureEngineTool, LipSyncTool,
+    BodyPoseTool,
+    CharacterAssetManagerTool,
+    CharacterPerformanceTool,
+    CharacterRigTool,
+    EyeEngineTool,
+    FacialExpressionTool,
+    FacialPerformanceTool,
+    GestureEngineTool,
+    LipSyncTool,
 )
 from app.tools.composition import CompositionEngineTool, EffectsEngineTool
 from app.tools.filesystem import FileSystemTool
 from app.tools.graphics import (
-    CaptionEngineTool, DataVisualizationTool, DebateGraphicsTool, EvidenceGraphicsTool,
-    HeadlineCardTool, TypographyEngineTool, VisualAssetManagerTool,
+    CaptionEngineTool,
+    DataVisualizationTool,
+    DebateGraphicsTool,
+    EvidenceGraphicsTool,
+    HeadlineCardTool,
+    TypographyEngineTool,
+    VisualAssetManagerTool,
 )
 from app.tools.http_request import HttpRequestTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.qc import (
-    AudioQCTool, AutomatedPreviewQCTool, LipSyncQCTool, SceneQCTool,
-    ScriptToVideoQCTool, VideoQCTool,
+    AudioQCTool,
+    AutomatedPreviewQCTool,
+    LipSyncQCTool,
+    SceneQCTool,
+    ScriptToVideoQCTool,
+    VideoQCTool,
 )
-from app.tools.rendering import FinalRendererTool, PreviewRendererTool, RenderQueueTool, RenderWorkerTool
-from app.tools.scene import LightingEngineTool, SceneBuilderTool, SceneTemplateManagerTool
+from app.tools.rendering import (
+    FinalRendererTool,
+    PreviewRendererTool,
+    RenderQueueTool,
+    RenderWorkerTool,
+)
+from app.tools.scene import (
+    LightingEngineTool,
+    SceneBuilderTool,
+    SceneTemplateManagerTool,
+)
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
-from app.tools.web_search import WebSearchTool
 from app.tools.video_source import VideoSourceTool
+from app.tools.web_search import WebSearchTool
 
 # kind -> zero-arg factory. Config-driven ones (paths mostly) are handled
 # in the branches below build_tool() for clarity.

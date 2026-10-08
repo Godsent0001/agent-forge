@@ -12,9 +12,14 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
+
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.rendering import _run_ffmpeg_from_image_and_audio
-from app.tools.shared import approximate_visemes_for_word, parse_json_input, to_json_output
+from app.tools.shared import (
+    approximate_visemes_for_word,
+    parse_json_input,
+    to_json_output,
+)
 
 
 class LipSyncTool(Tool):

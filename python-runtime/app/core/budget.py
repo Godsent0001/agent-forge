@@ -1,5 +1,6 @@
 """Budget tracking and enforcement for AgentForge Core."""
 import time
+
 from app.contracts.run import BudgetSpec, Totals
 
 

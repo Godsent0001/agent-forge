@@ -3,19 +3,18 @@ AgentForge Python runtime entry point.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-import os
-from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
-from app.routers import agents, executions, projects, settings, tools
+from app.routers import agents, executions, executions_v2, projects, settings, tools
 from app.routers import catalog as catalog_router
-from app.routers import executions_v2
 from app.services.executions import manager
 
 logging.basicConfig(
@@ -62,7 +61,6 @@ def health() -> dict:
 
 def main() -> None:
     import sys
-    import os
   
     port = 0
     if "PORT" in os.environ:

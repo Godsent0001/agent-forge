@@ -1,8 +1,10 @@
 import itertools
 
 import pytest
+
 from app.graph import GraphValidationError, validate_new_link
 from app.models import Agent, AgentAgentLink, Project
+
 
 def make_project(db):
     project = Project(name="test")

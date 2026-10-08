@@ -1,5 +1,6 @@
 """Summarize tool for condensing large files and artifacts."""
 from typing import Any, ClassVar
+
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Tool, ToolError, ToolResult

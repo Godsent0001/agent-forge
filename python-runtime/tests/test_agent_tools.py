@@ -1,5 +1,5 @@
-import pytest
 from app.llm import LLMInterface
+
 
 def test_messages_payload_building():
     llm = LLMInterface("anthropic", "claude-3-5-sonnet")

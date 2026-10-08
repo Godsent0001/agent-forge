@@ -1,11 +1,16 @@
-import pytest
-from pathlib import Path
 import tempfile
-from app.core.lessons import InMemoryLessonStore, format_lessons_block, reflect_on_signal
-from app.core.tools.plan import PlanTool, PlanInput, PlanItemSpec
-from app.core.tools.summarize import SummarizeTool, SummarizeInput
-from app.core.tools.doc_search import DocSearchTool, DocSearchInput
-from app.core.tools.analyze_image import AnalyzeImageTool, AnalyzeImageInput
+from pathlib import Path
+
+import pytest
+
+from app.core.lessons import (
+    InMemoryLessonStore,
+    format_lessons_block,
+    reflect_on_signal,
+)
+from app.core.tools.doc_search import DocSearchInput, DocSearchTool
+from app.core.tools.plan import PlanInput, PlanItemSpec, PlanTool
+from app.core.tools.summarize import SummarizeInput, SummarizeTool
 
 
 class DummyWorkspace:

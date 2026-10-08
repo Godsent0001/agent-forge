@@ -8,10 +8,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from app import models
+from app.contracts.run import RunOptions, RunRequest
 from app.db import Base
 from app.services import executions as executions_service
 from app.services.executions import ExecutionManager
-from app.contracts.run import RunOptions, RunRequest
 
 
 @pytest.fixture()
@@ -208,6 +208,7 @@ def test_startup_cleanup_marks_stale_running_execution_interrupted(test_session_
 def _build_test_api(monkeypatch, factory):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from app.routers import executions_v2
 
     manager = ExecutionManager()

@@ -1,6 +1,7 @@
 """Episodic recall block builder and recall_run tool."""
 from datetime import datetime, timedelta, timezone
 from typing import Any, ClassVar
+
 from pydantic import BaseModel, Field
 
 from app.contracts.memory import RunHistory

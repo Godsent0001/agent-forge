@@ -85,7 +85,9 @@ def assemble_memory_context(summary: str, recent: list[EntryLike],
 # --- DB integration -----------------------------------------------------
 
 async def read_memory(db, agent_id: str, llm) -> str:
-    from app import models  # local import: keeps this module importable/testable without SQLAlchemy
+    from app import (
+        models,  # local import: keeps this module importable/testable without SQLAlchemy
+    )
 
     agent = db.get(models.Agent, agent_id)
     entries = (

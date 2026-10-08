@@ -1,10 +1,10 @@
 """Model catalog and token pricing logic for AgentForge Core."""
 from pathlib import Path
 from typing import Any
+
 import yaml
 
 from .types import Usage
-
 
 _MODELS_CACHE: dict[str, dict[str, Any]] | None = None
 

@@ -2,14 +2,15 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Make `app` importable when alembic is run from python-runtime/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db import Base  # noqa: E402
 from app import models  # noqa: E402,F401  # ensures models register on Base.metadata
+from app.db import Base  # noqa: E402
 
 config = context.config
 

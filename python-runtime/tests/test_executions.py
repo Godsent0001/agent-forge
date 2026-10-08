@@ -5,7 +5,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.db import Base
-from app.routers.executions import _run_execution_in_background, run_execution, RunRequest
+from app.routers.executions import (
+    RunRequest,
+    _run_execution_in_background,
+    run_execution,
+)
 
 
 @pytest.fixture

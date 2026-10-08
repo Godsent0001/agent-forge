@@ -1,6 +1,7 @@
 """Memory recall logic and scoring formula per MEMORY.md 5.1."""
 import math
 from datetime import datetime, timezone
+
 from app.contracts.memory import MemoryHit, MemoryItem, MemoryStore
 
 

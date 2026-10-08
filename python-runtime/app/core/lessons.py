@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
 from app.contracts.memory import Lesson, LessonStore
 
 

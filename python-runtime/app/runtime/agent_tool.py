@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from app.runtime.agent import RuntimeAgent
 from app.runtime.context import ExecutionContext
 from app.tools.base import Tool

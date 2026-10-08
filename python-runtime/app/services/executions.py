@@ -5,16 +5,15 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app import models
 from app.contracts.events import EventDraft, RunEvent
 from app.contracts.run import RunRequest, RunResult, Totals
-from app.contracts.runner import CancelToken
 from app.db import SessionLocal
+from app.services.core_adapters import LegacyToolFactory, NullApprovals, Workspace
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
-from app.services.core_adapters import LegacyToolFactory, NullApprovals, Workspace
 
 
 def _truncate_value(value):

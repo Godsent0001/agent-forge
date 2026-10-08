@@ -1,8 +1,8 @@
 """Safety and validation checks for extracted candidate memories."""
 import re
 from typing import Sequence
-from app.contracts.memory import MemoryCandidate, MemoryItem
 
+from app.contracts.memory import MemoryCandidate, MemoryItem
 
 INSTRUCTION_INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(all\s+)?(previous\s+)?instructions", re.IGNORECASE),

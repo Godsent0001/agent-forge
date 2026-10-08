@@ -9,6 +9,7 @@ for memory read/write, keeping the loop logic testable in isolation
 from __future__ import annotations
 
 import asyncio
+
 from sqlalchemy.orm import Session
 
 from app import models

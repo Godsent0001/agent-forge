@@ -1,17 +1,19 @@
 import asyncio
-from typing import Any
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+from typing import Any
+
+import pytest
+from pydantic import BaseModel
+
+from app.contracts.checks import check_events
+from app.contracts.events import RunEvent
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
 from app.contracts.run import BudgetSpec, RunOptions, RunRequest
 from app.contracts.tools import ArtifactRef, Tool, ToolResult
-from app.contracts.checks import check_events
-from app.contracts.events import RunEvent
 from app.core.llm.fake import FakeLLM
-from app.core.llm.types import LLMError, LLMTurn, ToolCall, Usage
+from app.core.llm.types import LLMError, LLMTurn, ToolCall
 from app.core.runner import RunnerCore
-from pydantic import BaseModel
 
 
 class MockCancelToken:

@@ -5,19 +5,26 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.contracts.events import EventDraft
-from app.contracts.graph import AgentGraph, AgentSpec, ToolBinding
+from app.contracts.graph import AgentGraph, AgentSpec
 from app.contracts.memory import IntentStore, LessonStore, MemoryStore, RunHistory
 from app.contracts.naming import dedupe_names, sanitize_tool_name
-from app.contracts.run import RunRequest, RunResult, Totals
+from app.contracts.run import RunRequest, RunResult
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
-from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
+from app.contracts.tools import (
+    RunWorkspace,
+    ToolError,
+    ToolResult,
+)
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
-from app.core.llm.pricing import get_context_window
-from app.core.llm.types import LLMContextTooLong, LLMError, LLMParams, LLMTurn, ToolCall, ToolSpec, Usage
+from app.core.llm.types import (
+    LLMContextTooLong,
+    LLMTurn,
+    ToolCall,
+    ToolSpec,
+)
 from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
@@ -580,7 +587,11 @@ class RunnerCore:
             tool_specs.append(ToolSpec(name=name, description=tool_inst.default_description, parameters=tool_inst.Input.model_json_schema()))
 
         if intents:
-            from app.core.memory.intents import IntentCancelTool, IntentCreateTool, IntentListTool
+            from app.core.memory.intents import (
+                IntentCancelTool,
+                IntentCreateTool,
+                IntentListTool,
+            )
             for ToolCls in (IntentCreateTool, IntentListTool, IntentCancelTool):
                 name = deduped[idx]
                 idx += 1

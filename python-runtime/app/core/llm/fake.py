@@ -2,7 +2,8 @@
 import asyncio
 import json
 from typing import Callable, Sequence
-from .types import LLMTurn, Usage, ToolCall
+
+from .types import LLMTurn, ToolCall, Usage
 
 
 class FakeLLM:
