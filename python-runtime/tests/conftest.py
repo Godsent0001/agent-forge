@@ -1,5 +1,4 @@
 import pytest
-from main import app
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -7,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.deps import get_db
+from main import app
 
 
 @pytest.fixture()
