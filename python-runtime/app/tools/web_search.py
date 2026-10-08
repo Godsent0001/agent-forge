@@ -1,90 +1,79 @@
-"""
-Web Search tool.
+"""Web search tool backed by Crawl4AI Cloud.
 
-The actual search backend (Bing/SerpAPI/Brave/etc.) is intentionally
-pluggable via a `search_fn` — this environment has no network access to
-test a real HTTP call, so a mock backend is wired by default. Swap in a
-real HTTP client (e.g. httpx) behind the same `search_fn` signature when
-you have API credentials.
+Crawl4AI provides a ranked web-search endpoint. AgentForge keeps the backend
+pluggable so tests can inject a deterministic search function without network
+access.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
-import logging
 from typing import Any
 
 from app.tools.base import Tool, ToolExecutionError
 
-logger = logging.getLogger(__name__)
-
-SearchFn = Callable[[str], Awaitable[list[dict]]]
+SearchFn = Callable[[str], Awaitable[list[dict[str, str]]]]
 
 
-async def _real_search_backend(query: str) -> list[dict]:
-    """
-    Real web search implementation using DuckDuckGo search / httpx fallback.
-    """
-    try:
-        from ddgs import DDGS
+async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
+    """Search through the Crawl4AI Cloud /search endpoint."""
+    key = os.environ.get("CRAWL4AI_KEY")
+    if not key:
+        raise ToolExecutionError(
+            "web_search requires CRAWL4AI_KEY for the Crawl4AI search backend."
+        )
 
-        results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=5):
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
-        if results:
-            return results
-    except Exception as exc:
-        logger.warning("ddgs search backend unavailable: %s", exc)
+    base_url = os.environ.get("CRAWL4AI_URL", "https://api.crawl4ai.com").rstrip("/")
 
     try:
         import httpx
-        from urllib.parse import quote_plus
-        from bs4 import BeautifulSoup
 
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                results = []
-                for result in soup.find_all("a", class_="result__url", limit=5):
-                    snippet_elem = result.find_parent("div", class_="result__body")
-                    snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
-                    results.append({
-                        "title": result.get_text(strip=True),
-                        "url": result.get("href", ""),
-                        "snippet": snippet,
-                    })
-                if results:
-                    return results
-    except Exception as exc:
-        logger.warning("HTTP search fallback unavailable: %s", exc)
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            response = await client.get(
+                f"{base_url}/search",
+                params={"q": query},
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except ToolExecutionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — normalize network/backend failures
+        raise ToolExecutionError(f"Crawl4AI search backend failed: {exc}") from exc
 
-    raise ToolExecutionError(
-        "No search backend available. Install 'ddgs' or configure an HTTP search backend."
-    )
+    raw_results = payload.get("results", []) if isinstance(payload, dict) else []
+    results: list[dict[str, str]] = []
+    for item in raw_results[:10]:
+        if not isinstance(item, dict):
+            continue
+        results.append({
+            "title": str(item.get("title", "")),
+            "url": str(item.get("url", "")),
+            "snippet": str(item.get("snippet", "")),
+        })
+    return results
 
 
 class WebSearchTool(Tool):
     name = "web_search"
-    description = "Search the web for current information and return top results."
+    description = "Search the web using Crawl4AI and return ranked source results."
 
     def __init__(self, search_fn: SearchFn | None = None):
-        self._search_fn = search_fn or _real_search_backend
+        self._search_fn = search_fn or _crawl4ai_search_backend
 
     async def execute(self, input: str, *, context: Any) -> str:
         if not input.strip():
             raise ToolExecutionError("web_search requires a non-empty query")
         try:
-            results = await self._search_fn(input)
-        except Exception as e:  # noqa: BLE001 — surface as a tool error, not a crash
-            raise ToolExecutionError(f"web_search backend failed: {e}") from e
+            results = await self._search_fn(input.strip())
+        except ToolExecutionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — normalize injected backend failures
+            raise ToolExecutionError(f"web_search backend failed: {exc}") from exc
 
-        lines = [f"- {r['title']} ({r['url']}): {r['snippet']}" for r in results]
+        lines = [
+            f"- {item['title']} ({item['url']}): {item['snippet']}"
+            for item in results
+        ]
         return "\n".join(lines) if lines else "No results found."
