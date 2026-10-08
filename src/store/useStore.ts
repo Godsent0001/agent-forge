@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "../api/client";
 import type { Agent, ChatMessage, Project, Tool } from "../types";
+import { DEFAULT_MODELS } from "../config/models";
 
 interface StoreState {
   projects: Project[];
@@ -92,7 +93,8 @@ export const useStore = create<StoreState>((set, get) => ({
   createAgent: async (name) => {
     const { project, agents } = get();
     if (!project) return;
-    const agent = await api.agents.create({ project_id: project.id, name });
+    const provider = "anthropic";
+    const agent = await api.agents.create({ project_id: project.id, name, provider, model: DEFAULT_MODELS[provider] });
     set({ agents: [...agents, agent], selectedAgentId: agent.id });
     return agent;
   },
