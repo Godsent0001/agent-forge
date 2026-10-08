@@ -6,14 +6,14 @@ from app.models import Agent, AgentAgentLink, Project
 
 def make_project(db):
     project = Project(name="test")
-    db_session.add(project)
-    db_session.flush()
+    db.add(project)
+    db.flush()
     return project
 
 def make_agent(db, project, name):
     agent = Agent(project_id=project.id, name=name)
-    db_session.add(agent)
-    db_session.flush()
+    db.add(agent)
+    db.flush()
     return agent
 
 def test_self_link_rejected(db_session):
