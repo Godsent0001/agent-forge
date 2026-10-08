@@ -11,7 +11,8 @@ type BootState = "checking-sidecar" | "sidecar-down" | "loading-project" | "read
 
 export default function App() {
   const [boot, setBoot] = useState<BootState>("checking-sidecar");
- const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8000");
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8000");
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
@@ -21,7 +22,8 @@ export default function App() {
     let cancelled = false;
 
     const bootstrap = async () => {
-      let sidecarUp = false;
+      try {
+        let sidecarUp = false;
       for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
         try {
           const apiBase = await getApiBase();
@@ -47,7 +49,13 @@ export default function App() {
       const projects = await fetchProjects();
       const project = projects[0] ?? (await api.projects.create("My First Project"));
       await loadProject(project);
-      if (!cancelled) setBoot("ready");
+        if (!cancelled) setBoot("ready");
+      } catch (error) {
+        if (!cancelled) {
+          setBootError(error instanceof Error ? error.message : "AgentForge failed to start");
+          setBoot("sidecar-down");
+        }
+      }
     };
 
     bootstrap();
@@ -72,6 +80,8 @@ export default function App() {
           <p className="text-sm text-slate-600 leading-relaxed">
             The Python sidecar didn't respond on {activeApiBase}. Check your terminal logs or ensure the Python backend is running properly.
           </p>
+          {bootError && <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-red-50 p-3 text-xs text-red-700 whitespace-pre-wrap">{bootError}</pre>}
+          <button onClick={() => window.location.reload()} className="mt-4 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700">Reload</button>
         </div>
       </div>
     );
@@ -85,7 +95,7 @@ export default function App() {
         onTabChange={setActiveTab}
       />
       <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0 overflow-hidden">
-        <AgentTree />
+        <AgentTree onOpenConfig={() => setActiveTab("config")} />
         <div className="min-w-0 h-full overflow-hidden">
           {activeTab === "chat" ? (
             <div className="h-full flex flex-col">
