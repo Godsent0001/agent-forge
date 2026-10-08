@@ -7,14 +7,16 @@ from app.contracts.naming import dedupe_names
 
 
 def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentGraph:
-    root = db.execute(
+    rows = db.execute(
         select(models.Agent)
-        .where(models.Agent.id == root_agent_id, models.Agent.project_id == project_id)
+        .where(models.Agent.project_id == project_id)
         .options(
             selectinload(models.Agent.tool_links).selectinload(models.AgentToolLink.tool),
             selectinload(models.Agent.child_links),
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    by_id = {row.id: row for row in rows}
+    root = by_id.get(root_agent_id)
     if root is None:
         raise ValueError("Root agent not found in project")
 
@@ -29,10 +31,7 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
         seen.add(row.id)
 
         tool_rows = list(row.tool_links)
-        child_links = list(row.child_links)
-        raw_names = [link.tool.name for link in tool_rows]
-        tool_names = dedupe_names(raw_names)
-
+        tool_names = dedupe_names([link.tool.name for link in tool_rows])
         bindings = [
             ToolBinding(
                 id=link.tool.id,
@@ -45,8 +44,8 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
         ]
 
         children: list[ChildLink] = []
-        for link in child_links:
-            child = db.get(models.Agent, link.child_agent_id)
+        for link in row.child_links:
+            child = by_id.get(link.child_agent_id)
             if child is None:
                 continue
             children.append(ChildLink(agent_id=child.id, description=link.description or None))
