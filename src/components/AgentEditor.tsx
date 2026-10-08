@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
+import { DEFAULT_MODELS } from "../config/models";
 
 const PROVIDERS = ["anthropic", "openai", "google"] as const;
 
@@ -19,7 +20,7 @@ const MODEL_OPTIONS: Record<string, string[]> = {
     "o1",
   ],
   anthropic: [
-    "claude-3-7-sonnet-20250219",
+    DEFAULT_MODELS.anthropic,
     "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
     "claude-3-opus-20240229",
