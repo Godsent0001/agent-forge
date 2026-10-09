@@ -30,7 +30,7 @@ def test_context_compiler_compacts_old_tool_output_to_artifact_reference(tmp_pat
         {"role": "user", "content": "Now summarize it."},
     ]
 
-    compiled, stats = ContextCompiler(max_context_chars=8_000).compile(messages, workspace)
+    compiled, stats = ContextCompiler(max_context_chars=8_000, recent_tool_results=0).compile(messages, workspace)
 
     assert compiled is not messages
     assert messages[3]["content"] == large_result
