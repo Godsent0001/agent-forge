@@ -88,12 +88,16 @@ class RunnerCore:
                 return RunResult(status="error", error="Cannot resume execution: request differs from checkpoint.", totals=budget.totals)
             if prior_checkpoint.frames:
                 root_invocation_id = prior_checkpoint.frames[0].invocation_id
+                root_span_id = prior_checkpoint.frames[0].span_id
             checkpoint_created_at = prior_checkpoint.created_at
             if prior_checkpoint.budget_state:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
 
         async def save_checkpoint(state: dict[str, Any]) -> None:
+            nonlocal root_span_id
+            if state.get("root_span_id"):
+                root_span_id = str(state["root_span_id"])
             messages = copy.deepcopy(state.get("messages", []))
             completed = {
                 str(m.get("tool_call_id")): str(m.get("content", ""))
@@ -102,6 +106,7 @@ class RunnerCore:
             frame = AgentFrame(
                 invocation_id=root_invocation_id,
                 agent_id=graph.root_id,
+                span_id=root_span_id,
                 task=req.task,
                 depth=0,
                 iteration=int(state.get("iterations", 0)),
@@ -119,7 +124,8 @@ class RunnerCore:
                 task_state=copy.deepcopy(state),
                 budget_state=budget.snapshot(),
                 metadata={"request_fingerprint": request_fingerprint,
-                          "resume_semantics": "in-flight-tool-outcomes-are-not-replayed"},
+                          "resume_semantics": "in-flight-tool-outcomes-are-not-replayed",
+                          "root_span_id": root_span_id},
             )
             await checkpoint_store.save(checkpoint)
 
