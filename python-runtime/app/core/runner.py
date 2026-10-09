@@ -455,7 +455,12 @@ class RunnerCore:
                                           "tool_call_history": tool_call_history,
                                           "pending_tool_call_ids": [], "completed_tool_results": {}})
 
-                context_compiler = ContextCompiler()
+                context_window = get_context_window(spec.model)
+                reserved_output_tokens = max(0, int(spec.params.max_tokens or 0))
+                usable_context_tokens = max(1_400, context_window - reserved_output_tokens - 1_000)
+                context_compiler = ContextCompiler(
+                    max_context_chars=min(48_000, max(4_000, usable_context_tokens * 3))
+                )
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
@@ -486,9 +491,10 @@ class RunnerCore:
                     compiled_messages, context_stats = context_compiler.compile(messages, workspace)
                     if context_stats.compacted_tool_results or context_stats.compacted_messages:
                         logger.debug(
-                            "Compiled context for agent %s: %d -> %d chars, %d tool results and %d messages compacted",
+                            "Compiled context for agent %s: %d -> %d chars (~%d tokens saved), %d tool results and %d messages compacted",
                             spec.id, context_stats.original_chars, context_stats.compiled_chars,
-                            context_stats.compacted_tool_results, context_stats.compacted_messages,
+                            context_stats.estimated_tokens_saved, context_stats.compacted_tool_results,
+                            context_stats.compacted_messages,
                         )
 
                     # LLM Call
