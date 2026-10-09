@@ -102,12 +102,8 @@ class RunnerCore:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
 
-        async def save_checkpoint(state: dict[str, Any]) -> None:
-            nonlocal root_span_id
-            last_checkpoint_state.clear()
-            last_checkpoint_state.update(copy.deepcopy(state))
-            if state.get("root_span_id"):
-                root_span_id = str(state["root_span_id"])
+        async def write_checkpoint() -> None:
+            state = last_checkpoint_state
             messages = copy.deepcopy(state.get("messages", []))
             completed = {
                 str(m.get("tool_call_id")): str(m.get("content", ""))
@@ -139,6 +135,30 @@ class RunnerCore:
                           "active_spans": list(active_spans.values())},
             )
             await checkpoint_store.save(checkpoint)
+
+        async def save_checkpoint(state: dict[str, Any]) -> None:
+            nonlocal root_span_id
+            last_checkpoint_state.clear()
+            last_checkpoint_state.update(copy.deepcopy(state))
+            if state.get("root_span_id"):
+                root_span_id = str(state["root_span_id"])
+            await write_checkpoint()
+
+        async def tracked_emit(draft: EventDraft) -> None:
+            nonlocal root_span_id
+            if draft.type == "span_started" and draft.span_id:
+                active_spans[draft.span_id] = {
+                    "span_id": draft.span_id,
+                    "parent_span_id": draft.parent_span_id,
+                    "kind": draft.kind,
+                    "name": draft.name,
+                }
+                if draft.kind == "agent" and draft.parent_span_id is None:
+                    root_span_id = draft.span_id
+            await emit(draft)
+            if draft.type == "span_ended" and draft.span_id:
+                active_spans.pop(draft.span_id, None)
+            await write_checkpoint()
 
         try:
             final_output = ""
