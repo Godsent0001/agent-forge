@@ -411,10 +411,14 @@ class RunnerCore:
                     if due_intents:
                         # A reminder is acknowledged only after its containing run
                         # completes. If interrupted, it remains deliverable.
+                        # If messages are reconstructed after interruption, render due
+                        # reminders again. Existing transcript restoration takes precedence
+                        # when the previous prompt was already checkpointed.
+                        reminders_block = "\n".join(f"- {item.text}" for item in due_intents)
                         already_pending = set(pending_reminder_ids)
-                        deliver = [item for item in due_intents if item.id not in already_pending]
-                        reminders_block = "\n".join(f"- {item.text}" for item in deliver)
-                        pending_reminder_ids.extend(item.id for item in deliver)
+                        pending_reminder_ids.extend(
+                            item.id for item in due_intents if item.id not in already_pending
+                        )
 
                 # 4. Lessons
                 lessons_block = ""
