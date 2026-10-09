@@ -12,6 +12,7 @@ class ScheduledTask(BaseModel):
     agent_id:str
     instruction:str
     dependencies:list[str]=Field(default_factory=list)
+    priority:int=0
     status:TaskStatus=TaskStatus.PENDING
     attempt:int=0
     max_attempts:int=1
@@ -52,10 +53,14 @@ class TaskPlan(BaseModel):
         return ready
 
     def claim_ready(self,limit:int)->list[ScheduledTask]:
+        """Claim ready tasks deterministically by priority, then task ID."""
         claimed=[]
-        for t in self.tasks.values():
-            if t.status==TaskStatus.READY and len(claimed)<max(0,limit):
-                t.status=TaskStatus.RUNNING;t.attempt+=1;claimed.append(t)
+        ready=sorted(
+            (t for t in self.tasks.values() if t.status==TaskStatus.READY),
+            key=lambda task:(-task.priority,task.task_id),
+        )
+        for t in ready[:max(0,limit)]:
+            t.status=TaskStatus.RUNNING;t.attempt+=1;claimed.append(t)
         return claimed
 
     def complete(self,task_id:str,*,result_ref:str|None=None)->list[str]:
