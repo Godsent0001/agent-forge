@@ -69,6 +69,24 @@ class BudgetTracker:
             self.totals.tool_calls+=1
             self.check_limits()
 
+    def snapshot(self)->dict:
+        """Return JSON-safe accounting state for a resumable execution checkpoint."""
+        with self._lock:
+            return {
+                "elapsed_seconds": self.elapsed_seconds,
+                "totals": self.totals.model_dump(mode="json"),
+            }
+
+    def restore(self, state: dict)->None:
+        """Restore accounting before resuming; elapsed runtime remains cumulative."""
+        with self._lock:
+            elapsed = max(0.0, float(state.get("elapsed_seconds", 0.0)))
+            totals = Totals.model_validate(state.get("totals", {}))
+            self.totals = totals
+            self._started = time.monotonic() - elapsed
+            self._reserved_calls.clear()
+            self._reserved_tokens = 0
+
     def check_limits(self)->None:
         calls=self.totals.llm_calls+len(self._reserved_calls)
         if self.spec.max_llm_calls is not None and calls>self.spec.max_llm_calls:
