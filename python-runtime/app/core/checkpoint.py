@@ -1,4 +1,4 @@
-"""Versioned checkpoint schema and storage protocol for host-backed durable recovery."""
+"""Versioned checkpoint schema and storage used by RunnerCore safe-boundary recovery."""
 from __future__ import annotations
 import asyncio
 import sqlite3
@@ -51,11 +51,10 @@ class InMemoryCheckpointStore:
 
 
 class SQLiteCheckpointStore:
-    """Durable local checkpoint store.
+    """Durable local checkpoint store used inside an execution workspace.
 
-    The host must still decide safe checkpoint boundaries and implement restoration
-    of the runner's call stack. This store persists versioned snapshots transactionally;
-    it does not by itself make an in-flight execution resumable.
+    RunnerCore owns safe-boundary snapshots and resume policy. In-flight tool calls are
+    treated as uncertain after interruption and are not automatically replayed.
     """
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
