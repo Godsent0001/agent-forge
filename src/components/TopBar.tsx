@@ -1,129 +1,150 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useStore } from "../store/useStore";
 import { SettingsModal } from "./SettingsModal";
+import { ToolCatalogModal } from "./ToolCatalogModal";
 
-export function TopBar({
-  activeTab,
-  onTabChange,
-}: {
+interface TopBarProps {
   onRun?: (executionId: string) => void;
-  activeTab: "chat" | "config";
-  onTabChange: (tab: "chat" | "config") => void;
-}) {
-  const projects = useStore((s) => s.projects);
+  activeTab?: "chat" | "config" | "canvas";
+  onTabChange?: (tab: "chat" | "config" | "canvas") => void;
+}
+
+export function TopBar({ activeTab = "chat", onTabChange }: TopBarProps) {
   const project = useStore((s) => s.project);
+  const projects = useStore((s) => s.projects);
   const switchProject = useStore((s) => s.switchProject);
   const createProject = useStore((s) => s.createProject);
-  const selectedAgentId = useStore((s) => s.selectedAgentId);
-  const agents = useStore((s) => s.agents);
-
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showToolCatalog, setShowToolCatalog] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [isCreatingProj, setIsCreatingProj] = useState(false);
 
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-
-  const handleCreateProject = async () => {
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!newProjectName.trim()) return;
     await createProject(newProjectName.trim());
     setNewProjectName("");
-    setIsCreatingProj(false);
+    setIsCreatingProject(false);
   };
 
   return (
-    <div className="h-14 shrink-0 border-b border-slate-200 flex items-center justify-between px-4 bg-surface-900 shadow-sm">
-      {/* Project selector dropdown */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-800 text-base">AgentForge</span>
-          <span className="text-slate-300">/</span>
-          <select
-            value={project?.id ?? ""}
-            onChange={(e) => e.target.value && switchProject(e.target.value)}
-            className="bg-white border border-slate-300 text-slate-800 text-xs font-semibold rounded-md px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-accent-500 shadow-sm"
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} {p.parallel_execution ? "(⚡ Parallel)" : "(Sequential)"}
-              </option>
-            ))}
-          </select>
-
-          {isCreatingProj ? (
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                placeholder="New Project..."
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCreateProject()}
-                className="bg-white border border-slate-300 text-xs text-slate-800 px-2 py-1 rounded w-32 focus:outline-none shadow-sm"
-              />
-              <button
-                onClick={handleCreateProject}
-                className="bg-accent-500 text-white text-xs px-2 py-1 rounded hover:bg-accent-400 font-medium"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => setIsCreatingProj(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs px-1"
-              >
-                ✕
-              </button>
+    <>
+      <header className="h-12 bg-studio-900 border-b border-studio-700/80 px-4 flex items-center justify-between text-xs select-none">
+        {/* Left: Brand Identity & Project Selector */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded bg-accent-500 flex items-center justify-center font-mono font-bold text-white text-2xs shadow-studio">
+              AF
             </div>
-          ) : (
-            <button
-              onClick={() => setIsCreatingProj(true)}
-              title="Create New Project"
-              className="text-slate-600 hover:text-slate-800 text-xs font-medium px-2 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 shadow-sm"
-            >
-              + New
-            </button>
-          )}
+            <span className="font-semibold text-studio-100 tracking-tight">AgentForge</span>
+          </div>
+
+          <div className="h-4 w-px bg-studio-700" />
+
+          {/* Project Selector Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-2xs font-mono text-studio-500 uppercase tracking-wider">Project:</span>
+            {isCreatingProject ? (
+              <form onSubmit={handleCreateProject} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="Project name…"
+                  className="bg-studio-800 text-studio-100 border border-studio-600 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-accent-500"
+                  autoFocus
+                />
+                <button type="submit" className="text-accent-400 hover:text-accent-300 font-semibold px-1">
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProject(false)}
+                  className="text-studio-400 hover:text-studio-200 px-1"
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-1">
+                <select
+                  value={project?.id || ""}
+                  onChange={(e) => switchProject(e.target.value)}
+                  className="bg-studio-800 text-studio-100 border border-studio-700 rounded px-2 py-1 text-xs font-medium hover:border-studio-600 focus:outline-none focus:border-accent-500 transition-colors"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setIsCreatingProject(true)}
+                  className="p-1 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
+                  title="Create new project"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <span className="text-slate-300">/</span>
-        <span className="text-xs font-semibold text-slate-600">
-          {selectedAgent ? selectedAgent.name : "No Agent Selected"}
-        </span>
-      </div>
+        {/* Center: Studio Segmented View Tabs */}
+        <div className="flex items-center gap-1 bg-studio-950 p-1 rounded-panel border border-studio-700/60">
+          <button
+            onClick={() => onTabChange?.("canvas")}
+            className={`px-3 py-1 rounded-md font-medium text-xs transition-all ${
+              activeTab === "canvas"
+                ? "bg-studio-800 text-accent-400 border border-studio-700 shadow-studio"
+                : "text-studio-400 hover:text-studio-200"
+            }`}
+          >
+            Workflow Canvas
+          </button>
+          <button
+            onClick={() => onTabChange?.("chat")}
+            className={`px-3 py-1 rounded-md font-medium text-xs transition-all ${
+              activeTab === "chat"
+                ? "bg-studio-800 text-accent-400 border border-studio-700 shadow-studio"
+                : "text-studio-400 hover:text-studio-200"
+            }`}
+          >
+            Interactive Chat
+          </button>
+          <button
+            onClick={() => onTabChange?.("config")}
+            className={`px-3 py-1 rounded-md font-medium text-xs transition-all ${
+              activeTab === "config"
+                ? "bg-studio-800 text-accent-400 border border-studio-700 shadow-studio"
+                : "text-studio-400 hover:text-studio-200"
+            }`}
+          >
+            Agent Inspector
+          </button>
+        </div>
 
-      {/* Mode Switcher: Agent Chat vs Agent Config */}
-      <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
-        <button
-          onClick={() => onTabChange("chat")}
-          className={`text-xs font-bold px-3 py-1 rounded-md transition-all ${
-            activeTab === "chat"
-              ? "bg-white text-accent-500 shadow-sm"
-              : "text-slate-600 hover:text-slate-800"
-          }`}
-        >
-          💬 Agent Chat
-        </button>
-        <button
-          onClick={() => onTabChange("config")}
-          className={`text-xs font-bold px-3 py-1 rounded-md transition-all ${
-            activeTab === "config"
-              ? "bg-white text-accent-500 shadow-sm"
-              : "text-slate-600 hover:text-slate-800"
-          }`}
-        >
-          ⚙ Agent Config
-        </button>
-      </div>
+        {/* Right: Actions & Settings */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowToolCatalog(true)}
+            className="px-2.5 py-1 text-xs font-medium text-studio-300 hover:text-white bg-studio-800 hover:bg-studio-700 border border-studio-700 rounded-md transition-colors"
+          >
+            Tool Catalog
+          </button>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setSettingsOpen(true)}
-          title="API Keys & Settings"
-          className="text-slate-500 hover:text-slate-800 transition-colors text-sm px-2 py-1 rounded hover:bg-slate-100"
-        >
-          ⚙ Settings
-        </button>
-      </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-1.5 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md transition-colors"
+            title="Settings"
+          >
+            ⚙️
+          </button>
+        </div>
+      </header>
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
-    </div>
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showToolCatalog && <ToolCatalogModal onClose={() => setShowToolCatalog(false)} />}
+    </>
   );
 }

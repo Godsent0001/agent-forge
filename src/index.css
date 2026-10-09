@@ -8,8 +8,8 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: #0b0f17;
+  color: #f1f5f9;
 }
 
 body {
@@ -18,29 +18,27 @@ body {
 }
 
 ::selection {
-  background-color: rgba(99, 102, 241, 0.2);
+  background-color: rgba(99, 102, 241, 0.3);
+  color: #ffffff;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.3);
-  border-radius: 6px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background-color: rgba(71, 85, 105, 0.4);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(100, 116, 139, 0.5);
-  background-clip: content-box;
+  background-color: rgba(100, 116, 139, 0.7);
 }
 
 :focus-visible {
-  outline: 2px solid rgba(79, 70, 229, 0.6);
+  outline: 2px solid rgba(99, 102, 241, 0.8);
   outline-offset: 1px;
 }
 
@@ -50,4 +48,11 @@ body {
 }
 .animate-fade-in {
   animation: fade-in 150ms ease-out;
+}
+
+/* Canvas Grid Pattern */
+.bg-grid-pattern {
+  background-size: 24px 24px;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
 }
