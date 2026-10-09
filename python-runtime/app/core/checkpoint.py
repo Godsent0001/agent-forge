@@ -10,6 +10,7 @@ from pydantic import BaseModel,Field
 class AgentFrame(BaseModel):
     invocation_id:str
     agent_id:str
+    span_id:str|None=None
     parent_invocation_id:str|None=None
     task:str
     depth:int=0
