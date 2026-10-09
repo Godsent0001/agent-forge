@@ -63,12 +63,12 @@ class SQLiteCheckpointStore:
 
     def _connect(self):
         connection = sqlite3.connect(self.database_path, timeout=10.0)
-        connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=FULL")
         return connection
 
     def _initialize(self) -> None:
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS agent_checkpoints ("
                 "execution_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, "
