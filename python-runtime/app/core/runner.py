@@ -673,6 +673,9 @@ class RunnerCore:
         clock: Clock,
     ) -> str:
         start_time = _clock_now(clock)
+        # Account for the dispatch before span-start checkpointing so a crash
+        # cannot lose the attempted tool-call count.
+        budget.record_tool_call()
         async with span(
             emit,
             kind="tool_call",
@@ -684,8 +687,6 @@ class RunnerCore:
                 "args": json.dumps(tc.arguments)[:2000],
             },
         ) as tool_span_id:
-            budget.record_tool_call()
-
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
             if child_link:
                 task_id = f"task_{tc.id}"
