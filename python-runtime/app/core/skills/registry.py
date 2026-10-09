@@ -52,7 +52,8 @@ def select_skill(
     for path in candidates[:MAX_SKILLS_TO_SCAN]:
         try:
             manifest = load_skill_file(path)
-        except (OSError, ValueError, TypeError):
+        except Exception:
+            # A malformed optional skill must never break an otherwise valid run.
             continue
         if not _eligible(manifest, available_tools):
             continue
