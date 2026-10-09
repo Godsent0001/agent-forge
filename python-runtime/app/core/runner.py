@@ -263,6 +263,7 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
@@ -276,6 +277,7 @@ class RunnerCore:
                 totals=budget.totals,
             )
         except Exception as exc:
+            await checkpoint_store.delete(req.execution_id)
             logger.exception("Run execution error")
             return RunResult(
                 status="error",
@@ -450,6 +452,12 @@ class RunnerCore:
                     )
 
                     messages.append(turn.message)
+                    if depth == 0 and checkpoint:
+                        await persist_state({
+                            "messages": messages, "iterations": iterations,
+                            "tool_call_history": tool_call_history,
+                            "pending_tool_call_ids": [tc.id for tc in turn.tool_calls],
+                        })
 
                     if not turn.tool_calls:
                         final_text = turn.text or ""
