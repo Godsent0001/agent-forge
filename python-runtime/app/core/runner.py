@@ -18,6 +18,7 @@ from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFac
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
 from app.core.lessons import format_lessons_block
@@ -371,11 +372,13 @@ class RunnerCore:
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
+                memory_block = ContextCompiler.bound_block(memory_block, 3_200, "memory recall")
 
                 # 2. Recent problem runs
                 recent_runs_block = ""
                 if req.options.memory.episodic and run_history and depth == 0:
                     recent_runs_block = await build_recent_runs_block(run_history, spec.id)
+                recent_runs_block = ContextCompiler.bound_block(recent_runs_block, 1_200, "recent runs")
 
                 # 3. Due reminders
                 reminders_block = ""
@@ -390,6 +393,8 @@ class RunnerCore:
                 lessons_block = ""
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
+                lessons_block = ContextCompiler.bound_block(lessons_block, 1_800, "lessons")
+                reminders_block = ContextCompiler.bound_block(reminders_block, 1_000, "reminders")
 
                 # 5. Temporal Context
                 now_dt = _clock_now(clock)
@@ -407,7 +412,7 @@ class RunnerCore:
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=history_summary,
+                    history_summary_block=ContextCompiler.bound_block(history_summary, 6_000, "conversation summary"),
                     skill_manifest=skill_manifest,
                     temporal_context=temporal_context,
                 )
@@ -425,8 +430,21 @@ class RunnerCore:
                 iterations = int(resume_state.get("iterations", 0)) if depth == 0 and resume_state else 0
                 tool_call_history: list[str] = list(resume_state.get("tool_call_history", [])) if depth == 0 and resume_state else []
                 pending_ids = list(resume_state.get("pending_tool_call_ids", [])) if depth == 0 and resume_state else []
-                if pending_ids:
+                completed_tool_results = dict(resume_state.get("completed_tool_results", {})) if depth == 0 and resume_state else {}
+                if pending_ids or completed_tool_results:
+                    existing_result_ids = {
+                        str(m.get("tool_call_id")) for m in messages
+                        if m.get("role") == "tool" and m.get("tool_call_id")
+                    }
+                    # Completed calls are restored from their checkpointed results; only
+                    # calls still marked pending are uncertain and must not be replayed.
+                    for completed_id, completed_content in completed_tool_results.items():
+                        if str(completed_id) not in existing_result_ids:
+                            messages.append({"role": "tool", "tool_call_id": str(completed_id), "content": str(completed_content)})
+                            existing_result_ids.add(str(completed_id))
                     for pending_id in pending_ids:
+                        if str(pending_id) in existing_result_ids:
+                            continue
                         messages.append({
                             "role": "tool",
                             "tool_call_id": pending_id,
@@ -435,8 +453,14 @@ class RunnerCore:
                     if checkpoint:
                         await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
-                                          "pending_tool_call_ids": []})
+                                          "pending_tool_call_ids": [], "completed_tool_results": {}})
 
+                context_window = get_context_window(spec.model)
+                reserved_output_tokens = max(0, int(spec.params.max_tokens or 0))
+                usable_context_tokens = max(1_400, context_window - reserved_output_tokens - 1_000)
+                context_compiler = ContextCompiler(
+                    max_context_chars=min(48_000, max(4_000, usable_context_tokens * 3))
+                )
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
@@ -462,10 +486,21 @@ class RunnerCore:
                             )
                         return final_text
 
+                    # Compile a bounded prompt view without mutating the authoritative transcript.
+                    # The compiler replaces stale large tool outputs with artifact references.
+                    compiled_messages, context_stats = context_compiler.compile(messages, workspace)
+                    if context_stats.compacted_tool_results or context_stats.compacted_messages:
+                        logger.debug(
+                            "Compiled context for agent %s: %d -> %d chars (~%d tokens saved), %d tool results and %d messages compacted",
+                            spec.id, context_stats.original_chars, context_stats.compiled_chars,
+                            context_stats.estimated_tokens_saved, context_stats.compacted_tool_results,
+                            context_stats.compacted_messages,
+                        )
+
                     # LLM Call
                     turn = await self._execute_llm_turn(
                         spec=spec,
-                        messages=messages,
+                        messages=compiled_messages,
                         tools=native_tool_specs,
                         parent_span_id=agent_span_id,
                         emit=emit,
@@ -537,7 +572,20 @@ class RunnerCore:
                         max_tasks=max_tasks,
                     )
                     plan.refresh_ready()
-                    results_by_call: dict[str, str] = {}
+                    results_by_call: dict[str, str] = {
+                        tc.id: f"ERROR: execution task limit exceeded ({max_tasks})."
+                        for tc in rejected_calls
+                    }
+                    completed_tool_results: dict[str, str] = dict(results_by_call)
+                    pending_call_ids = [tc.id for tc in scheduled_calls]
+                    if depth == 0 and checkpoint:
+                        await persist_state({
+                            "messages": messages, "iterations": iterations,
+                            "tool_call_history": tool_call_history,
+                            "pending_tool_call_ids": pending_call_ids,
+                            "completed_tool_results": completed_tool_results,
+                        })
+
                     parallel_limit = (
                         max(1, int(getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS)))
                         if req.options.parallel_tools else 1
@@ -565,36 +613,61 @@ class RunnerCore:
                             except Exception as exc:
                                 return tc.id, f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
-                        batch_results = await asyncio.gather(
-                            *(execute_scheduled(task) for task in claimed),
-                            return_exceptions=True,
-                        )
-                        for task, result in zip(claimed, batch_results):
-                            if isinstance(result, BudgetExceededError):
-                                raise result
-                            if isinstance(result, asyncio.CancelledError):
-                                raise result
-                            if isinstance(result, Exception):
-                                call_id = next(tc.id for tc in scheduled_calls if task_keys[tc.id] == task.task_id)
-                                content = f"ERROR: tool crashed ({type(result).__name__}: {result})"
-                            else:
-                                call_id, content = result
-                            results_by_call[call_id] = content
-                            if content.startswith("ERROR:"):
-                                plan.fail(task.task_id, content, retryable=False)
-                            else:
-                                plan.complete(task.task_id)
+                        running = {
+                            asyncio.create_task(execute_scheduled(task)): task
+                            for task in claimed
+                        }
+                        while running:
+                            done, _ = await asyncio.wait(
+                                running, return_when=asyncio.FIRST_COMPLETED
+                            )
+                            for finished in done:
+                                task = running.pop(finished)
+                                try:
+                                    call_id, result_text = finished.result()
+                                except (BudgetExceededError, asyncio.CancelledError):
+                                    for unfinished in running:
+                                        unfinished.cancel()
+                                    await asyncio.gather(*running, return_exceptions=True)
+                                    raise
+                                except Exception as exc:
+                                    call_id = next(
+                                        tc.id for tc in scheduled_calls
+                                        if task_keys[tc.id] == task.task_id
+                                    )
+                                    result_text = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+
+                                results_by_call[call_id] = result_text
+                                completed_tool_results[call_id] = result_text
+                                if result_text.startswith("ERROR:"):
+                                    plan.fail(task.task_id, result_text, retryable=False)
+                                else:
+                                    plan.complete(task.task_id)
+
+                                # Persist each completion immediately. If a sibling tool
+                                # is interrupted, completed work is retained and only the
+                                # genuinely in-flight calls are marked uncertain.
+                                pending_call_ids = [
+                                    tc.id for tc in scheduled_calls
+                                    if tc.id not in results_by_call
+                                ]
+                                if depth == 0 and checkpoint:
+                                    await persist_state({
+                                        "messages": messages, "iterations": iterations,
+                                        "tool_call_history": tool_call_history,
+                                        "pending_tool_call_ids": pending_call_ids,
+                                        "completed_tool_results": completed_tool_results,
+                                    })
                         plan.refresh_ready()
 
-                    for tc in rejected_calls:
-                        results_by_call[tc.id] = f"ERROR: execution task limit exceeded ({max_tasks})."
                     for tc in tool_call_tuples:
                         messages.append({"role": "tool", "tool_call_id": tc.id,
                                          "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
                     if depth == 0 and checkpoint:
                         await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
-                                          "pending_tool_call_ids": []})
+                                          "pending_tool_call_ids": [],
+                                          "completed_tool_results": {}})
 
                     continue
 
@@ -820,9 +893,32 @@ class RunnerCore:
                 if timeout_s <= 0:
                     raise BudgetExceededError("Run deadline exhausted before tool execution.")
                 async with budget.tool_semaphore:
-                    async with asyncio.timeout(timeout_s):
-                        res: ToolResult = await tool_obj.run(args_inst, ctx)
+                    for attempt in range(2):
+                        try:
+                            async with asyncio.timeout(timeout_s):
+                                res: ToolResult = await tool_obj.run(args_inst, ctx)
+                            break
+                        except ToolError as retry_error:
+                            # Retry only when the tool explicitly guarantees this failure
+                            # is safe to retry; never infer idempotency from an error string.
+                            if not retry_error.retryable or attempt == 1:
+                                raise
+                            logger.warning(
+                                "Retrying explicitly retryable tool %s (attempt %d/2)",
+                                tc.name, attempt + 2,
+                            )
+                if not isinstance(res, ToolResult):
+                    return f"ERROR: tool '{tc.name}' returned an invalid result contract."
+                if not res.ok:
+                    return f"ERROR: tool '{tc.name}' reported failure: {res.content}"
+
                 content = res.content
+                if res.artifacts:
+                    artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
+                    content += " | Artifacts produced: " + " | ".join(artifact_lines)
+                if res.truncated:
+                    continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
+                    content += f" | NOTE: tool output is truncated.{continuation}"
 
                 saved_ref = None
                 if len(content) > 1000 and hasattr(workspace, "write_result"):
