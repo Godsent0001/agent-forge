@@ -75,7 +75,7 @@ class YieldTimeTool(Tool):
             return ToolResult(
                 ok=True,
                 content=(
-                    f"Durable hibernation scheduled for {wake_dt.isoformat()} (duration: {duration_sec:.1f}s, reason: '{args.reason}'). "
-                    "Process state checkpointed."
+                    f"Wake-up reminder scheduled for {wake_dt.isoformat()} (duration: {duration_sec:.1f}s, reason: '{args.reason}'). "
+                    "The runner's full execution state is not checkpointed by this tool; automatic resume requires host checkpoint/resume support."
                 ),
             )
