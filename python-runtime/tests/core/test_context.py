@@ -53,3 +53,18 @@ def test_context_compiler_preserves_recent_tool_results(tmp_path):
     assert "Full result saved at .results/old.txt" in compiled[2]["content"]
     assert compiled[3]["content"] == "y" * 1500
     assert stats.compacted_tool_results == 1
+
+
+def test_context_compiler_does_not_overwrite_existing_full_artifact(tmp_path):
+    workspace = Workspace(tmp_path)
+    workspace.write_result("tool-1", "complete untruncated payload")
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "task"},
+        {"role": "tool", "tool_call_id": "tool-1", "content": "x" * 1500},
+    ]
+
+    compiled, _ = ContextCompiler(recent_tool_results=0).compile(messages, workspace)
+
+    assert "Full result saved at .results/tool-1.txt" in compiled[-1]["content"]
+    assert (tmp_path / ".results" / "tool-1.txt").read_text(encoding="utf-8") == "complete untruncated payload"
