@@ -105,6 +105,10 @@ class RunnerCore:
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
             pending_reminder_ids = list((resume_state or {}).get("pending_reminder_ids", []))
             last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
+            # A resumed invocation is active again; terminal status from the previous
+            # interruption remains available in the result but must not label new writes.
+            last_checkpoint_state["checkpoint_status"] = "running"
+            last_checkpoint_state.pop("terminal_error", None)
             if root_span_id and not active_spans and not (
                 resume_state and isinstance(resume_state.get("final_output"), str)
             ):
