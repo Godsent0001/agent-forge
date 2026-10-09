@@ -106,7 +106,13 @@ class ContextCompiler:
                 if not isinstance(content, str) or len(content) <= 512:
                     continue
                 keep = max(256, min(800, self.max_context_chars // 30))
-                message["content"] = content[:keep] + f"\n[older message compacted; {len(content) - keep} characters omitted]"
+                head = keep // 2
+                tail = keep - head
+                message["content"] = (
+                    content[:head]
+                    + f" [older message compacted; {len(content) - keep} characters omitted] "
+                    + content[-tail:]
+                )
                 compacted_messages += 1
 
         return compiled, ContextCompileStats(
