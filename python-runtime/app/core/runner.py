@@ -160,6 +160,34 @@ class RunnerCore:
                 active_spans.pop(draft.span_id, None)
             await write_checkpoint()
 
+        if prior_checkpoint is not None and active_spans:
+            def _span_depth(span_id: str) -> int:
+                depth = 0
+                parent = active_spans.get(span_id, {}).get("parent_span_id")
+                seen = {span_id}
+                while parent and parent in active_spans and parent not in seen:
+                    seen.add(parent)
+                    depth += 1
+                    parent = active_spans[parent].get("parent_span_id")
+                return depth
+
+            abandoned_spans = sorted(
+                (sid for sid in active_spans if sid != root_span_id),
+                key=_span_depth, reverse=True,
+            )
+            for abandoned_id in abandoned_spans:
+                abandoned = active_spans.get(abandoned_id)
+                if abandoned:
+                    await tracked_emit(EventDraft(
+                        type="span_ended",
+                        span_id=abandoned_id,
+                        parent_span_id=abandoned.get("parent_span_id"),
+                        kind=abandoned.get("kind"),
+                        name=abandoned.get("name"),
+                        status="error",
+                        data={"error": "Execution interrupted; span closed during resume."},
+                    ))
+
         try:
             final_output = ""
             if resume_state and isinstance(resume_state.get("final_output"), str):
@@ -174,7 +202,7 @@ class RunnerCore:
                 history_summary=req.history_summary,
                 parent_span_id=None,
                 depth=0,
-                emit=emit,
+                emit=tracked_emit,
                 cancel=cancel,
                 approvals=approvals,
                 workspace=workspace,
@@ -201,7 +229,7 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
             elif root_span_id and not resume_state.get("root_span_closed"):
-                await emit(EventDraft(
+                await tracked_emit(EventDraft(
                     type="span_ended", span_id=root_span_id, parent_span_id=None,
                     kind="agent", name=root_spec.name, status="ok",
                     data={"output_preview": final_output[:2000]},
@@ -218,7 +246,7 @@ class RunnerCore:
                     req=req,
                     final_output=final_output,
                     memory=memory,
-                    emit=emit,
+                    emit=tracked_emit,
                     parent_span_id=None,
                     budget=budget,
                 )
