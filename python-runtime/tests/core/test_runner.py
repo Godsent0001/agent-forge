@@ -298,7 +298,7 @@ async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
         {"role": "user", "content": request.task},
         {"role": "assistant", "content": "searching", "tool_calls": [
             {"id": "tc-done", "type": "function",
-             "function": {"name": "web_search", "arguments": "{\\\"query\\\": \\\"first\\\"}"}},
+             "function": {"name": "web_search", "arguments": "{}"}},
             {"id": "tc-interrupted", "type": "function",
              "function": {"name": "web_search", "arguments": "{}"}}
         ]},
