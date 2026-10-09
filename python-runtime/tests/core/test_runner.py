@@ -357,3 +357,37 @@ async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
     assert sum(e.type == "span_ended" and e.span_id == root_span_id for e in events) == 1
     assert sum(e.type == "span_ended" and e.span_id == tool_span_id for e in events) == 1
     assert await store.load(execution_id) is None
+
+
+@pytest.mark.asyncio
+async def test_runner_schedules_multiple_tool_calls_in_one_turn(tmp_path):
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="I will search two independent items.",
+            tool_calls=[
+                ToolCall(id="scheduled-1", name="web_search", arguments={"query": "first"}),
+                ToolCall(id="scheduled-2", name="web_search", arguments={"query": "second"}),
+            ],
+        ),
+        LLMTurn(text="Both searches completed."),
+    ])
+    graph = AgentGraph(
+        root_id="root",
+        agents={"root": AgentSpec(
+            id="root", name="Scheduler Agent", provider="fake", model="fake-model",
+            tools=[ToolBinding(id="search", kind="web_search", name="web_search")],
+        )},
+    )
+    request = RunRequest(
+        execution_id="scheduler-batch-1", project_id="project", root_agent_id="root",
+        task="Search two independent items",
+        options=RunOptions(parallel_tools=True),
+    )
+    result = await RunnerCore(fake_llm=fake_llm).run(
+        req=request, graph=graph, emit=noop_emit, cancel=MockCancelToken(),
+        approvals=MockApprovalGate(), workspace=MockWorkspace(tmp_path),
+        tools=MockToolFactory(), memory=None, lessons=None, intents=None, run_history=None,
+    )
+    assert result.status == "completed"
+    assert result.totals.tool_calls == 2
+    assert "Both searches completed" in result.final_output
