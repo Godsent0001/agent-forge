@@ -58,6 +58,7 @@ class SQLiteCheckpointStore:
     """
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
+        self._async_lock = asyncio.Lock()
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
@@ -76,7 +77,8 @@ class SQLiteCheckpointStore:
             )
 
     async def save(self, checkpoint: ExecutionCheckpoint) -> None:
-        await asyncio.to_thread(self._save_sync, checkpoint)
+        async with self._async_lock:
+            await asyncio.to_thread(self._save_sync, checkpoint)
 
     def _save_sync(self, checkpoint: ExecutionCheckpoint) -> None:
         payload = checkpoint.model_dump_json()
@@ -89,7 +91,8 @@ class SQLiteCheckpointStore:
             )
 
     async def load(self, execution_id: str) -> ExecutionCheckpoint | None:
-        return await asyncio.to_thread(self._load_sync, execution_id)
+        async with self._async_lock:
+            return await asyncio.to_thread(self._load_sync, execution_id)
 
     def _load_sync(self, execution_id: str) -> ExecutionCheckpoint | None:
         with self._connect() as connection:
@@ -99,7 +102,8 @@ class SQLiteCheckpointStore:
         return ExecutionCheckpoint.model_validate_json(row[0]) if row else None
 
     async def delete(self, execution_id: str) -> None:
-        await asyncio.to_thread(self._delete_sync, execution_id)
+        async with self._async_lock:
+            await asyncio.to_thread(self._delete_sync, execution_id)
 
     def _delete_sync(self, execution_id: str) -> None:
         with self._connect() as connection:
