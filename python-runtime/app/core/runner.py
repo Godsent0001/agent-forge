@@ -102,6 +102,14 @@ class RunnerCore:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
             last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
+            if root_span_id and not active_spans and not (
+                resume_state and isinstance(resume_state.get("final_output"), str)
+            ):
+                return RunResult(
+                    status="error",
+                    error="Checkpoint has no active root span and no final output; refusing an event-contract-unsafe resume.",
+                    totals=budget.totals,
+                )
             if resume_state and resume_state.get("final_output") is not None and not active_spans:
                 resume_state["root_span_closed"] = True
                 last_checkpoint_state.update(copy.deepcopy(resume_state))
