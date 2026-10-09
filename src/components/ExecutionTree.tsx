@@ -1,88 +1,83 @@
 import { useState } from "react";
 import { useExecutionStream } from "../hooks/useExecutionStream";
-import type { ExecutionEvent, ExecutionStatus } from "../types";
 
-const STATUS_DOT: Record<ExecutionStatus, string> = {
-  idle: "bg-status-idle",
-  running: "bg-status-running animate-pulse",
-  completed: "bg-status-success",
-  error: "bg-status-error",
-  cancelled: "bg-status-error",
-  budget_exceeded: "bg-status-error",
-  interrupted: "bg-status-error",
-};
+interface ExecutionTreeProps {
+  executionId: string | null;
+}
 
-export function ExecutionTree({ executionId }: { executionId: string | null }) {
+export function ExecutionTree({ executionId }: ExecutionTreeProps) {
   const { events, tree } = useExecutionStream(executionId);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
 
-  const findNode = (nodes: typeof tree): (typeof tree)[number] | null => {
-    for (const node of nodes) {
-      if (node.id === selectedNodeId) return node;
-      const child = findNode(node.children);
-      if (child) return child;
-    }
-    return null;
-  };
-  const selectedNode = selectedNodeId ? findNode(tree) : null;
-  const selectedEvents = selectedNodeId
-    ? events.filter((e) => e.span_id === selectedNodeId)
-    : [];
+  if (!executionId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-6 text-center text-xs select-none">
+        <div className="w-10 h-10 rounded-full bg-studio-800 border border-studio-700 flex items-center justify-center mb-2 text-studio-400">
+          ⚡
+        </div>
+        <h3 className="font-semibold text-studio-200 mb-1">Execution Inspector</h3>
+        <p className="text-studio-500 text-2xs leading-relaxed max-w-xs">
+          Run an agent test or execution to stream real-time events, tool calls, and debug traces.
+        </p>
+      </div>
+    );
+  }
 
-  const renderNode = (node: any) => (
-    <div key={node.id}>
-      <button
-        onClick={() => setSelectedNodeId(node.id)}
-        style={{ paddingLeft: `${12 + node.depth * 16}px` }}
-        className={`w-full text-left py-1.5 pr-3 text-sm flex items-center gap-2 rounded-md transition-colors duration-150 my-0.5
-          ${selectedNodeId === node.id ? "bg-slate-200/80 font-medium text-slate-800" : "hover:bg-slate-100 text-slate-600"}`}
-      >
-        <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[node.status as ExecutionStatus]}`} />
-        <span className="truncate">{node.label}</span>
-      </button>
-      {node.children.map(renderNode)}
-    </div>
-  );
+  const selectedEvent = events.find((e) => e.seq === selectedSeq) || events[events.length - 1];
 
   return (
-    <div className="h-full flex flex-col border-l border-slate-200 bg-surface-900">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Execution Tree
-        </h2>
+    <div className="h-full flex flex-col text-xs select-none bg-studio-900">
+      {/* Inspector Header */}
+      <div className="p-3 border-b border-studio-800 bg-studio-850 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-semibold text-studio-100 truncate">Run #{executionId.slice(0, 8)}</span>
+          <span className="text-2xs font-mono uppercase px-1.5 py-0.5 rounded border bg-emerald-950/60 text-emerald-400 border-emerald-800/80">
+            Active Stream
+          </span>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2 px-2">
-        {!executionId && (
-          <p className="px-3 py-6 text-xs text-slate-400 text-center">
-            Run a task or send a message to inspect execution traces.
-          </p>
-        )}
-        {tree.map(renderNode)}
+      {/* Execution Event Stream Tree */}
+      <div className="flex-1 overflow-auto p-2 space-y-1 border-b border-studio-800 min-h-0">
+        <span className="text-2xs font-mono uppercase text-studio-500 block px-1 mb-1">
+          Execution Tree Nodes ({tree.length})
+        </span>
+
+        {events.map((evt) => {
+          const isSelected = selectedEvent?.seq === evt.seq;
+          return (
+            <div
+              key={evt.seq}
+              onClick={() => setSelectedSeq(evt.seq)}
+              className={`p-2 rounded cursor-pointer border transition-colors ${
+                isSelected
+                  ? "bg-studio-800 border-studio-600 text-white font-medium"
+                  : "bg-studio-950/60 border-studio-800/80 text-studio-300 hover:bg-studio-850"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-2xs font-mono uppercase text-accent-400">{evt.type}</span>
+                <span className="text-2xs font-mono text-studio-500">
+                  {new Date(evt.ts).toLocaleTimeString()}
+                </span>
+              </div>
+              <div className="text-2xs font-mono text-studio-400 truncate">
+                {JSON.stringify(evt.data)}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {selectedNode && (
-        <div className="border-t border-slate-200 p-3 max-h-56 overflow-y-auto bg-slate-50">
-          <p className="text-xs font-bold text-slate-700 mb-2">{selectedNode.label}</p>
-          {selectedEvents.map((e, i) => (
-            <EventLine key={i} event={e} />
-          ))}
+      {/* Event Details Panel */}
+      {selectedEvent && (
+        <div className="h-48 p-3 bg-studio-950 overflow-auto border-t border-studio-800">
+          <span className="text-2xs font-mono uppercase text-studio-500 block mb-1">Step Payload Data</span>
+          <pre className="text-2xs font-mono text-studio-300 whitespace-pre-wrap break-all leading-relaxed bg-studio-900 p-2 rounded border border-studio-800">
+            {JSON.stringify(selectedEvent, null, 2)}
+          </pre>
         </div>
       )}
     </div>
-  );
-}
-
-function EventLine({ event }: { event: ExecutionEvent }) {
-  const note =
-    (event.data?.input_preview as string | undefined) ??
-    (event.data?.output_preview as string | undefined) ??
-    (event.data?.result_preview as string | undefined) ??
-    "";
-  return (
-    <p className="text-xs text-slate-500 mb-1 truncate">
-      <span className="font-medium text-slate-700">{event.type}</span>
-      {note && <span> — {note}</span>}
-    </p>
   );
 }
