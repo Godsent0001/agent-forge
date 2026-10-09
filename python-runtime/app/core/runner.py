@@ -101,6 +101,10 @@ class RunnerCore:
             if prior_checkpoint.budget_state:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
+            last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
+            if resume_state and resume_state.get("final_output") is not None and not active_spans:
+                resume_state["root_span_closed"] = True
+                last_checkpoint_state.update(copy.deepcopy(resume_state))
 
         async def write_checkpoint() -> None:
             state = last_checkpoint_state
@@ -679,7 +683,7 @@ class RunnerCore:
                 )
 
                 try:
-                    child_timeout = req.options.tool_timeout_seconds
+                    child_timeout = int(getattr(req.options, "tool_timeout_seconds", DEFAULT_TOOL_TIMEOUT_SECONDS))
                     remaining = budget.remaining_seconds
                     if remaining is not None:
                         child_timeout = min(child_timeout, remaining)
@@ -773,7 +777,7 @@ class RunnerCore:
                     args_inst = tc.arguments
 
                 remaining = budget.remaining_seconds
-                timeout_s = req.options.tool_timeout_seconds
+                timeout_s = int(getattr(req.options, "tool_timeout_seconds", DEFAULT_TOOL_TIMEOUT_SECONDS))
                 if remaining is not None:
                     timeout_s = min(timeout_s, remaining)
                 if timeout_s <= 0:
