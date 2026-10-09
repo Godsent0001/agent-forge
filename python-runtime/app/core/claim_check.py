@@ -40,3 +40,4 @@ class ClaimCheckEnvelope(BaseModel):
     summary: ClaimCheckSummary
     result_artifact_uri: str
     execution_log_uri: str | None = None
+    temporal_telemetry: dict[str, Any] | None = Field(default=None, alias="_temporal_telemetry")

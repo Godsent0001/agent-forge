@@ -26,6 +26,7 @@ from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.skills.types import SkillManifest
 from app.core.spans import span
+from app.core.tools.yield_time import YieldTimeTool
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,6 @@ class RunnerCore:
         if depth > req.options.max_depth:
             raise RuntimeError(f"Maximum delegation depth reached ({depth} > {req.options.max_depth})")
 
-        # Revision counter safeguard against ping-pong cascades
         rev_count = agent_revision_counts.get(agent_id, 0) + 1
         agent_revision_counts[agent_id] = rev_count
         if rev_count > 10:
@@ -213,7 +213,16 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
-                # 5. Build system prompt
+                # 5. Temporal Context
+                now_dt = datetime.now(timezone.utc)
+                temporal_context = {
+                    "current_time_iso": now_dt.isoformat(),
+                    "epoch_timestamp_ms": int(now_dt.timestamp() * 1000),
+                    "session_elapsed_ms": int(budget.elapsed_seconds * 1000),
+                    "remaining_budget_ms": int((req.options.budget.max_seconds - budget.elapsed_seconds) * 1000) if req.options.budget.max_seconds else None,
+                }
+
+                # 6. Build system prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -222,6 +231,7 @@ class RunnerCore:
                     lessons_block=lessons_block,
                     history_summary_block=history_summary,
                     skill_manifest=skill_manifest,
+                    temporal_context=temporal_context,
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -229,7 +239,7 @@ class RunnerCore:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
                 messages.append({"role": "user", "content": task})
 
-                # 6. Assemble tools
+                # 7. Assemble tools
                 native_tool_specs, tool_instances = self._assemble_tools(spec, graph, tools_factory, memory, intents, run_history)
 
                 iterations = 0
@@ -429,6 +439,7 @@ class RunnerCore:
         active_agent_ids: set[str],
         agent_revision_counts: dict[str, int],
     ) -> str:
+        start_time = datetime.now(timezone.utc)
         async with span(
             emit,
             kind="tool_call",
@@ -478,10 +489,10 @@ class RunnerCore:
                         agent_revision_counts=agent_revision_counts,
                     )
 
-                    # Save full sub-agent output and return Claim-Check envelope
                     artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
                     uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
 
+                    end_time = datetime.now(timezone.utc)
                     headline = res_text[:300].replace("\n", " ").strip()
                     envelope = ClaimCheckEnvelope(
                         task_id=task_id,
@@ -490,6 +501,11 @@ class RunnerCore:
                         status="COMPLETED",
                         summary=ClaimCheckSummary(headline=headline),
                         result_artifact_uri=uri,
+                        temporal_telemetry={
+                            "invoked_at_iso": start_time.isoformat(),
+                            "completed_at_iso": end_time.isoformat(),
+                            "duration_wall_clock_ms": int((end_time - start_time).total_seconds() * 1000),
+                        },
                     )
                     return envelope.model_dump_json(indent=2)
 
@@ -565,6 +581,7 @@ class RunnerCore:
         for child in spec.children:
             raw_names.append(sanitize_tool_name(child.agent_id))
 
+        raw_names.append("yield_time")
         if spec.memory_enabled and run_history:
             raw_names.append("recall_run")
         if intents:
@@ -609,6 +626,13 @@ class RunnerCore:
                     },
                 )
             )
+
+        # yield_time tool primitive
+        yt_name = deduped[idx]
+        idx += 1
+        yt_inst = YieldTimeTool(intents)
+        tool_instances[yt_name] = yt_inst
+        tool_specs.append(ToolSpec(name=yt_name, description=yt_inst.default_description, parameters=yt_inst.Input.model_json_schema()))
 
         if spec.memory_enabled and run_history:
             from app.core.memory.episodic import RecallRunTool
