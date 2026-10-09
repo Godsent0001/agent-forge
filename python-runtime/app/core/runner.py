@@ -80,6 +80,8 @@ class RunnerCore:
         prior_checkpoint = await checkpoint_store.load(req.execution_id)
         resume_state: dict[str, Any] | None = None
         root_invocation_id = str(uuid.uuid4())
+        root_span_id: str | None = None
+        last_checkpoint_state: dict[str, Any] = {}
         checkpoint_created_at = datetime.now(timezone.utc)
         if prior_checkpoint is not None:
             if prior_checkpoint.graph_fingerprint != graph_fingerprint:
@@ -96,6 +98,8 @@ class RunnerCore:
 
         async def save_checkpoint(state: dict[str, Any]) -> None:
             nonlocal root_span_id
+            last_checkpoint_state.clear()
+            last_checkpoint_state.update(copy.deepcopy(state))
             if state.get("root_span_id"):
                 root_span_id = str(state["root_span_id"])
             messages = copy.deepcopy(state.get("messages", []))
@@ -160,6 +164,26 @@ class RunnerCore:
                 resume_state=resume_state,
                 resume_span_id=root_span_id if resume_state and not resume_state.get("root_span_closed") else None,
             )
+
+            if not (resume_state and isinstance(resume_state.get("final_output"), str)):
+                await save_checkpoint({
+                    **last_checkpoint_state,
+                    "final_output": final_output,
+                    "root_span_id": root_span_id,
+                    "root_span_closed": True,
+                    "pending_tool_call_ids": [],
+                })
+            elif root_span_id and not resume_state.get("root_span_closed"):
+                await emit(EventDraft(
+                    type="span_ended", span_id=root_span_id, parent_span_id=None,
+                    kind="agent", name=root_spec.name, status="ok",
+                    data={"output_preview": final_output[:2000]},
+                ))
+                await save_checkpoint({
+                    **resume_state, "final_output": final_output,
+                    "root_span_id": root_span_id, "root_span_closed": True,
+                    "pending_tool_call_ids": [],
+                })
 
             if root_spec.memory_enabled and memory:
                 await self._extract_memories(
