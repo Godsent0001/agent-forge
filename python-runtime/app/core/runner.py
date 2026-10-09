@@ -372,11 +372,13 @@ class RunnerCore:
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
+                memory_block = ContextCompiler.bound_block(memory_block, 3_200, "memory recall")
 
                 # 2. Recent problem runs
                 recent_runs_block = ""
                 if req.options.memory.episodic and run_history and depth == 0:
                     recent_runs_block = await build_recent_runs_block(run_history, spec.id)
+                recent_runs_block = ContextCompiler.bound_block(recent_runs_block, 1_200, "recent runs")
 
                 # 3. Due reminders
                 reminders_block = ""
@@ -391,6 +393,8 @@ class RunnerCore:
                 lessons_block = ""
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
+                lessons_block = ContextCompiler.bound_block(lessons_block, 1_800, "lessons")
+                reminders_block = ContextCompiler.bound_block(reminders_block, 1_000, "reminders")
 
                 # 5. Temporal Context
                 now_dt = _clock_now(clock)
@@ -408,7 +412,7 @@ class RunnerCore:
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=history_summary,
+                    history_summary_block=ContextCompiler.bound_block(history_summary, 6_000, "conversation summary"),
                     skill_manifest=skill_manifest,
                     temporal_context=temporal_context,
                 )
@@ -897,7 +901,18 @@ class RunnerCore:
                                 "Retrying explicitly retryable tool %s (attempt %d/2)",
                                 tc.name, attempt + 2,
                             )
+                if not isinstance(res, ToolResult):
+                    return f"ERROR: tool '{tc.name}' returned an invalid result contract."
+                if not res.ok:
+                    return f"ERROR: tool '{tc.name}' reported failure: {res.content}"
+
                 content = res.content
+                if res.artifacts:
+                    artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
+                    content += "\\nArtifacts produced:\\n" + "\\n".join(artifact_lines)
+                if res.truncated:
+                    continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
+                    content += f"\\nNOTE: tool output is truncated.{continuation}"
 
                 saved_ref = None
                 if len(content) > 1000 and hasattr(workspace, "write_result"):
