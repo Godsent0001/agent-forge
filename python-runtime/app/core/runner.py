@@ -64,6 +64,7 @@ class RunnerCore:
 
         active_agent_ids: set[str] = set()
         agent_revision_counts: dict[str, int] = {}
+        clock_fn: Clock = clock or (lambda: datetime.now(timezone.utc))
 
         try:
             final_output = await self._run_agent(
@@ -87,6 +88,7 @@ class RunnerCore:
                 budget=budget,
                 active_agent_ids=active_agent_ids,
                 agent_revision_counts=agent_revision_counts,
+                clock=clock_fn,
             )
 
             if root_spec.memory_enabled and memory:
@@ -148,6 +150,7 @@ class RunnerCore:
         budget: BudgetTracker,
         active_agent_ids: set[str],
         agent_revision_counts: dict[str, int],
+        clock: Clock,
         skill_manifest: SkillManifest | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
@@ -198,7 +201,7 @@ class RunnerCore:
                 # 3. Due reminders
                 reminders_block = ""
                 if req.options.memory.intents and intents and depth == 0:
-                    now_utc = datetime.now(timezone.utc)
+                    now_utc = _clock_now(clock)
                     due_intents = await intents.due_for_run(spec.id, now_utc)
                     if due_intents:
                         reminders_block = "\n".join(f"- {i.text}" for i in due_intents)
@@ -210,7 +213,7 @@ class RunnerCore:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
                 # 5. Temporal Context
-                now_dt = datetime.now(timezone.utc)
+                now_dt = _clock_now(clock)
                 temporal_context = {
                     "current_time_iso": now_dt.isoformat(),
                     "epoch_timestamp_ms": int(now_dt.timestamp() * 1000),
@@ -309,6 +312,7 @@ class RunnerCore:
                                     budget=budget,
                                     active_agent_ids=agent_path,
                                     agent_revision_counts=agent_revision_counts,
+                                    clock=clock,
                                 )
                                 for tc in tool_call_tuples
                             ],
@@ -347,6 +351,7 @@ class RunnerCore:
                                     budget=budget,
                                     active_agent_ids=agent_path,
                                     agent_revision_counts=agent_revision_counts,
+                                    clock=clock,
                                 )
                             except Exception as exc:
                                 content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
@@ -449,8 +454,9 @@ class RunnerCore:
         budget: BudgetTracker,
         active_agent_ids: set[str],
         agent_revision_counts: dict[str, int],
+        clock: Clock,
     ) -> str:
-        start_time = datetime.now(timezone.utc)
+        start_time = _clock_now(clock)
         async with span(
             emit,
             kind="tool_call",
@@ -498,12 +504,13 @@ class RunnerCore:
                         budget=budget,
                         active_agent_ids=active_agent_ids,
                         agent_revision_counts=agent_revision_counts,
+                        clock=clock,
                     )
 
                     artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
                     uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
 
-                    end_time = datetime.now(timezone.utc)
+                    end_time = _clock_now(clock)
                     headline = res_text[:300].replace("\n", " ").strip()
                     envelope = ClaimCheckEnvelope(
                         task_id=task_id,
@@ -739,3 +746,11 @@ class DummyToolContext:
         self.workspace = workspace
         self.cancel = cancel
         self.config = config
+
+
+def _clock_now(clock: Clock) -> datetime:
+    """Return an aware UTC timestamp from the injected clock."""
+    value = clock()
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Injected clock must return a timezone-aware datetime.")
+    return value.astimezone(timezone.utc)
