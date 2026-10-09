@@ -84,6 +84,7 @@ class RunnerCore:
         root_span_id: str | None = None
         active_spans: dict[str, dict[str, Any]] = {}
         last_checkpoint_state: dict[str, Any] = {}
+        pending_reminder_ids: list[str] = []
         checkpoint_created_at = datetime.now(timezone.utc)
         if prior_checkpoint is not None:
             if prior_checkpoint.graph_fingerprint != graph_fingerprint:
@@ -102,6 +103,7 @@ class RunnerCore:
             if prior_checkpoint.budget_state:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
+            pending_reminder_ids = list((resume_state or {}).get("pending_reminder_ids", []))
             last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
             if root_span_id and not active_spans and not (
                 resume_state and isinstance(resume_state.get("final_output"), str)
@@ -136,7 +138,7 @@ class RunnerCore:
             checkpoint = ExecutionCheckpoint(
                 execution_id=req.execution_id,
                 graph_fingerprint=graph_fingerprint,
-                status="running",
+                status=str(state.get("checkpoint_status", "running")),
                 created_at=checkpoint_created_at,
                 updated_at=datetime.now(timezone.utc),
                 frames=[frame],
@@ -267,6 +269,8 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
 
+            if pending_reminder_ids:
+                await intents.mark_fired(pending_reminder_ids, _clock_now(clock_fn))
             await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="completed",
@@ -275,21 +279,36 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "budget_exceeded",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": str(exc),
+            })
+            await write_checkpoint()
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
                 totals=budget.totals,
             )
         except asyncio.CancelledError:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "cancelled",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": "Run was cancelled by user.",
+            })
+            await write_checkpoint()
             return RunResult(
                 status="cancelled",
                 error="Run was cancelled by user.",
                 totals=budget.totals,
             )
         except Exception as exc:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "error",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": str(exc),
+            })
+            await write_checkpoint()
             logger.exception("Run execution error")
             return RunResult(
                 status="error",
@@ -357,6 +376,7 @@ class RunnerCore:
                     if depth == 0 and checkpoint:
                         payload = dict(state)
                         payload["root_span_id"] = agent_span_id
+                        payload["pending_reminder_ids"] = list(pending_reminder_ids)
                         await checkpoint(payload)
 
                 # 1. Memory recall
@@ -386,8 +406,17 @@ class RunnerCore:
                     now_utc = _clock_now(clock)
                     due_intents = await intents.due_for_run(spec.id, now_utc)
                     if due_intents:
-                        reminders_block = "\n".join(f"- {i.text}" for i in due_intents)
-                        await intents.mark_fired([i.id for i in due_intents], now_utc)
+                        # A reminder is acknowledged only after its containing run
+                        # completes. If interrupted, it remains deliverable.
+                        already_pending = set(pending_reminder_ids)
+                        deliver = [item for item in due_intents if item.id not in already_pending]
+                        reminders_block = "\n".join(f"- {item.text}" for item in deliver)
+                        pending_reminder_ids.extend(item.id for item in deliver)
+                        if pending_reminder_ids:
+                            await persist_state({
+                                **(resume_state or {}),
+                                "pending_reminder_ids": list(pending_reminder_ids),
+                            })
 
                 # 4. Lessons
                 lessons_block = ""
@@ -405,7 +434,13 @@ class RunnerCore:
                     "remaining_budget_ms": int((req.options.budget.max_seconds - budget.elapsed_seconds) * 1000) if req.options.budget.max_seconds else None,
                 }
 
-                # 6. Build system prompt
+                # 6. Build runtime-derived self-model. This is not memory, lessons, or a skill.
+                self_model_block = _build_self_model(
+                    spec=spec, graph=graph, req=req, budget=budget,
+                    skill_manifest=skill_manifest, depth=depth,
+                )
+
+                # 7. Build system prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -414,6 +449,7 @@ class RunnerCore:
                     lessons_block=lessons_block,
                     history_summary_block=ContextCompiler.bound_block(history_summary, 6_000, "conversation summary"),
                     skill_manifest=skill_manifest,
+                    self_model_block=self_model_block,
                     temporal_context=temporal_context,
                 )
 
@@ -1083,6 +1119,54 @@ class RunnerCore:
                 store=memory,
                 llm_complete_fn=llm_fn,
             )
+
+
+def _build_self_model(
+    *,
+    spec: AgentSpec,
+    graph: AgentGraph,
+    req: RunRequest,
+    budget: BudgetTracker,
+    skill_manifest: SkillManifest | None,
+    depth: int,
+) -> str:
+    """Build a compact, current-run description from runtime configuration."""
+    selected_skill = None
+    if skill_manifest is not None:
+        selected_skill = {
+            "name": skill_manifest.name,
+            "required_binaries": list(skill_manifest.metadata.requires_bins),
+            "required_environment_variables": list(skill_manifest.metadata.requires_env),
+            "declared_tools": list(skill_manifest.metadata.tools),
+        }
+    max_seconds = req.options.budget.max_seconds
+    return json.dumps({
+        "agent": {"id": spec.id, "name": spec.name, "depth": depth},
+        "configured_tool_bindings": [
+            {"name": item.name, "kind": item.kind} for item in spec.tools
+        ],
+        "delegation_targets": [
+            {"agent_id": child.agent_id, "description": child.description or ""}
+            for child in spec.children if child.agent_id in graph.agents
+        ],
+        "memory_enabled": bool(spec.memory_enabled),
+        "lessons_enabled": bool(spec.lessons_enabled),
+        "selected_skill_and_declared_prerequisites": selected_skill,
+        "constraints": {
+            "max_depth": req.options.max_depth,
+            "remaining_depth": max(0, req.options.max_depth - depth),
+            "remaining_seconds": max(0.0, max_seconds - budget.elapsed_seconds) if max_seconds else None,
+            "max_tokens_per_model_call": spec.params.max_tokens,
+            "parallel_tools_enabled": bool(req.options.parallel_tools),
+            "max_parallel_tool_calls": getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS),
+            "approval_gate_present": True,
+        },
+        "accuracy_note": (
+            "Tool bindings and skill prerequisites describe configured state, not guaranteed "
+            "external availability. Do not claim a capability or permission is operational "
+            "unless the current execution verifies it."
+        ),
+    }, ensure_ascii=False, separators=(",", ":"))
 
 
 def _trim_messages(messages: list[dict[str, Any]]) -> None:
