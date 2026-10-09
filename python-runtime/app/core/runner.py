@@ -74,8 +74,61 @@ class RunnerCore:
         agent_revision_counts: dict[str, int] = {}
         clock_fn: Clock = clock or (lambda: datetime.now(timezone.utc))
 
+        checkpoint_store = SQLiteCheckpointStore(Path(workspace.root) / ".agentforge" / "checkpoints.sqlite3")
+        graph_fingerprint = _fingerprint(graph.model_dump(mode="json"))
+        request_fingerprint = _fingerprint(req.model_dump(mode="json", exclude={"execution_id"}))
+        prior_checkpoint = await checkpoint_store.load(req.execution_id)
+        resume_state: dict[str, Any] | None = None
+        root_invocation_id = str(uuid.uuid4())
+        checkpoint_created_at = datetime.now(timezone.utc)
+        if prior_checkpoint is not None:
+            if prior_checkpoint.graph_fingerprint != graph_fingerprint:
+                return RunResult(status="error", error="Cannot resume execution: agent graph changed since checkpoint.", totals=budget.totals)
+            if prior_checkpoint.metadata.get("request_fingerprint") != request_fingerprint:
+                return RunResult(status="error", error="Cannot resume execution: request differs from checkpoint.", totals=budget.totals)
+            if prior_checkpoint.frames:
+                root_invocation_id = prior_checkpoint.frames[0].invocation_id
+            checkpoint_created_at = prior_checkpoint.created_at
+            if prior_checkpoint.budget_state:
+                budget.restore(prior_checkpoint.budget_state)
+            resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
+
+        async def save_checkpoint(state: dict[str, Any]) -> None:
+            messages = copy.deepcopy(state.get("messages", []))
+            completed = {
+                str(m.get("tool_call_id")): str(m.get("content", ""))
+                for m in messages if m.get("role") == "tool" and m.get("tool_call_id")
+            }
+            frame = AgentFrame(
+                invocation_id=root_invocation_id,
+                agent_id=graph.root_id,
+                task=req.task,
+                depth=0,
+                iteration=int(state.get("iterations", 0)),
+                messages=messages,
+                pending_tool_call_ids=list(state.get("pending_tool_call_ids", [])),
+                completed_tool_results=completed,
+            )
+            checkpoint = ExecutionCheckpoint(
+                execution_id=req.execution_id,
+                graph_fingerprint=graph_fingerprint,
+                status="running",
+                created_at=checkpoint_created_at,
+                updated_at=datetime.now(timezone.utc),
+                frames=[frame],
+                task_state=copy.deepcopy(state),
+                budget_state=budget.snapshot(),
+                metadata={"request_fingerprint": request_fingerprint,
+                          "resume_semantics": "in-flight-tool-outcomes-are-not-replayed"},
+            )
+            await checkpoint_store.save(checkpoint)
+
         try:
-            final_output = await self._run_agent(
+            final_output = ""
+            if resume_state and isinstance(resume_state.get("final_output"), str):
+                final_output = resume_state["final_output"]
+            else:
+                final_output = await self._run_agent(
                 agent_id=graph.root_id,
                 graph=graph,
                 req=req,
@@ -97,6 +150,8 @@ class RunnerCore:
                 active_agent_ids=active_agent_ids,
                 agent_revision_counts=agent_revision_counts,
                 clock=clock_fn,
+                checkpoint=save_checkpoint,
+                resume_state=resume_state,
             )
 
             if root_spec.memory_enabled and memory:
@@ -110,6 +165,7 @@ class RunnerCore:
                     budget=budget,
                 )
 
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="completed",
                 final_output=final_output,
@@ -123,6 +179,7 @@ class RunnerCore:
                 totals=budget.totals,
             )
         except asyncio.CancelledError:
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="cancelled",
                 error="Run was cancelled by user.",
