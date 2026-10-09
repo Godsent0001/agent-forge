@@ -53,7 +53,7 @@ class RunnerCore:
         run_history: RunHistory,
         clock: Clock | None = None,
     ) -> RunResult:
-        budget = BudgetTracker(req.options.budget)
+        budget = BudgetTracker(req.options.budget, max_parallel_tools=req.options.max_parallel_tool_calls)
         root_spec = graph.agents.get(graph.root_id)
         if not root_spec:
             return RunResult(
@@ -155,17 +155,13 @@ class RunnerCore:
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
-
         if depth > req.options.max_depth:
             raise RuntimeError(f"Maximum delegation depth reached ({depth} > {req.options.max_depth})")
-
-        rev_count = agent_revision_counts.get(agent_id, 0) + 1
-        agent_revision_counts[agent_id] = rev_count
-        if rev_count > 10:
-            raise RuntimeError(f"Maximum revision loop count exceeded for agent '{agent_id}' ({rev_count} > 10)")
-
+        # Copy the ancestry per invocation: sibling invocations of the same agent definition
+        # must not mutate or observe one another's active path.
+        agent_path = set(active_agent_ids)
+        agent_path.add(agent_id)
         spec = graph.agents[agent_id]
-        active_agent_ids.add(agent_id)
 
         try:
             async with span(
@@ -311,7 +307,7 @@ class RunnerCore:
                                     intents=intents,
                                     run_history=run_history,
                                     budget=budget,
-                                    active_agent_ids=active_agent_ids,
+                                    active_agent_ids=agent_path,
                                     agent_revision_counts=agent_revision_counts,
                                 )
                                 for tc in tool_call_tuples
@@ -349,7 +345,7 @@ class RunnerCore:
                                     intents=intents,
                                     run_history=run_history,
                                     budget=budget,
-                                    active_agent_ids=active_agent_ids,
+                                    active_agent_ids=agent_path,
                                     agent_revision_counts=agent_revision_counts,
                                 )
                             except Exception as exc:
@@ -362,7 +358,8 @@ class RunnerCore:
                             })
 
         finally:
-            active_agent_ids.remove(agent_id)
+            # agent_path is invocation-local; nothing is removed from shared state.
+            pass
 
     async def _execute_llm_turn(
         self,
@@ -385,34 +382,48 @@ class RunnerCore:
                 "message_count": len(messages),
             },
         ) as llm_span_id:
-            if self.fake_llm:
-                turn = await self.fake_llm.complete(
-                    messages=messages,
-                    tools=[t.model_dump() for t in tools],
-                    params=spec.params.model_dump(),
-                )
-            else:
-                try:
-                    turn = await adapter_complete(
-                        messages=messages,
-                        tools=tools,
-                        params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
-                    )
-                except LLMContextTooLong:
-                    _trim_messages(messages)
-                    turn = await adapter_complete(
-                        messages=messages,
-                        tools=tools,
-                        params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
-                    )
+            remaining = budget.remaining_seconds
+            timeout_s = max(1, spec.params.timeout_s)
+            if remaining is not None:
+                timeout_s = min(timeout_s, remaining)
+            if timeout_s <= 0:
+                raise BudgetExceededError("Run deadline exhausted before LLM call.")
+            reservation = budget.reserve_llm_call(estimated_tokens=max(0, spec.params.max_tokens or 0))
+            try:
+                async with asyncio.timeout(timeout_s):
+                    if self.fake_llm:
+                        turn = await self.fake_llm.complete(
+                            messages=messages,
+                            tools=[t.model_dump() for t in tools],
+                            params=spec.params.model_dump(),
+                        )
+                    else:
+                        try:
+                            turn = await adapter_complete(
+                                messages=messages, tools=tools, params=spec.params,
+                                model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                            )
+                        except LLMContextTooLong:
+                            _trim_messages(messages)
+                            turn = await adapter_complete(
+                                messages=messages, tools=tools, params=spec.params,
+                                model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                            )
+            except TimeoutError as exc:
+                budget.release_reservation(reservation)
+                if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                    raise BudgetExceededError("Run deadline exceeded during LLM call.") from exc
+                raise LLMError(f"LLM call timed out after {timeout_s}s.") from exc
+            except BaseException:
+                budget.release_reservation(reservation)
+                raise
 
             budget.record_llm_call(
                 input_tokens=turn.usage.input_tokens,
                 output_tokens=turn.usage.output_tokens,
                 cache_read_tokens=turn.usage.cache_read_tokens,
                 cost_usd=turn.cost_usd,
+                reservation=reservation,
             )
 
             return turn
@@ -545,7 +556,15 @@ class RunnerCore:
                 else:
                     args_inst = tc.arguments
 
-                res: ToolResult = await tool_obj.run(args_inst, ctx)
+                remaining = budget.remaining_seconds
+                timeout_s = req.options.tool_timeout_seconds
+                if remaining is not None:
+                    timeout_s = min(timeout_s, remaining)
+                if timeout_s <= 0:
+                    raise BudgetExceededError("Run deadline exhausted before tool execution.")
+                async with budget.tool_semaphore:
+                    async with asyncio.timeout(timeout_s):
+                        res: ToolResult = await tool_obj.run(args_inst, ctx)
                 content = res.content
 
                 saved_ref = None

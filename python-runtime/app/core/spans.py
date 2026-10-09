@@ -1,4 +1,5 @@
 """Span context manager and event tracing utilities for AgentForge Core."""
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
@@ -34,6 +35,10 @@ async def span(
     end_data: dict[str, Any] = {}
     try:
         yield span_id
+    except asyncio.CancelledError:
+        status = "cancelled"
+        end_data["cancelled"] = True
+        raise
     except Exception as exc:
         status = "error"
         end_data["error"] = str(exc)

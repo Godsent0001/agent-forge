@@ -38,6 +38,9 @@ class MemoryOptions(BaseModel):
 class RunOptions(BaseModel):
     budget: BudgetSpec = BudgetSpec()
     parallel_tools: bool = False           # run several tool calls of one turn concurrently
+    max_parallel_tool_calls: int = 4       # hard per-execution tool limit
+    tool_timeout_seconds: int = 120        # maximum duration for one tool invocation
+    max_tasks: int = 100                   # maximum tasks in a scheduler plan
     max_depth: int = 4                     # sub-agent nesting
     max_iterations: int = 10               # LLM turns per agent
     scenario: str | None = None            # FakeRunner only

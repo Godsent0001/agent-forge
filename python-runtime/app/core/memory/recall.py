@@ -49,10 +49,8 @@ async def recall_memories(
     pinned_ids = {p.id for p in pinned_items}
     non_pinned_hits = [c for c in candidates if c.item.id not in pinned_ids]
 
-    for hit in non_pinned_hits:
-        hit.keyword_score = score_memory(hit, now)
-
-    non_pinned_hits.sort(key=lambda h: h.keyword_score, reverse=True)
+    scored_hits = [(score_memory(hit, now), hit) for hit in non_pinned_hits]
+    scored_hits.sort(key=lambda pair: pair[0], reverse=True)
 
     selected: list[MemoryItem] = []
     used_tokens = 0
@@ -61,11 +59,13 @@ async def recall_memories(
     # 1. Include pinned items first
     for item in pinned_items:
         item_tokens = len(item.text) // 4 + 1
+        if used_tokens + item_tokens > max_tokens:
+            continue
         selected.append(item)
         used_tokens += item_tokens
 
     # 2. Include top candidates until token limit or 12 items max
-    for hit in non_pinned_hits:
+    for score, hit in scored_hits:
         if len(selected) >= 12:
             break
         item = hit.item
