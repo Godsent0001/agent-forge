@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 from app.contracts.run import BudgetSpec
 from app.core.budget import BudgetExceededError,BudgetTracker
-from app.core.checkpoint import AgentFrame,ExecutionCheckpoint,InMemoryCheckpointStore
+from app.core.checkpoint import AgentFrame,ExecutionCheckpoint,InMemoryCheckpointStore,SQLiteCheckpointStore
 from app.core.evaluation import EvaluationCaseResult,EvaluationReport
 from app.core.scheduler import ScheduledTask,TaskPlan,TaskStatus
 
@@ -50,3 +50,18 @@ def test_evaluation_report_aggregates_failure_categories():
                         EvaluationCaseResult("bad",False,3,None,10,"timeout")])
     assert r.pass_rate==.5 and r.summary()["failure_categories"]=={"timeout":1}
     assert r.known_total_cost_usd is None
+
+@pytest.mark.asyncio
+async def test_sqlite_checkpoint_store_survives_store_recreation(tmp_path):
+    path=tmp_path/"checkpoints.sqlite3"
+    first=SQLiteCheckpointStore(path)
+    checkpoint=ExecutionCheckpoint(execution_id="durable-e",graph_fingerprint="graph",status="suspended",
+        frames=[AgentFrame(invocation_id="i-1",agent_id="root",task="resume me")])
+    await first.save(checkpoint)
+    second=SQLiteCheckpointStore(path)
+    restored=await second.load("durable-e")
+    assert restored is not None
+    assert restored.status=="suspended"
+    assert restored.frames[0].task=="resume me"
+    await second.delete("durable-e")
+    assert await first.load("durable-e") is None

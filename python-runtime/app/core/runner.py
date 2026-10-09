@@ -315,10 +315,6 @@ class RunnerCore:
                             return_exceptions=True,
                         )
                         for tc, res in zip(tool_call_tuples, results):
-                            if isinstance(res, BudgetExceededError):
-                                raise res
-                            if isinstance(res, asyncio.CancelledError):
-                                raise res
                             if isinstance(res, Exception):
                                 content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
                             else:
@@ -352,8 +348,6 @@ class RunnerCore:
                                     active_agent_ids=agent_path,
                                     agent_revision_counts=agent_revision_counts,
                                 )
-                            except (BudgetExceededError, asyncio.CancelledError):
-                                raise
                             except Exception as exc:
                                 content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
@@ -583,10 +577,6 @@ class RunnerCore:
 
                 return content
 
-            except BudgetExceededError:
-                raise
-            except asyncio.CancelledError:
-                raise
             except ToolError as te:
                 return f"ERROR: {te.message}"
             except Exception as exc:
