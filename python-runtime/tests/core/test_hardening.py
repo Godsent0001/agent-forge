@@ -65,3 +65,17 @@ async def test_sqlite_checkpoint_store_survives_store_recreation(tmp_path):
     assert restored.frames[0].task=="resume me"
     await second.delete("durable-e")
     assert await first.load("durable-e") is None
+
+
+def test_budget_snapshot_restores_cumulative_usage():
+    spec = BudgetSpec(max_llm_calls=5, max_total_tokens=100, max_seconds=30)
+    original = BudgetTracker(spec)
+    original.record_llm_call(input_tokens=12, output_tokens=7, cost_usd=0.02)
+    snapshot = original.snapshot()
+    restored = BudgetTracker(spec)
+    restored.restore(snapshot)
+    assert restored.totals.llm_calls == 1
+    assert restored.totals.input_tokens == 12
+    assert restored.totals.output_tokens == 7
+    assert restored.totals.cost_usd == pytest.approx(0.02)
+    assert restored.elapsed_seconds >= snapshot["elapsed_seconds"]
