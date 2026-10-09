@@ -726,6 +726,11 @@ class RunnerCore:
                                     })
                         plan.refresh_ready()
 
+                    # Verify scheduler output coverage before returning control to the model.
+                    # A scheduler edge case must become an explicit tool error, never a missing result.
+                    for tc in scheduled_calls:
+                        if tc.id not in results_by_call:
+                            results_by_call[tc.id] = "ERROR: scheduler stopped before producing a result for this tool call."
                     for tc in tool_call_tuples:
                         messages.append({"role": "tool", "tool_call_id": tc.id,
                                          "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
@@ -894,13 +899,27 @@ class RunnerCore:
                     uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
 
                     end_time = _clock_now(clock)
-                    headline = res_text[:300].replace("\n", " ").strip()
+                    headline = res_text[:300].replace("\n", " ").strip() or "Child agent returned no summary."
+                    child_status = (
+                        "FAILED" if res_text.strip().startswith("ERROR:")
+                        else "NEEDS_REVIEW" if not res_text.strip()
+                        else "COMPLETED"
+                    )
                     envelope = ClaimCheckEnvelope(
                         task_id=task_id,
                         sender_id=child_link.agent_id,
                         recipient_id=spec.id,
-                        status="COMPLETED",
-                        summary=ClaimCheckSummary(headline=headline),
+                        status=child_status,
+                        summary=ClaimCheckSummary(
+                            headline=headline,
+                            flags_or_warnings=(
+                                ["Child output indicates an execution error."]
+                                if child_status == "FAILED"
+                                else ["Child output is empty; review required."]
+                                if child_status == "NEEDS_REVIEW"
+                                else []
+                            ),
+                        ),
                         result_artifact_uri=uri,
                         temporal_telemetry={
                             "invoked_at_iso": start_time.isoformat(),
