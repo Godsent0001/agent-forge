@@ -217,6 +217,8 @@ class RunnerCore:
         agent_revision_counts: dict[str, int],
         clock: Clock,
         skill_manifest: SkillManifest | None = None,
+        checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        resume_state: dict[str, Any] | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
@@ -302,17 +304,35 @@ class RunnerCore:
                 for msg in history:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
                 messages.append({"role": "user", "content": task})
+                if depth == 0 and resume_state and isinstance(resume_state.get("messages"), list):
+                    messages = copy.deepcopy(resume_state["messages"])
 
                 # 7. Assemble tools
                 native_tool_specs, tool_instances = self._assemble_tools(spec, graph, tools_factory, memory, intents, run_history)
 
-                iterations = 0
-                tool_call_history: list[str] = []
+                iterations = int(resume_state.get("iterations", 0)) if depth == 0 and resume_state else 0
+                tool_call_history: list[str] = list(resume_state.get("tool_call_history", [])) if depth == 0 and resume_state else []
+                pending_ids = list(resume_state.get("pending_tool_call_ids", [])) if depth == 0 and resume_state else []
+                if pending_ids:
+                    for pending_id in pending_ids:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": pending_id,
+                            "content": "ERROR: Execution was interrupted while this tool call was in flight. Its side-effect outcome is unknown; do not blindly repeat it. Reconcile the outcome before retrying.",
+                        })
+                    if checkpoint:
+                        await checkpoint({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
 
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
                     iterations += 1
+                    if depth == 0 and checkpoint:
+                        await checkpoint({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
 
                     if iterations > req.options.max_iterations:
                         return await self._force_text_turn(
@@ -333,7 +353,12 @@ class RunnerCore:
                     messages.append(turn.message)
 
                     if not turn.tool_calls:
-                        return turn.text or ""
+                        final_text = turn.text or ""
+                        if depth == 0 and checkpoint:
+                            await checkpoint({"messages": messages, "iterations": iterations,
+                                              "tool_call_history": tool_call_history,
+                                              "pending_tool_call_ids": [], "final_output": final_text})
+                        return final_text
 
                     # Dispatch Tool Calls
                     tool_call_tuples = []
@@ -352,86 +377,91 @@ class RunnerCore:
                         tool_call_tuples.append(tc)
 
                     if not tool_call_tuples:
+                        if depth == 0 and checkpoint:
+                            await checkpoint({"messages": messages, "iterations": iterations,
+                                              "tool_call_history": tool_call_history,
+                                              "pending_tool_call_ids": []})
                         continue
 
-                    if req.options.parallel_tools and len(tool_call_tuples) > 1:
-                        results = await asyncio.gather(
-                            *[
-                                self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=agent_path,
-                                    agent_revision_counts=agent_revision_counts,
-                                    clock=clock,
-                                )
-                                for tc in tool_call_tuples
-                            ],
-                            return_exceptions=True,
-                        )
-                        for tc, res in zip(tool_call_tuples, results):
-                            if isinstance(res, BudgetExceededError):
-                                raise res
-                            if isinstance(res, asyncio.CancelledError):
-                                raise res
-                            if isinstance(res, Exception):
-                                content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
-                            else:
-                                content = res
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
-                    else:
-                        for tc in tool_call_tuples:
+                    if depth == 0 and checkpoint:
+                        await checkpoint({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": [tc.id for tc in tool_call_tuples]})
+
+                    max_tasks = min(DEFAULT_MAX_SCHEDULED_TASKS, max(1, int(getattr(req.options, "max_tasks", DEFAULT_MAX_SCHEDULED_TASKS))))
+                    scheduled_calls = tool_call_tuples[:max_tasks]
+                    rejected_calls = tool_call_tuples[max_tasks:]
+                    task_keys = {tc.id: f"call_{index}_{tc.id}" for index, tc in enumerate(scheduled_calls)}
+                    plan = TaskPlan(
+                        tasks={
+                            task_keys[tc.id]: ScheduledTask(
+                                task_id=task_keys[tc.id], agent_id=spec.id,
+                                instruction=tc.name, max_attempts=1,
+                            ) for tc in scheduled_calls
+                        },
+                        max_tasks=max_tasks,
+                    )
+                    plan.refresh_ready()
+                    results_by_call: dict[str, str] = {}
+                    parallel_limit = (
+                        max(1, int(getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS)))
+                        if req.options.parallel_tools else 1
+                    )
+
+                    while not plan.terminal:
+                        claimed = plan.claim_ready(parallel_limit)
+                        if not claimed:
+                            break
+
+                        async def execute_scheduled(task: ScheduledTask) -> tuple[str, str]:
+                            tc = next(item for item in scheduled_calls if task_keys[item.id] == task.task_id)
                             try:
-                                content = await self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=agent_path,
-                                    agent_revision_counts=agent_revision_counts,
-                                    clock=clock,
+                                result_text = await self._execute_single_tool(
+                                    tc=tc, spec=spec, graph=graph, tool_instances=tool_instances, req=req,
+                                    parent_span_id=agent_span_id, depth=depth, emit=emit, cancel=cancel,
+                                    approvals=approvals, workspace=workspace, tools_factory=tools_factory,
+                                    memory=memory, lessons=lessons, intents=intents, run_history=run_history,
+                                    budget=budget, active_agent_ids=agent_path,
+                                    agent_revision_counts=agent_revision_counts, clock=clock,
                                 )
+                                return tc.id, result_text
                             except (BudgetExceededError, asyncio.CancelledError):
                                 raise
                             except Exception as exc:
-                                content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+                                return tc.id, f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
+                        batch_results = await asyncio.gather(
+                            *(execute_scheduled(task) for task in claimed),
+                            return_exceptions=True,
+                        )
+                        for task, result in zip(claimed, batch_results):
+                            if isinstance(result, BudgetExceededError):
+                                raise result
+                            if isinstance(result, asyncio.CancelledError):
+                                raise result
+                            if isinstance(result, Exception):
+                                call_id = next(tc.id for tc in scheduled_calls if task_keys[tc.id] == task.task_id)
+                                content = f"ERROR: tool crashed ({type(result).__name__}: {result})"
+                            else:
+                                call_id, content = result
+                            results_by_call[call_id] = content
+                            if content.startswith("ERROR:"):
+                                plan.fail(task.task_id, content, retryable=False)
+                            else:
+                                plan.complete(task.task_id)
+                        plan.refresh_ready()
+
+                    for tc in rejected_calls:
+                        results_by_call[tc.id] = f"ERROR: execution task limit exceeded ({max_tasks})."
+                    for tc in tool_call_tuples:
+                        messages.append({"role": "tool", "tool_call_id": tc.id,
+                                         "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
+                    if depth == 0 and checkpoint:
+                        await checkpoint({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
+
+                    continue
 
         finally:
             # agent_path is invocation-local; nothing is removed from shared state.
@@ -846,3 +876,8 @@ def _clock_now(clock: Clock) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("Injected clock must return a timezone-aware datetime.")
     return value.astimezone(timezone.utc)
+
+
+def _fingerprint(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
