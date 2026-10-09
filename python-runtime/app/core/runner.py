@@ -159,6 +159,8 @@ class RunnerCore:
             nonlocal root_span_id
             last_checkpoint_state.clear()
             last_checkpoint_state.update(copy.deepcopy(state))
+            # Include the delivery ledger even when the run completes without tools.
+            last_checkpoint_state["pending_reminder_ids"] = list(pending_reminder_ids)
             if state.get("root_span_id"):
                 root_span_id = str(state["root_span_id"])
             await write_checkpoint()
