@@ -232,6 +232,7 @@ class RunnerCore:
                 clock=clock_fn,
                 checkpoint=save_checkpoint,
                 resume_state=resume_state,
+                pending_reminder_ids=pending_reminder_ids,
                 resume_span_id=root_span_id if prior_checkpoint is not None and root_span_id and not (resume_state or {}).get("root_span_closed") else None,
             )
 
@@ -340,12 +341,14 @@ class RunnerCore:
         agent_revision_counts: dict[str, int],
         clock: Clock,
         skill_manifest: SkillManifest | None = None,
+        pending_reminder_ids: list[str] | None = None,
         checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         resume_state: dict[str, Any] | None = None,
         resume_span_id: str | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
+        pending_reminder_ids = pending_reminder_ids if pending_reminder_ids is not None else []
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
@@ -412,11 +415,6 @@ class RunnerCore:
                         deliver = [item for item in due_intents if item.id not in already_pending]
                         reminders_block = "\n".join(f"- {item.text}" for item in deliver)
                         pending_reminder_ids.extend(item.id for item in deliver)
-                        if pending_reminder_ids:
-                            await persist_state({
-                                **(resume_state or {}),
-                                "pending_reminder_ids": list(pending_reminder_ids),
-                            })
 
                 # 4. Lessons
                 lessons_block = ""
