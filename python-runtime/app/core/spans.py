@@ -15,21 +15,24 @@ async def span(
     name: str | None = None,
     parent_span_id: str | None = None,
     data: dict[str, Any] | None = None,
+    span_id: str | None = None,
+    emit_start: bool = True,
 ) -> AsyncGenerator[str, None]:
-    """Async context manager for span lifecycle management. Ensures span_ended is always emitted."""
-    span_id = str(uuid.uuid4())
+    """Manage a span; resumed root spans can reuse their original ID without a second start."""
+    span_id = span_id or str(uuid.uuid4())
     start_data = dict(data or {})
 
-    await emit(
-        EventDraft(
-            type="span_started",
-            span_id=span_id,
-            parent_span_id=parent_span_id,
-            kind=kind,
-            name=name,
-            data=start_data,
+    if emit_start:
+        await emit(
+            EventDraft(
+                type="span_started",
+                span_id=span_id,
+                parent_span_id=parent_span_id,
+                kind=kind,
+                name=name,
+                data=start_data,
+            )
         )
-    )
 
     status: SpanStatus = "ok"
     end_data: dict[str, Any] = {}
