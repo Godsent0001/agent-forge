@@ -483,29 +483,36 @@ class RunnerCore:
                 )
 
                 try:
-                    res_text = await self._run_agent(
-                        agent_id=child_link.agent_id,
-                        graph=graph,
-                        req=req,
-                        task=directive.instruction,
-                        history=[],
-                        history_summary="",
-                        parent_span_id=tool_span_id,
-                        depth=depth + 1,
-                        emit=emit,
-                        cancel=cancel,
-                        approvals=approvals,
-                        workspace=workspace,
-                        tools_factory=tools_factory,
-                        memory=memory,
-                        lessons=lessons,
-                        intents=intents,
-                        run_history=run_history,
-                        budget=budget,
-                        active_agent_ids=active_agent_ids,
-                        agent_revision_counts=agent_revision_counts,
-                        clock=clock,
-                    )
+                    child_timeout = req.options.tool_timeout_seconds
+                    remaining = budget.remaining_seconds
+                    if remaining is not None:
+                        child_timeout = min(child_timeout, remaining)
+                    if child_timeout <= 0:
+                        raise BudgetExceededError("Run deadline exhausted before child-agent execution.")
+                    async with asyncio.timeout(child_timeout):
+                        res_text = await self._run_agent(
+                            agent_id=child_link.agent_id,
+                            graph=graph,
+                            req=req,
+                            task=directive.instruction,
+                            history=[],
+                            history_summary="",
+                            parent_span_id=tool_span_id,
+                            depth=depth + 1,
+                            emit=emit,
+                            cancel=cancel,
+                            approvals=approvals,
+                            workspace=workspace,
+                            tools_factory=tools_factory,
+                            memory=memory,
+                            lessons=lessons,
+                            intents=intents,
+                            run_history=run_history,
+                            budget=budget,
+                            active_agent_ids=active_agent_ids,
+                            agent_revision_counts=agent_revision_counts,
+                            clock=clock,
+                        )
 
                     artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
                     uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
@@ -527,6 +534,12 @@ class RunnerCore:
                     )
                     return envelope.model_dump_json(indent=2)
 
+                except (BudgetExceededError, asyncio.CancelledError):
+                    raise
+                except TimeoutError as exc:
+                    if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                        raise BudgetExceededError("Run deadline exceeded during child-agent execution.") from exc
+                    return f"ERROR: sub-agent '{child_link.agent_id}' timed out after {child_timeout}s."
                 except Exception as exc:
                     return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
 
@@ -584,6 +597,14 @@ class RunnerCore:
 
                 return content
 
+            except BudgetExceededError:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except TimeoutError as exc:
+                if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                    raise BudgetExceededError("Run deadline exceeded during tool execution.") from exc
+                return f"ERROR: tool timed out after {timeout_s}s."
             except ToolError as te:
                 return f"ERROR: {te.message}"
             except Exception as exc:
