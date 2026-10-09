@@ -158,6 +158,7 @@ class RunnerCore:
                 clock=clock_fn,
                 checkpoint=save_checkpoint,
                 resume_state=resume_state,
+                resume_span_id=root_span_id if resume_state and not resume_state.get("root_span_closed") else None,
             )
 
             if root_spec.memory_enabled and memory:
@@ -225,6 +226,7 @@ class RunnerCore:
         skill_manifest: SkillManifest | None = None,
         checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         resume_state: dict[str, Any] | None = None,
+        resume_span_id: str | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
@@ -250,6 +252,8 @@ class RunnerCore:
                     "depth": depth,
                     "input_preview": task[:2000],
                 },
+                span_id=resume_span_id if depth == 0 else None,
+                emit_start=not (depth == 0 and resume_span_id is not None),
             ) as agent_span_id:
 
                 # 1. Memory recall
