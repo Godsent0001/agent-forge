@@ -81,6 +81,7 @@ class RunnerCore:
         resume_state: dict[str, Any] | None = None
         root_invocation_id = str(uuid.uuid4())
         root_span_id: str | None = None
+        active_spans: dict[str, dict[str, Any]] = {}
         last_checkpoint_state: dict[str, Any] = {}
         checkpoint_created_at = datetime.now(timezone.utc)
         if prior_checkpoint is not None:
@@ -91,6 +92,11 @@ class RunnerCore:
             if prior_checkpoint.frames:
                 root_invocation_id = prior_checkpoint.frames[0].invocation_id
                 root_span_id = prior_checkpoint.frames[0].span_id
+            active_spans = {
+                str(item["span_id"]): dict(item)
+                for item in prior_checkpoint.metadata.get("active_spans", [])
+                if isinstance(item, dict) and item.get("span_id")
+            }
             checkpoint_created_at = prior_checkpoint.created_at
             if prior_checkpoint.budget_state:
                 budget.restore(prior_checkpoint.budget_state)
@@ -129,7 +135,8 @@ class RunnerCore:
                 budget_state=budget.snapshot(),
                 metadata={"request_fingerprint": request_fingerprint,
                           "resume_semantics": "in-flight-tool-outcomes-are-not-replayed",
-                          "root_span_id": root_span_id},
+                          "root_span_id": root_span_id,
+                          "active_spans": list(active_spans.values())},
             )
             await checkpoint_store.save(checkpoint)
 
