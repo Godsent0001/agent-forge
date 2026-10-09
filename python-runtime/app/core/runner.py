@@ -1,9 +1,13 @@
 """Runner v2 (the agent loop engine) for AgentForge Core."""
 import asyncio
+import copy
+import hashlib
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec, ToolBinding
@@ -13,6 +17,9 @@ from app.contracts.run import RunRequest, RunResult, Totals
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
+from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.scheduler import ScheduledTask, TaskPlan
+from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
@@ -22,9 +29,14 @@ from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
+from app.core.skills.types import SkillManifest
 from app.core.spans import span
+from app.core.tools.yield_time import YieldTimeTool
 
 logger = logging.getLogger(__name__)
+DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4
+DEFAULT_TOOL_TIMEOUT_SECONDS = 120
+DEFAULT_MAX_SCHEDULED_TASKS = 100
 
 
 class RunnerCore:
@@ -49,7 +61,7 @@ class RunnerCore:
         run_history: RunHistory,
         clock: Clock | None = None,
     ) -> RunResult:
-        budget = BudgetTracker(req.options.budget)
+        budget = BudgetTracker(req.options.budget, max_parallel_tools=getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS))
         root_spec = graph.agents.get(graph.root_id)
         if not root_spec:
             return RunResult(
@@ -59,9 +71,141 @@ class RunnerCore:
             )
 
         active_agent_ids: set[str] = set()
+        agent_revision_counts: dict[str, int] = {}
+        clock_fn: Clock = clock or (lambda: datetime.now(timezone.utc))
+
+        checkpoint_store = SQLiteCheckpointStore(Path(workspace.root) / ".agentforge" / "checkpoints.sqlite3")
+        graph_fingerprint = _fingerprint(graph.model_dump(mode="json"))
+        request_fingerprint = _fingerprint(req.model_dump(mode="json", exclude={"execution_id"}))
+        prior_checkpoint = await checkpoint_store.load(req.execution_id)
+        resume_state: dict[str, Any] | None = None
+        root_invocation_id = str(uuid.uuid4())
+        root_span_id: str | None = None
+        active_spans: dict[str, dict[str, Any]] = {}
+        last_checkpoint_state: dict[str, Any] = {}
+        checkpoint_created_at = datetime.now(timezone.utc)
+        if prior_checkpoint is not None:
+            if prior_checkpoint.graph_fingerprint != graph_fingerprint:
+                return RunResult(status="error", error="Cannot resume execution: agent graph changed since checkpoint.", totals=budget.totals)
+            if prior_checkpoint.metadata.get("request_fingerprint") != request_fingerprint:
+                return RunResult(status="error", error="Cannot resume execution: request differs from checkpoint.", totals=budget.totals)
+            if prior_checkpoint.frames:
+                root_invocation_id = prior_checkpoint.frames[0].invocation_id
+                root_span_id = prior_checkpoint.frames[0].span_id
+            active_spans = {
+                str(item["span_id"]): dict(item)
+                for item in prior_checkpoint.metadata.get("active_spans", [])
+                if isinstance(item, dict) and item.get("span_id")
+            }
+            checkpoint_created_at = prior_checkpoint.created_at
+            if prior_checkpoint.budget_state:
+                budget.restore(prior_checkpoint.budget_state)
+            resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
+            last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
+            if root_span_id and not active_spans and not (
+                resume_state and isinstance(resume_state.get("final_output"), str)
+            ):
+                return RunResult(
+                    status="error",
+                    error="Checkpoint has no active root span and no final output; refusing an event-contract-unsafe resume.",
+                    totals=budget.totals,
+                )
+            if resume_state and resume_state.get("final_output") is not None and not active_spans:
+                resume_state["root_span_closed"] = True
+                last_checkpoint_state.update(copy.deepcopy(resume_state))
+
+        async def write_checkpoint() -> None:
+            state = last_checkpoint_state
+            messages = copy.deepcopy(state.get("messages", []))
+            completed = {
+                str(m.get("tool_call_id")): str(m.get("content", ""))
+                for m in messages if m.get("role") == "tool" and m.get("tool_call_id")
+            }
+            frame = AgentFrame(
+                invocation_id=root_invocation_id,
+                agent_id=graph.root_id,
+                span_id=root_span_id,
+                task=req.task,
+                depth=0,
+                iteration=int(state.get("iterations", 0)),
+                messages=messages,
+                pending_tool_call_ids=list(state.get("pending_tool_call_ids", [])),
+                completed_tool_results=completed,
+            )
+            checkpoint = ExecutionCheckpoint(
+                execution_id=req.execution_id,
+                graph_fingerprint=graph_fingerprint,
+                status="running",
+                created_at=checkpoint_created_at,
+                updated_at=datetime.now(timezone.utc),
+                frames=[frame],
+                task_state=copy.deepcopy(state),
+                budget_state=budget.snapshot(),
+                metadata={"request_fingerprint": request_fingerprint,
+                          "resume_semantics": "in-flight-tool-outcomes-are-not-replayed",
+                          "root_span_id": root_span_id,
+                          "active_spans": list(active_spans.values())},
+            )
+            await checkpoint_store.save(checkpoint)
+
+        async def save_checkpoint(state: dict[str, Any]) -> None:
+            nonlocal root_span_id
+            last_checkpoint_state.clear()
+            last_checkpoint_state.update(copy.deepcopy(state))
+            if state.get("root_span_id"):
+                root_span_id = str(state["root_span_id"])
+            await write_checkpoint()
+
+        async def tracked_emit(draft: EventDraft) -> None:
+            nonlocal root_span_id
+            if draft.type == "span_started" and draft.span_id:
+                active_spans[draft.span_id] = {
+                    "span_id": draft.span_id,
+                    "parent_span_id": draft.parent_span_id,
+                    "kind": draft.kind,
+                    "name": draft.name,
+                }
+                if draft.kind == "agent" and draft.parent_span_id is None:
+                    root_span_id = draft.span_id
+            await emit(draft)
+            if draft.type == "span_ended" and draft.span_id:
+                active_spans.pop(draft.span_id, None)
+            await write_checkpoint()
+
+        if prior_checkpoint is not None and active_spans:
+            def _span_depth(span_id: str) -> int:
+                depth = 0
+                parent = active_spans.get(span_id, {}).get("parent_span_id")
+                seen = {span_id}
+                while parent and parent in active_spans and parent not in seen:
+                    seen.add(parent)
+                    depth += 1
+                    parent = active_spans[parent].get("parent_span_id")
+                return depth
+
+            abandoned_spans = sorted(
+                (sid for sid in active_spans if sid != root_span_id),
+                key=_span_depth, reverse=True,
+            )
+            for abandoned_id in abandoned_spans:
+                abandoned = active_spans.get(abandoned_id)
+                if abandoned:
+                    await tracked_emit(EventDraft(
+                        type="span_ended",
+                        span_id=abandoned_id,
+                        parent_span_id=abandoned.get("parent_span_id"),
+                        kind=abandoned.get("kind"),
+                        name=abandoned.get("name"),
+                        status="error",
+                        data={"error": "Execution interrupted; span closed during resume."},
+                    ))
 
         try:
-            final_output = await self._run_agent(
+            final_output = ""
+            if resume_state and isinstance(resume_state.get("final_output"), str):
+                final_output = resume_state["final_output"]
+            else:
+                final_output = await self._run_agent(
                 agent_id=graph.root_id,
                 graph=graph,
                 req=req,
@@ -70,7 +214,7 @@ class RunnerCore:
                 history_summary=req.history_summary,
                 parent_span_id=None,
                 depth=0,
-                emit=emit,
+                emit=tracked_emit,
                 cancel=cancel,
                 approvals=approvals,
                 workspace=workspace,
@@ -81,20 +225,48 @@ class RunnerCore:
                 run_history=run_history,
                 budget=budget,
                 active_agent_ids=active_agent_ids,
+                agent_revision_counts=agent_revision_counts,
+                clock=clock_fn,
+                checkpoint=save_checkpoint,
+                resume_state=resume_state,
+                resume_span_id=root_span_id if prior_checkpoint is not None and root_span_id and not (resume_state or {}).get("root_span_closed") else None,
             )
 
-            # Memory extraction at end of successful root run
-            if root_spec.memory_enabled and memory:
-                await self._extract_memories(
-                    root_spec=root_spec,
-                    req=req,
-                    final_output=final_output,
-                    memory=memory,
-                    emit=emit,
-                    parent_span_id=None,
-                    budget=budget,
-                )
+            if not (resume_state and isinstance(resume_state.get("final_output"), str)):
+                await save_checkpoint({
+                    **last_checkpoint_state,
+                    "final_output": final_output,
+                    "root_span_id": root_span_id,
+                    "root_span_closed": True,
+                    "pending_tool_call_ids": [],
+                })
+            elif root_span_id and not resume_state.get("root_span_closed"):
+                if root_spec.memory_enabled and memory:
+                    try:
+                        await self._extract_memories(
+                            root_spec=root_spec, req=req, final_output=final_output,
+                            memory=memory, emit=tracked_emit,
+                            parent_span_id=root_span_id, budget=budget,
+                        )
+                    except Exception:
+                        await tracked_emit(EventDraft(
+                            type="span_ended", span_id=root_span_id, parent_span_id=None,
+                            kind="agent", name=root_spec.name, status="error",
+                            data={"error": "Memory extraction failed during resume."},
+                        ))
+                        raise
+                await tracked_emit(EventDraft(
+                    type="span_ended", span_id=root_span_id, parent_span_id=None,
+                    kind="agent", name=root_spec.name, status="ok",
+                    data={"output_preview": final_output[:2000]},
+                ))
+                await save_checkpoint({
+                    **resume_state, "final_output": final_output,
+                    "root_span_id": root_span_id, "root_span_closed": True,
+                    "pending_tool_call_ids": [],
+                })
 
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="completed",
                 final_output=final_output,
@@ -102,18 +274,21 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
                 totals=budget.totals,
             )
         except asyncio.CancelledError:
+            await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="cancelled",
                 error="Run was cancelled by user.",
                 totals=budget.totals,
             )
         except Exception as exc:
+            await checkpoint_store.delete(req.execution_id)
             logger.exception("Run execution error")
             return RunResult(
                 status="error",
@@ -142,18 +317,25 @@ class RunnerCore:
         run_history: RunHistory,
         budget: BudgetTracker,
         active_agent_ids: set[str],
+        agent_revision_counts: dict[str, int],
+        clock: Clock,
+        skill_manifest: SkillManifest | None = None,
+        checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        resume_state: dict[str, Any] | None = None,
+        resume_span_id: str | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
-
         if depth > req.options.max_depth:
             raise RuntimeError(f"Maximum delegation depth reached ({depth} > {req.options.max_depth})")
-
+        # Copy the ancestry per invocation: sibling invocations of the same agent definition
+        # must not mutate or observe one another's active path.
+        agent_path = set(active_agent_ids)
+        agent_path.add(agent_id)
         spec = graph.agents[agent_id]
-        active_agent_ids.add(agent_id)
 
         try:
             async with span(
@@ -166,7 +348,15 @@ class RunnerCore:
                     "depth": depth,
                     "input_preview": task[:2000],
                 },
+                span_id=resume_span_id if depth == 0 else None,
+                emit_start=not (depth == 0 and resume_span_id is not None),
             ) as agent_span_id:
+
+                async def persist_state(state: dict[str, Any]) -> None:
+                    if depth == 0 and checkpoint:
+                        payload = dict(state)
+                        payload["root_span_id"] = agent_span_id
+                        await checkpoint(payload)
 
                 # 1. Memory recall
                 memory_block = ""
@@ -190,7 +380,7 @@ class RunnerCore:
                 # 3. Due reminders
                 reminders_block = ""
                 if req.options.memory.intents and intents and depth == 0:
-                    now_utc = datetime.now(timezone.utc)
+                    now_utc = _clock_now(clock)
                     due_intents = await intents.due_for_run(spec.id, now_utc)
                     if due_intents:
                         reminders_block = "\n".join(f"- {i.text}" for i in due_intents)
@@ -201,7 +391,16 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
-                # 5. Build prompt
+                # 5. Temporal Context
+                now_dt = _clock_now(clock)
+                temporal_context = {
+                    "current_time_iso": now_dt.isoformat(),
+                    "epoch_timestamp_ms": int(now_dt.timestamp() * 1000),
+                    "session_elapsed_ms": int(budget.elapsed_seconds * 1000),
+                    "remaining_budget_ms": int((req.options.budget.max_seconds - budget.elapsed_seconds) * 1000) if req.options.budget.max_seconds else None,
+                }
+
+                # 6. Build system prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -209,28 +408,59 @@ class RunnerCore:
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
                     history_summary_block=history_summary,
+                    skill_manifest=skill_manifest,
+                    temporal_context=temporal_context,
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
                 for msg in history:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
                 messages.append({"role": "user", "content": task})
+                if depth == 0 and resume_state and isinstance(resume_state.get("messages"), list):
+                    messages = copy.deepcopy(resume_state["messages"])
 
-                # 6. Assemble tools
+                # 7. Assemble tools
                 native_tool_specs, tool_instances = self._assemble_tools(spec, graph, tools_factory, memory, intents, run_history)
 
-                iterations = 0
-                tool_call_history: list[str] = []
+                iterations = int(resume_state.get("iterations", 0)) if depth == 0 and resume_state else 0
+                tool_call_history: list[str] = list(resume_state.get("tool_call_history", [])) if depth == 0 and resume_state else []
+                pending_ids = list(resume_state.get("pending_tool_call_ids", [])) if depth == 0 and resume_state else []
+                if pending_ids:
+                    for pending_id in pending_ids:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": pending_id,
+                            "content": "ERROR: Execution was interrupted while this tool call was in flight. Its side-effect outcome is unknown; do not blindly repeat it. Reconcile the outcome before retrying.",
+                        })
+                    if checkpoint:
+                        await persist_state({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
 
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
                     iterations += 1
+                    if depth == 0 and checkpoint:
+                        await persist_state({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
 
                     if iterations > req.options.max_iterations:
-                        return await self._force_text_turn(
+                        final_text = await self._force_text_turn(
                             spec, messages, agent_span_id, emit, budget
                         )
+                        if depth == 0 and checkpoint:
+                            await persist_state({"messages": messages, "iterations": iterations,
+                                                 "tool_call_history": tool_call_history,
+                                                 "pending_tool_call_ids": [], "final_output": final_text})
+                        if depth == 0 and spec.memory_enabled and memory:
+                            await self._extract_memories(
+                                root_spec=spec, req=req, final_output=final_text,
+                                memory=memory, emit=emit, parent_span_id=agent_span_id,
+                                budget=budget,
+                            )
+                        return final_text
 
                     # LLM Call
                     turn = await self._execute_llm_turn(
@@ -244,9 +474,26 @@ class RunnerCore:
                     )
 
                     messages.append(turn.message)
+                    if depth == 0 and checkpoint:
+                        await persist_state({
+                            "messages": messages, "iterations": iterations,
+                            "tool_call_history": tool_call_history,
+                            "pending_tool_call_ids": [tc.id for tc in turn.tool_calls],
+                        })
 
                     if not turn.tool_calls:
-                        return turn.text or ""
+                        final_text = turn.text or ""
+                        if depth == 0 and checkpoint:
+                            await persist_state({"messages": messages, "iterations": iterations,
+                                                 "tool_call_history": tool_call_history,
+                                                 "pending_tool_call_ids": [], "final_output": final_text})
+                        if depth == 0 and spec.memory_enabled and memory:
+                            await self._extract_memories(
+                                root_spec=spec, req=req, final_output=final_text,
+                                memory=memory, emit=emit, parent_span_id=agent_span_id,
+                                budget=budget,
+                            )
+                        return final_text
 
                     # Dispatch Tool Calls
                     tool_call_tuples = []
@@ -265,79 +512,95 @@ class RunnerCore:
                         tool_call_tuples.append(tc)
 
                     if not tool_call_tuples:
+                        if depth == 0 and checkpoint:
+                            await persist_state({"messages": messages, "iterations": iterations,
+                                              "tool_call_history": tool_call_history,
+                                              "pending_tool_call_ids": []})
                         continue
 
-                    if req.options.parallel_tools and len(tool_call_tuples) > 1:
-                        results = await asyncio.gather(
-                            *[
-                                self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=active_agent_ids,
+                    if depth == 0 and checkpoint:
+                        await persist_state({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": [tc.id for tc in tool_call_tuples]})
+
+                    max_tasks = min(DEFAULT_MAX_SCHEDULED_TASKS, max(1, int(getattr(req.options, "max_tasks", DEFAULT_MAX_SCHEDULED_TASKS))))
+                    scheduled_calls = tool_call_tuples[:max_tasks]
+                    rejected_calls = tool_call_tuples[max_tasks:]
+                    task_keys = {tc.id: f"call_{index}_{tc.id}" for index, tc in enumerate(scheduled_calls)}
+                    plan = TaskPlan(
+                        tasks={
+                            task_keys[tc.id]: ScheduledTask(
+                                task_id=task_keys[tc.id], agent_id=spec.id,
+                                instruction=tc.name, max_attempts=1,
+                            ) for tc in scheduled_calls
+                        },
+                        max_tasks=max_tasks,
+                    )
+                    plan.refresh_ready()
+                    results_by_call: dict[str, str] = {}
+                    parallel_limit = (
+                        max(1, int(getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS)))
+                        if req.options.parallel_tools else 1
+                    )
+
+                    while not plan.terminal:
+                        claimed = plan.claim_ready(parallel_limit)
+                        if not claimed:
+                            break
+
+                        async def execute_scheduled(task: ScheduledTask) -> tuple[str, str]:
+                            tc = next(item for item in scheduled_calls if task_keys[item.id] == task.task_id)
+                            try:
+                                result_text = await self._execute_single_tool(
+                                    tc=tc, spec=spec, graph=graph, tool_instances=tool_instances, req=req,
+                                    parent_span_id=agent_span_id, depth=depth, emit=emit, cancel=cancel,
+                                    approvals=approvals, workspace=workspace, tools_factory=tools_factory,
+                                    memory=memory, lessons=lessons, intents=intents, run_history=run_history,
+                                    budget=budget, active_agent_ids=agent_path,
+                                    agent_revision_counts=agent_revision_counts, clock=clock,
                                 )
-                                for tc in tool_call_tuples
-                            ],
+                                return tc.id, result_text
+                            except (BudgetExceededError, asyncio.CancelledError):
+                                raise
+                            except Exception as exc:
+                                return tc.id, f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+
+                        batch_results = await asyncio.gather(
+                            *(execute_scheduled(task) for task in claimed),
                             return_exceptions=True,
                         )
-                        for tc, res in zip(tool_call_tuples, results):
-                            if isinstance(res, Exception):
-                                content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
+                        for task, result in zip(claimed, batch_results):
+                            if isinstance(result, BudgetExceededError):
+                                raise result
+                            if isinstance(result, asyncio.CancelledError):
+                                raise result
+                            if isinstance(result, Exception):
+                                call_id = next(tc.id for tc in scheduled_calls if task_keys[tc.id] == task.task_id)
+                                content = f"ERROR: tool crashed ({type(result).__name__}: {result})"
                             else:
-                                content = res
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
-                    else:
-                        for tc in tool_call_tuples:
-                            try:
-                                content = await self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=active_agent_ids,
-                                )
-                            except Exception as exc:
-                                content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+                                call_id, content = result
+                            results_by_call[call_id] = content
+                            if content.startswith("ERROR:"):
+                                plan.fail(task.task_id, content, retryable=False)
+                            else:
+                                plan.complete(task.task_id)
+                        plan.refresh_ready()
 
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
+                    for tc in rejected_calls:
+                        results_by_call[tc.id] = f"ERROR: execution task limit exceeded ({max_tasks})."
+                    for tc in tool_call_tuples:
+                        messages.append({"role": "tool", "tool_call_id": tc.id,
+                                         "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
+                    if depth == 0 and checkpoint:
+                        await persist_state({"messages": messages, "iterations": iterations,
+                                          "tool_call_history": tool_call_history,
+                                          "pending_tool_call_ids": []})
+
+                    continue
 
         finally:
-            active_agent_ids.remove(agent_id)
+            # agent_path is invocation-local; nothing is removed from shared state.
+            pass
 
     async def _execute_llm_turn(
         self,
@@ -360,34 +623,48 @@ class RunnerCore:
                 "message_count": len(messages),
             },
         ) as llm_span_id:
-            if self.fake_llm:
-                turn = await self.fake_llm.complete(
-                    messages=messages,
-                    tools=[t.model_dump() for t in tools],
-                    params=spec.params.model_dump(),
-                )
-            else:
-                try:
-                    turn = await adapter_complete(
-                        messages=messages,
-                        tools=tools,
-                        params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
-                    )
-                except LLMContextTooLong:
-                    _trim_messages(messages)
-                    turn = await adapter_complete(
-                        messages=messages,
-                        tools=tools,
-                        params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
-                    )
+            remaining = budget.remaining_seconds
+            timeout_s = max(1, spec.params.timeout_s)
+            if remaining is not None:
+                timeout_s = min(timeout_s, remaining)
+            if timeout_s <= 0:
+                raise BudgetExceededError("Run deadline exhausted before LLM call.")
+            reservation = budget.reserve_llm_call(estimated_tokens=max(0, spec.params.max_tokens or 0))
+            try:
+                async with asyncio.timeout(timeout_s):
+                    if self.fake_llm:
+                        turn = await self.fake_llm.complete(
+                            messages=messages,
+                            tools=[t.model_dump() for t in tools],
+                            params=spec.params.model_dump(),
+                        )
+                    else:
+                        try:
+                            turn = await adapter_complete(
+                                messages=messages, tools=tools, params=spec.params,
+                                model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                            )
+                        except LLMContextTooLong:
+                            _trim_messages(messages)
+                            turn = await adapter_complete(
+                                messages=messages, tools=tools, params=spec.params,
+                                model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                            )
+            except TimeoutError as exc:
+                budget.release_reservation(reservation)
+                if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                    raise BudgetExceededError("Run deadline exceeded during LLM call.") from exc
+                raise LLMError(f"LLM call timed out after {timeout_s}s.") from exc
+            except BaseException:
+                budget.release_reservation(reservation)
+                raise
 
             budget.record_llm_call(
                 input_tokens=turn.usage.input_tokens,
                 output_tokens=turn.usage.output_tokens,
                 cache_read_tokens=turn.usage.cache_read_tokens,
                 cost_usd=turn.cost_usd,
+                reservation=reservation,
             )
 
             return turn
@@ -412,7 +689,13 @@ class RunnerCore:
         run_history: RunHistory,
         budget: BudgetTracker,
         active_agent_ids: set[str],
+        agent_revision_counts: dict[str, int],
+        clock: Clock,
     ) -> str:
+        start_time = _clock_now(clock)
+        # Account for the dispatch before span-start checkpointing so a crash
+        # cannot lose the attempted tool-call count.
+        budget.record_tool_call()
         async with span(
             emit,
             kind="tool_call",
@@ -424,34 +707,76 @@ class RunnerCore:
                 "args": json.dumps(tc.arguments)[:2000],
             },
         ) as tool_span_id:
-            budget.record_tool_call()
-
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
             if child_link:
-                child_task = tc.arguments.get("task", tc.arguments.get("input", ""))
+                task_id = f"task_{tc.id}"
+                child_instruction = tc.arguments.get("task", tc.arguments.get("instruction", tc.arguments.get("input", "")))
+
+                directive = TaskDirective(
+                    task_id=task_id,
+                    sender_id=spec.id,
+                    recipient_id=child_link.agent_id,
+                    instruction=child_instruction,
+                )
+
                 try:
-                    res = await self._run_agent(
-                        agent_id=child_link.agent_id,
-                        graph=graph,
-                        req=req,
-                        task=child_task,
-                        history=[],
-                        history_summary="",
-                        parent_span_id=tool_span_id,
-                        depth=depth + 1,
-                        emit=emit,
-                        cancel=cancel,
-                        approvals=approvals,
-                        workspace=workspace,
-                        tools_factory=tools_factory,
-                        memory=memory,
-                        lessons=lessons,
-                        intents=intents,
-                        run_history=run_history,
-                        budget=budget,
-                        active_agent_ids=active_agent_ids,
+                    child_timeout = int(getattr(req.options, "tool_timeout_seconds", DEFAULT_TOOL_TIMEOUT_SECONDS))
+                    remaining = budget.remaining_seconds
+                    if remaining is not None:
+                        child_timeout = min(child_timeout, remaining)
+                    if child_timeout <= 0:
+                        raise BudgetExceededError("Run deadline exhausted before child-agent execution.")
+                    async with asyncio.timeout(child_timeout):
+                        res_text = await self._run_agent(
+                            agent_id=child_link.agent_id,
+                            graph=graph,
+                            req=req,
+                            task=directive.instruction,
+                            history=[],
+                            history_summary="",
+                            parent_span_id=tool_span_id,
+                            depth=depth + 1,
+                            emit=emit,
+                            cancel=cancel,
+                            approvals=approvals,
+                            workspace=workspace,
+                            tools_factory=tools_factory,
+                            memory=memory,
+                            lessons=lessons,
+                            intents=intents,
+                            run_history=run_history,
+                            budget=budget,
+                            active_agent_ids=active_agent_ids,
+                            agent_revision_counts=agent_revision_counts,
+                            clock=clock,
+                        )
+
+                    artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
+                    uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
+
+                    end_time = _clock_now(clock)
+                    headline = res_text[:300].replace("\n", " ").strip()
+                    envelope = ClaimCheckEnvelope(
+                        task_id=task_id,
+                        sender_id=child_link.agent_id,
+                        recipient_id=spec.id,
+                        status="COMPLETED",
+                        summary=ClaimCheckSummary(headline=headline),
+                        result_artifact_uri=uri,
+                        temporal_telemetry={
+                            "invoked_at_iso": start_time.isoformat(),
+                            "completed_at_iso": end_time.isoformat(),
+                            "duration_wall_clock_ms": int((end_time - start_time).total_seconds() * 1000),
+                        },
                     )
-                    return res
+                    return envelope.model_dump_json(indent=2)
+
+                except (BudgetExceededError, asyncio.CancelledError):
+                    raise
+                except TimeoutError as exc:
+                    if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                        raise BudgetExceededError("Run deadline exceeded during child-agent execution.") from exc
+                    return f"ERROR: sub-agent '{child_link.agent_id}' timed out after {child_timeout}s."
                 except Exception as exc:
                     return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
 
@@ -488,7 +813,15 @@ class RunnerCore:
                 else:
                     args_inst = tc.arguments
 
-                res: ToolResult = await tool_obj.run(args_inst, ctx)
+                remaining = budget.remaining_seconds
+                timeout_s = int(getattr(req.options, "tool_timeout_seconds", DEFAULT_TOOL_TIMEOUT_SECONDS))
+                if remaining is not None:
+                    timeout_s = min(timeout_s, remaining)
+                if timeout_s <= 0:
+                    raise BudgetExceededError("Run deadline exhausted before tool execution.")
+                async with budget.tool_semaphore:
+                    async with asyncio.timeout(timeout_s):
+                        res: ToolResult = await tool_obj.run(args_inst, ctx)
                 content = res.content
 
                 saved_ref = None
@@ -501,6 +834,14 @@ class RunnerCore:
 
                 return content
 
+            except BudgetExceededError:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except TimeoutError as exc:
+                if budget.remaining_seconds is not None and budget.remaining_seconds <= 0:
+                    raise BudgetExceededError("Run deadline exceeded during tool execution.") from exc
+                return f"ERROR: tool timed out after {timeout_s}s."
             except ToolError as te:
                 return f"ERROR: {te.message}"
             except Exception as exc:
@@ -524,7 +865,7 @@ class RunnerCore:
         for child in spec.children:
             raw_names.append(sanitize_tool_name(child.agent_id))
 
-        # Memory & intent tool bindings
+        raw_names.append("yield_time")
         if spec.memory_enabled and run_history:
             raw_names.append("recall_run")
         if intents:
@@ -569,6 +910,13 @@ class RunnerCore:
                     },
                 )
             )
+
+        # yield_time tool primitive
+        yt_name = deduped[idx]
+        idx += 1
+        yt_inst = YieldTimeTool(intents)
+        tool_instances[yt_name] = yt_inst
+        tool_specs.append(ToolSpec(name=yt_name, description=yt_inst.default_description, parameters=yt_inst.Input.model_json_schema()))
 
         if spec.memory_enabled and run_history:
             from app.core.memory.episodic import RecallRunTool
@@ -656,3 +1004,16 @@ class DummyToolContext:
         self.workspace = workspace
         self.cancel = cancel
         self.config = config
+
+
+def _clock_now(clock: Clock) -> datetime:
+    """Return an aware UTC timestamp from the injected clock."""
+    value = clock()
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Injected clock must return a timezone-aware datetime.")
+    return value.astimezone(timezone.utc)
+
+
+def _fingerprint(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
