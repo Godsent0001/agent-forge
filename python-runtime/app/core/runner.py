@@ -1,10 +1,13 @@
 """Runner v2 (the agent loop engine) for AgentForge Core."""
 import asyncio
+import copy
+import hashlib
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec, ToolBinding
@@ -14,6 +17,8 @@ from app.contracts.run import RunRequest, RunResult, Totals
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
+from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
@@ -29,6 +34,9 @@ from app.core.spans import span
 from app.core.tools.yield_time import YieldTimeTool
 
 logger = logging.getLogger(__name__)
+DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4
+DEFAULT_TOOL_TIMEOUT_SECONDS = 120
+DEFAULT_MAX_SCHEDULED_TASKS = 100
 
 
 class RunnerCore:
@@ -53,7 +61,7 @@ class RunnerCore:
         run_history: RunHistory,
         clock: Clock | None = None,
     ) -> RunResult:
-        budget = BudgetTracker(req.options.budget, max_parallel_tools=req.options.max_parallel_tool_calls)
+        budget = BudgetTracker(req.options.budget, max_parallel_tools=getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS))
         root_spec = graph.agents.get(graph.root_id)
         if not root_spec:
             return RunResult(
