@@ -52,7 +52,7 @@ class ContextCompiler:
         if len(text) <= max_chars:
             return text
         omitted = len(text) - max_chars
-        return text[:max_chars] + f"\\n[{label} compacted; {omitted} characters omitted]"
+        return text[:max_chars] + f" [{label} compacted; {omitted} characters omitted]"
 
     def compile(self, messages: list[dict[str, Any]], workspace: Any) -> tuple[list[dict[str, Any]], ContextCompileStats]:
         compiled = copy.deepcopy(messages)
