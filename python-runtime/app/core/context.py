@@ -60,6 +60,7 @@ class ContextCompiler:
         tool_indices = [i for i, m in enumerate(compiled) if m.get("role") == "tool"]
         protected_tool_indices = set(tool_indices[-self.recent_tool_results:]) if self.recent_tool_results else set()
         compacted_tools = 0
+        compacted_tool_indices: set[int] = set()
         compacted_messages = 0
 
         # Older large tool payloads are always claim-checked. They remain available
@@ -72,6 +73,7 @@ class ContextCompiler:
             if len(content) <= self.compact_threshold:
                 continue
             message["content"] = self._artifact_pointer(message, content, workspace)
+            compacted_tool_indices.add(index)
             compacted_tools += 1
 
         # If the prompt is still over budget, compact oldest eligible content first.
@@ -83,11 +85,12 @@ class ContextCompiler:
                     break
                 message = compiled[index]
                 content = message.get("content", "")
-                if index in protected_tool_indices or not isinstance(content, str):
+                if index in protected_tool_indices or index in compacted_tool_indices or not isinstance(content, str):
                     continue
                 if len(content) <= 256:
                     continue
                 message["content"] = self._artifact_pointer(message, content, workspace)
+                compacted_tool_indices.add(index)
                 compacted_tools += 1
 
         if self._size(compiled) > self.max_context_chars:
