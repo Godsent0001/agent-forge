@@ -241,6 +241,20 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
             elif root_span_id and not resume_state.get("root_span_closed"):
+                if root_spec.memory_enabled and memory:
+                    try:
+                        await self._extract_memories(
+                            root_spec=root_spec, req=req, final_output=final_output,
+                            memory=memory, emit=tracked_emit,
+                            parent_span_id=root_span_id, budget=budget,
+                        )
+                    except Exception:
+                        await tracked_emit(EventDraft(
+                            type="span_ended", span_id=root_span_id, parent_span_id=None,
+                            kind="agent", name=root_spec.name, status="error",
+                            data={"error": "Memory extraction failed during resume."},
+                        ))
+                        raise
                 await tracked_emit(EventDraft(
                     type="span_ended", span_id=root_span_id, parent_span_id=None,
                     kind="agent", name=root_spec.name, status="ok",
@@ -251,17 +265,6 @@ class RunnerCore:
                     "root_span_id": root_span_id, "root_span_closed": True,
                     "pending_tool_call_ids": [],
                 })
-
-            if root_spec.memory_enabled and memory:
-                await self._extract_memories(
-                    root_spec=root_spec,
-                    req=req,
-                    final_output=final_output,
-                    memory=memory,
-                    emit=tracked_emit,
-                    parent_span_id=None,
-                    budget=budget,
-                )
 
             await checkpoint_store.delete(req.execution_id)
             return RunResult(
@@ -444,9 +447,20 @@ class RunnerCore:
                                           "pending_tool_call_ids": []})
 
                     if iterations > req.options.max_iterations:
-                        return await self._force_text_turn(
+                        final_text = await self._force_text_turn(
                             spec, messages, agent_span_id, emit, budget
                         )
+                        if depth == 0 and checkpoint:
+                            await persist_state({"messages": messages, "iterations": iterations,
+                                                 "tool_call_history": tool_call_history,
+                                                 "pending_tool_call_ids": [], "final_output": final_text})
+                        if depth == 0 and spec.memory_enabled and memory:
+                            await self._extract_memories(
+                                root_spec=spec, req=req, final_output=final_text,
+                                memory=memory, emit=emit, parent_span_id=agent_span_id,
+                                budget=budget,
+                            )
+                        return final_text
 
                     # LLM Call
                     turn = await self._execute_llm_turn(
@@ -471,8 +485,14 @@ class RunnerCore:
                         final_text = turn.text or ""
                         if depth == 0 and checkpoint:
                             await persist_state({"messages": messages, "iterations": iterations,
-                                              "tool_call_history": tool_call_history,
-                                              "pending_tool_call_ids": [], "final_output": final_text})
+                                                 "tool_call_history": tool_call_history,
+                                                 "pending_tool_call_ids": [], "final_output": final_text})
+                        if depth == 0 and spec.memory_enabled and memory:
+                            await self._extract_memories(
+                                root_spec=spec, req=req, final_output=final_text,
+                                memory=memory, emit=emit, parent_span_id=agent_span_id,
+                                budget=budget,
+                            )
                         return final_text
 
                     # Dispatch Tool Calls
