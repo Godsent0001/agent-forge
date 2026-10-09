@@ -256,6 +256,12 @@ class RunnerCore:
                 emit_start=not (depth == 0 and resume_span_id is not None),
             ) as agent_span_id:
 
+                async def persist_state(state: dict[str, Any]) -> None:
+                    if depth == 0 and checkpoint:
+                        payload = dict(state)
+                        payload["root_span_id"] = agent_span_id
+                        await checkpoint(payload)
+
                 # 1. Memory recall
                 memory_block = ""
                 if spec.memory_enabled and memory:
@@ -331,7 +337,7 @@ class RunnerCore:
                             "content": "ERROR: Execution was interrupted while this tool call was in flight. Its side-effect outcome is unknown; do not blindly repeat it. Reconcile the outcome before retrying.",
                         })
                     if checkpoint:
-                        await checkpoint({"messages": messages, "iterations": iterations,
+                        await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
                                           "pending_tool_call_ids": []})
 
@@ -340,7 +346,7 @@ class RunnerCore:
                     budget.check_limits()
                     iterations += 1
                     if depth == 0 and checkpoint:
-                        await checkpoint({"messages": messages, "iterations": iterations,
+                        await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
                                           "pending_tool_call_ids": []})
 
@@ -365,7 +371,7 @@ class RunnerCore:
                     if not turn.tool_calls:
                         final_text = turn.text or ""
                         if depth == 0 and checkpoint:
-                            await checkpoint({"messages": messages, "iterations": iterations,
+                            await persist_state({"messages": messages, "iterations": iterations,
                                               "tool_call_history": tool_call_history,
                                               "pending_tool_call_ids": [], "final_output": final_text})
                         return final_text
@@ -388,13 +394,13 @@ class RunnerCore:
 
                     if not tool_call_tuples:
                         if depth == 0 and checkpoint:
-                            await checkpoint({"messages": messages, "iterations": iterations,
+                            await persist_state({"messages": messages, "iterations": iterations,
                                               "tool_call_history": tool_call_history,
                                               "pending_tool_call_ids": []})
                         continue
 
                     if depth == 0 and checkpoint:
-                        await checkpoint({"messages": messages, "iterations": iterations,
+                        await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
                                           "pending_tool_call_ids": [tc.id for tc in tool_call_tuples]})
 
@@ -467,7 +473,7 @@ class RunnerCore:
                         messages.append({"role": "tool", "tool_call_id": tc.id,
                                          "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
                     if depth == 0 and checkpoint:
-                        await checkpoint({"messages": messages, "iterations": iterations,
+                        await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
                                           "pending_tool_call_ids": []})
 
