@@ -909,10 +909,10 @@ class RunnerCore:
                 content = res.content
                 if res.artifacts:
                     artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
-                    content += "\\nArtifacts produced:\\n" + "\\n".join(artifact_lines)
+                    content += " | Artifacts produced: " + " | ".join(artifact_lines)
                 if res.truncated:
                     continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
-                    content += f"\\nNOTE: tool output is truncated.{continuation}"
+                    content += f" | NOTE: tool output is truncated.{continuation}"
 
                 saved_ref = None
                 if len(content) > 1000 and hasattr(workspace, "write_result"):
