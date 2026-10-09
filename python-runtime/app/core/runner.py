@@ -221,7 +221,7 @@ class RunnerCore:
                 clock=clock_fn,
                 checkpoint=save_checkpoint,
                 resume_state=resume_state,
-                resume_span_id=root_span_id if resume_state and not resume_state.get("root_span_closed") else None,
+                resume_span_id=root_span_id if prior_checkpoint is not None and root_span_id and not (resume_state or {}).get("root_span_closed") else None,
             )
 
             if not (resume_state and isinstance(resume_state.get("final_output"), str)):
