@@ -21,7 +21,7 @@ from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpoin
 from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
-from app.core.lessons import format_lessons_block
+from app.core.lessons import format_lessons_block, reflect_on_signal
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
 from app.core.llm.pricing import get_context_window
@@ -31,6 +31,7 @@ from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.skills.types import SkillManifest
+from app.core.skills.registry import select_skill
 from app.core.spans import span
 from app.core.tools.yield_time import YieldTimeTool
 
@@ -276,6 +277,21 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
 
+            if root_spec.lessons_enabled and lessons:
+                recovery = _find_recovered_tool_error(last_checkpoint_state.get("messages", []))
+                if recovery:
+                    error_message, recovered_output = recovery
+                    try:
+                        await reflect_on_signal(
+                            agent_id=root_spec.id,
+                            execution_id=req.execution_id,
+                            error_message=error_message,
+                            recovered_output=recovered_output or final_output,
+                            store=lessons,
+                        )
+                    except Exception:
+                        logger.debug("Recovery lesson reflection failed", exc_info=True)
+
             if pending_reminder_ids:
                 await intents.mark_fired(pending_reminder_ids, _clock_now(clock_fn))
             await checkpoint_store.delete(req.execution_id)
@@ -365,6 +381,12 @@ class RunnerCore:
         agent_path = set(active_agent_ids)
         agent_path.add(agent_id)
         spec = graph.agents[agent_id]
+        if skill_manifest is None:
+            available_tools = {name for binding in spec.tools for name in (binding.name, binding.kind)}
+            try:
+                skill_manifest = select_skill(workspace.root, task, available_tools)
+            except (OSError, ValueError, TypeError):
+                logger.debug("Skill discovery skipped for agent %s", spec.id, exc_info=True)
 
         try:
             async with span(
@@ -1127,6 +1149,22 @@ class RunnerCore:
                 store=memory,
                 llm_complete_fn=llm_fn,
             )
+
+
+def _find_recovered_tool_error(messages: list[dict[str, Any]]) -> tuple[str, str] | None:
+    """Return one earlier tool error only when a later tool result succeeded."""
+    first_error: str | None = None
+    recovered_output = ""
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        content = str(message.get("content", ""))
+        if content.startswith("ERROR:") and first_error is None:
+            first_error = content[6:].strip()[:500]
+        elif first_error and content and not content.startswith("ERROR:"):
+            recovered_output = content[:500]
+            return first_error, recovered_output
+    return None
 
 
 def _build_self_model(
