@@ -129,8 +129,21 @@ class ContextCompiler:
     def _artifact_pointer(message: dict[str, Any], content: str, workspace: Any) -> str:
         call_id = str(message.get("tool_call_id") or "unknown-tool-result")
         artifact_path: str | None = None
+        if call_id != "unknown-tool-result":
+            # The Runner may already have saved the untruncated result under this ID.
+            # Reuse that artifact rather than overwriting it with a compacted excerpt.
+            resolver = getattr(workspace, "resolve", None)
+            relative = getattr(workspace, "relative", None)
+            if callable(resolver) and callable(relative):
+                try:
+                    existing = resolver(f".results/{call_id}.txt")
+                    if existing.is_file():
+                        artifact_path = relative(existing)
+                except Exception:
+                    artifact_path = None
+
         writer = getattr(workspace, "write_result", None)
-        if callable(writer) and call_id != "unknown-tool-result":
+        if not artifact_path and callable(writer) and call_id != "unknown-tool-result":
             try:
                 artifact = writer(call_id, content)
                 artifact_path = getattr(artifact, "path", None)
