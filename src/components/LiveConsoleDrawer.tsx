@@ -155,11 +155,11 @@ export function LiveConsoleDrawer({
 
       {/* Expanded Dual-Panel Content */}
       {isExpanded && (
-        <div className="h-64 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-studio-800 overflow-hidden text-xs">
+        <div className="h-[38vh] min-h-[250px] max-h-[440px] grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-studio-800 overflow-hidden text-sm">
           {/* Left Panel: AI Collaboration Chat */}
           <div className="flex flex-col h-full bg-studio-950/60 overflow-hidden min-w-0">
             {/* Header */}
-            <div className="p-2.5 border-b border-studio-800 bg-studio-900/90 flex items-center justify-between shrink-0">
+            <div className="p-3 border-b border-studio-800 bg-studio-900/90 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs">💬</span>
                 <span className="font-semibold text-studio-200">AI Collaboration Chat</span>
@@ -170,7 +170,7 @@ export function LiveConsoleDrawer({
             </div>
 
             {/* Messages Thread */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-0">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 text-sm">
               {agentMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4 text-studio-500 text-2xs space-y-1">
                   <span>Enter a task or instruction below to test this agent workflow.</span>
@@ -193,7 +193,7 @@ export function LiveConsoleDrawer({
                       <span className="text-2xs font-mono text-studio-600">{msg.timestamp}</span>
                     </div>
                     <div
-                      className={`max-w-[85%] rounded-md px-3 py-1.5 text-xs whitespace-pre-wrap leading-relaxed ${
+                      className={`max-w-[85%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap leading-6 ${
                         msg.sender === "user"
                           ? "bg-accent-600 text-white shadow-sm"
                           : msg.sender === "tool"
