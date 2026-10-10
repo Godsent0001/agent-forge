@@ -43,6 +43,18 @@ vi.mock("./components/AgentEditor", () => ({
   AgentEditor: () => <main data-testid="agent-editor">Agent editor</main>,
 }));
 
+vi.mock("./components/WorkflowCanvas", () => ({
+  WorkflowCanvas: () => <main data-testid="workflow-canvas">Workflow canvas</main>,
+}));
+
+vi.mock("./components/PropertiesPanel", () => ({
+  PropertiesPanel: () => <aside data-testid="properties-panel">Properties panel</aside>,
+}));
+
+vi.mock("./components/LiveConsoleDrawer", () => ({
+  LiveConsoleDrawer: () => <section data-testid="live-console">Live console</section>,
+}));
+
 import App from "./App";
 
 describe("App bootstrap and workspace layout", () => {
