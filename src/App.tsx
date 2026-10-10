@@ -30,6 +30,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("canvas");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
+  const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(true);
   const [isBottomConsoleExpanded, setIsBottomConsoleExpanded] = useState(true);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
@@ -183,9 +184,16 @@ export default function App() {
             />
           </div>
         ) : activeTab === "chat" ? (
-          // Dedicated Full Testing Surface
-          <div className="flex-1 min-w-0 h-full overflow-hidden">
-            <AgentChat onRunExecution={setActiveExecutionId} />
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+            <div className="flex min-h-12 items-center gap-2 border-b border-studio-800 bg-studio-900/90 px-3 py-2">
+              <span className="mr-auto text-xs font-mono uppercase tracking-widest text-studio-400">Conversation workspace</span>
+              <button onClick={() => setIsSidebarCollapsed((v) => !v)} className="rounded-lg border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isSidebarCollapsed ? "Show explorer" : "Hide explorer"}</button>
+              <button onClick={() => setIsExecutionTreeOpen((v) => !v)} className="rounded-lg border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isExecutionTreeOpen ? "Hide run details" : "Show run details"}</button>
+              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); }} className="rounded-lg border border-accent-500/50 bg-accent-900/30 px-3 py-2 text-xs font-medium text-accent-200 hover:bg-accent-900/60">Focus chat ↗</button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <AgentChat onRunExecution={setActiveExecutionId} />
+            </div>
           </div>
         ) : (
           // Dedicated Full Inspector Surface
