@@ -19,9 +19,9 @@ function ensurePortInitialized(): Promise<void> {
           throw new Error("Could not connect to Python backend: " + (err as Error).message);
         }
       } else {
-  // Standalone browser development
-  currentApiBase = "http://127.0.0.1:8000";
-}
+        // Standalone browser development / AI Studio web environment
+        currentApiBase = typeof window !== "undefined" && window.location.origin ? window.location.origin : "http://127.0.0.1:3000";
+      }
     })();
   }
   return portInitPromise;

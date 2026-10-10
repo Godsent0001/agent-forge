@@ -17,7 +17,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [chatError, setChatError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
@@ -28,12 +27,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   if (!selectedAgentId || !agent || !project) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-500 text-sm bg-surface-950 p-6">
+      <div className="h-full flex items-center justify-center text-studio-400 text-sm bg-studio-950 p-6 select-none">
         <div className="text-center max-w-sm space-y-2">
           <span className="text-3xl block">💬</span>
-          <p className="font-semibold text-slate-700">No Agent Selected</p>
-          <p className="text-xs text-slate-500">
-            Select an agent from the left explorer sidebar to start a interactive chat session.
+          <p className="font-semibold text-studio-200">No Agent Selected</p>
+          <p className="text-xs text-studio-500">
+            Select an agent from the left explorer sidebar or canvas to start an interactive testing session.
           </p>
         </div>
       </div>
@@ -57,12 +56,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       text: userText,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
-
     addChatMessage(agent.id, userMsg);
     setIsProcessing(true);
 
     try {
-      // Build recent conversation context from chat history
       const historyTurns = agentMessages
         .slice(-10)
         .map((m) => {
@@ -73,19 +70,16 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         .join("\n\n");
 
       const fullTask = historyTurns
-        ? `[RECENT CONVERSATION HISTORY]\n${historyTurns}\n\n[CURRENT USER INSTRUCTION - CRITICAL HIGHEST PRIORITY]\n${userText}`
+        ? `[RECENT CONVERSATION HISTORY]\n${historyTurns}\n\n[CURRENT USER INSTRUCTION]\n${userText}`
         : userText;
 
       const execution = await api.executions.run(project.id, agent.id, fullTask);
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
 
-      // Poll until the execution reaches a terminal state. The API now returns
-      // immediately with status=running, so do not turn an unfinished execution
-      // into a fake final chat response after a fixed timeout.
       let completedExecution = await api.executions.get(execution.id);
       for (let i = 0; i < 300; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 800));
         completedExecution = await api.executions.get(execution.id);
         if (["completed", "error", "cancelled", "budget_exceeded", "interrupted"].includes(completedExecution.status)) {
           break;
@@ -117,10 +111,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           "Task processed with no explicit final output.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
-
       addChatMessage(agent.id, agentMsg);
-
-      // Refresh agent state in store to retrieve newly synthesized learned_experience
       useStore.getState().updateAgent(agent.id, {});
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Failed to get agent response");
@@ -144,24 +135,29 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface-950 min-w-0">
+    <div className="h-full flex flex-col bg-studio-950 min-w-0 text-studio-100">
       {/* Header bar showing active agent */}
-      <div className="px-6 py-3 border-b border-slate-200 bg-surface-900 flex items-center justify-between shadow-sm shrink-0 min-w-0">
+      <div className="px-6 py-3 border-b border-studio-800 bg-studio-900 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-full bg-accent-100 text-accent-600 flex items-center justify-center font-bold text-lg border border-accent-300 shrink-0">
+          <div className="w-8 h-8 rounded-md bg-accent-950 text-accent-400 flex items-center justify-center font-bold text-base border border-accent-800/80 shrink-0">
             🤖
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-slate-800 text-sm leading-tight truncate">{agent.name}</h3>
-            <p className="text-xs text-slate-500 truncate">
-              {agent.description || `${agent.provider} / ${agent.model || "No model selected"}`}
+            <h3 className="font-semibold text-studio-100 text-sm leading-tight truncate">{agent.name}</h3>
+            <p className="text-2xs font-mono text-studio-400 truncate mt-0.5">
+              {agent.provider} / {agent.model || "No model selected"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {agent.child_agent_ids && agent.child_agent_ids.length > 0 && (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 font-medium shrink-0">
+            <span className="text-2xs font-mono px-2 py-0.5 rounded bg-blue-950/60 border border-blue-800 text-blue-300 font-medium shrink-0">
               🔗 {agent.child_agent_ids.length} Sub-agent(s)
+            </span>
+          )}
+          {agent.tool_ids && agent.tool_ids.length > 0 && (
+            <span className="text-2xs font-mono px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800 text-emerald-300 font-medium shrink-0">
+              🛠 {agent.tool_ids.length} Tools
             </span>
           )}
         </div>
@@ -170,11 +166,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       {/* Chat Messages scroll area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {agentMessages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-2">
-            <span className="text-4xl">💬</span>
-            <p className="font-semibold text-slate-700 text-sm">Start chatting with {agent.name}</p>
-            <p className="text-xs text-slate-500 max-w-sm">
-              Type a prompt or task below. {agent.name} will execute its reasoning, tools, and sub-agents to respond.
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-studio-400 space-y-2 select-none">
+            <span className="text-3xl">💬</span>
+            <p className="font-semibold text-studio-200 text-sm">Interactive Test Console</p>
+            <p className="text-xs text-studio-500 max-w-sm">
+              Type a task or test prompt below. {agent.name} will execute its reasoning, invoke attached tools, and output trace logs.
             </p>
           </div>
         )}
@@ -185,45 +181,47 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
           >
             <div className="flex items-center gap-2 mb-1 px-1">
-              <span className="text-[11px] font-bold text-slate-500">
+              <span className="text-2xs font-mono font-semibold text-studio-400">
                 {msg.sender === "user"
                   ? "You"
                   : msg.sender === "tool"
-                    ? `Tool · ${msg.toolName}`
-                    : msg.agentName || "Agent"}
+                  ? `Tool · ${msg.toolName}`
+                  : msg.agentName || "Agent"}
               </span>
-              <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
+              <span className="text-2xs font-mono text-studio-600">{msg.timestamp}</span>
             </div>
 
             {msg.sender === "tool" ? (
-              <div className="max-w-2xl w-full rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+              <div className="max-w-2xl w-full rounded-md border border-emerald-800/60 bg-emerald-950/30 p-3 shadow-studio">
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-[11px] font-semibold text-slate-700">Tool result</span>
-                  <span className={`text-[10px] font-semibold uppercase ${
-                    msg.toolStatus === "ok"
-                      ? "text-emerald-600"
-                      : msg.toolStatus === "cancelled"
-                        ? "text-amber-600"
-                        : "text-red-600"
-                  }`}>
+                  <span className="text-2xs font-mono font-semibold text-emerald-300">Tool Execution Result</span>
+                  <span
+                    className={`text-2xs font-mono font-semibold uppercase px-1.5 py-0.2 rounded border ${
+                      msg.toolStatus === "ok"
+                        ? "text-emerald-300 border-emerald-700 bg-emerald-950"
+                        : msg.toolStatus === "cancelled"
+                        ? "text-amber-300 border-amber-700 bg-amber-950"
+                        : "text-red-300 border-red-700 bg-red-950"
+                    }`}
+                  >
                     {msg.toolStatus}
                   </span>
                 </div>
                 {msg.toolInput && (
-                  <p className="text-[11px] text-slate-500 mb-2 break-words">
-                    <span className="font-semibold text-slate-600">Input:</span> {msg.toolInput}
+                  <p className="text-2xs text-studio-400 mb-2 break-words font-mono">
+                    <span className="text-studio-500">Input args:</span> {msg.toolInput}
                   </p>
                 )}
-                <pre className="whitespace-pre-wrap break-words text-xs text-slate-700 font-mono">
+                <pre className="whitespace-pre-wrap break-words text-xs text-emerald-200/90 font-mono leading-relaxed bg-studio-950/60 p-2 rounded border border-studio-800">
                   {msg.toolOutput}
                 </pre>
               </div>
             ) : (
               <div
-                className={`max-w-2xl rounded-2xl p-4 shadow-sm border ${
+                className={`max-w-2xl rounded-lg p-3.5 shadow-studio border ${
                   msg.sender === "user"
-                    ? "bg-accent-500 text-white border-accent-600 rounded-tr-none"
-                    : "bg-white text-slate-800 border-slate-200 rounded-tl-none"
+                    ? "bg-accent-600 text-white border-accent-500/80 rounded-tr-none"
+                    : "bg-studio-900 text-studio-100 border-studio-750 rounded-tl-none"
                 }`}
               >
                 {msg.sender === "user" ? (
@@ -237,13 +235,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div className="flex items-center gap-2 text-slate-500 text-xs py-2 px-3 bg-white border border-slate-200 rounded-xl w-fit shadow-sm animate-pulse">
-            <span>🤖</span> {agent.name} is reasoning and executing tools…
+          <div className="flex items-center gap-2 text-accent-400 text-xs py-2 px-3 bg-studio-900 border border-studio-700 rounded-md w-fit shadow-studio animate-pulse font-mono">
+            <span>⚙️</span> {agent.name} is reasoning and executing tools…
           </div>
         )}
 
         {chatError && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
+          <div className="p-3 bg-red-950/60 border border-red-800 text-red-300 rounded-md text-xs font-medium">
             Error: {chatError}
           </div>
         )}
@@ -251,8 +249,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
 
       {/* Multi-Line Prompt Bar */}
-      <div className="p-4 border-t border-slate-200 bg-surface-900 shrink-0">
-        <div className="max-w-4xl mx-auto flex items-end gap-2 bg-white border border-slate-300 rounded-xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-accent-500 focus-within:border-accent-500 transition-all">
+      <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
+        <div className="max-w-4xl mx-auto flex items-end gap-2 bg-studio-800 border border-studio-700 rounded-md p-2 shadow-studio focus-within:border-accent-500 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
@@ -265,13 +263,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             placeholder={`Prompt ${agent.name}… (Shift+Enter for new line, Enter to send)`}
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none py-1.5 px-2 min-h-[38px] max-h-32 overflow-y-auto"
+            className="flex-1 bg-transparent text-xs sm:text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-1.5 px-2 min-h-[38px] max-h-32 overflow-y-auto"
           />
           {isProcessing ? (
             <button
               onClick={handleCancelExecution}
               disabled={!activeExecutionId || isCancelling}
-              className="bg-red-500 hover:bg-red-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
+              className="bg-red-900 hover:bg-red-800 active:bg-red-950 disabled:opacity-40 text-red-200 text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 border border-red-700 cursor-pointer"
               aria-label="Stop execution"
             >
               <span>{isCancelling ? "Stopping…" : "Stop"}</span>
@@ -280,9 +278,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <button
               onClick={handleSendMessage}
               disabled={!promptInput.trim()}
-              className="bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shrink-0 h-9"
+              className="bg-accent-600 hover:bg-accent-500 active:bg-accent-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 shadow-studio cursor-pointer"
             >
-              <span>Send</span> ➔
+              <span>Run Test</span> ➔
             </button>
           )}
         </div>

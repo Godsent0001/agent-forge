@@ -31,7 +31,7 @@ export function AgentEditor() {
     );
   }
 
-  const handleProviderChange = (provider: "anthropic" | "openai") => {
+  const handleProviderChange = (provider: "google" | "anthropic" | "openai") => {
     updateAgent(selectedAgent.id, {
       provider,
       model: DEFAULT_MODELS[provider],
@@ -122,12 +122,13 @@ export function AgentEditor() {
             <div>
               <label className="block text-2xs font-mono uppercase text-studio-400 mb-1">Provider</label>
               <select
-                value={selectedAgent.provider}
+                value={selectedAgent.provider || "google"}
                 onChange={(e) => handleProviderChange(e.target.value as any)}
                 className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded px-3 py-1.5 focus:outline-none focus:border-accent-500"
               >
-                <option value="anthropic">Anthropic</option>
+                <option value="google">Google Gemini</option>
                 <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic Claude</option>
               </select>
             </div>
 

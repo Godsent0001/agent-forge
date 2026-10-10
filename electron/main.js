@@ -90,12 +90,26 @@ function startPythonBackend() {
   let args = [];
   let cwd;
 
-  if (isDev) {
-    // In development mode, run python script directly in python-runtime directory
-    cwd = path.join(projectRoot, "python-runtime");
-    executable = process.platform === "win32" ? "python" : "python3";
-    args = ["main.py"];
+
+if (isDev) {
+  // Prefer the project's virtual environment in development.
+  cwd = path.join(projectRoot, "python-runtime");
+
+  const venvPython = path.join(
+    cwd,
+    process.platform === "win32"
+      ? ".venv/Scripts/python.exe"
+      : ".venv/bin/python"
+  );
+
+  if (fs.existsSync(venvPython)) {
+    executable = venvPython;
   } else {
+    executable = process.platform === "win32" ? "python" : "python3";
+  }
+
+  args = ["main.py"];
+} else {
     // In production mode, spawn standalone executable if present, or run python with main.py in resources
     cwd = path.join(process.resourcesPath, "python-runtime");
     const binaryName = process.platform === "win32" ? "python-runtime.exe" : "python-runtime";

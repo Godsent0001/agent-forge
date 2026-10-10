@@ -10,17 +10,19 @@ export function ArtifactViewer({ content }: { content: string }) {
 
   return (
     <div className="space-y-3 min-w-0">
-      <div className="text-sm text-slate-800 leading-relaxed font-sans [&_a]:text-accent-600 [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-slate-100 [&_table]:w-full [&_table]:text-xs [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:p-2 [&_td]:border [&_td]:border-slate-200 [&_td]:p-2">
+      <div className="text-xs sm:text-sm text-studio-100 leading-relaxed font-sans [&_a]:text-accent-400 [&_a]:underline [&_code]:rounded [&_code]:bg-studio-800 [&_code]:text-accent-300 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-2xs [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-studio-950 [&_pre]:p-3 [&_pre]:text-studio-200 [&_pre]:border [&_pre]:border-studio-800 [&_table]:w-full [&_table]:text-2xs [&_th]:border [&_th]:border-studio-800 [&_th]:bg-studio-850 [&_th]:p-2 [&_td]:border [&_td]:border-studio-800 [&_td]:p-2">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>
 
       {matches.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-2">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+        <div className="mt-3 pt-3 border-t border-studio-800 space-y-2">
+          <p className="text-2xs font-mono font-semibold uppercase tracking-wider text-studio-400 flex items-center gap-1.5">
             <span>📁</span> Generated Files & Artifacts
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {matches.map((filepath, idx) => <ArtifactCard key={idx} filepath={filepath} />)}
+            {matches.map((filepath, idx) => (
+              <ArtifactCard key={idx} filepath={filepath} />
+            ))}
           </div>
         </div>
       )}

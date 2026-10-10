@@ -18,15 +18,48 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
   const isAudio = ["wav", "mp3", "ogg"].includes(ext);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm space-y-2">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-semibold text-slate-700 truncate max-w-[180px]" title={filename}>{filename}</span>
-        {apiBase ? <a href={fileUrl} target="_blank" rel="noreferrer" className="text-accent-500 hover:text-accent-400 font-medium hover:underline text-[11px]">Open ↗</a> : <span className="text-[11px] text-slate-400">Loading…</span>}
+    <div className="bg-studio-850 border border-studio-700 rounded-md p-2.5 shadow-studio space-y-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-studio-200 truncate max-w-[180px]" title={filename}>
+          {filename}
+        </span>
+        {apiBase ? (
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent-400 hover:text-accent-300 font-mono text-2xs hover:underline"
+          >
+            Open ↗
+          </a>
+        ) : (
+          <span className="text-2xs font-mono text-studio-500">Loading…</span>
+        )}
       </div>
-      {isImage && apiBase && <div className="rounded overflow-hidden bg-slate-100 border border-slate-200 max-h-48 flex items-center justify-center"><img src={fileUrl} alt={filename} className="max-h-48 object-contain" /></div>}
-      {isVideo && apiBase && <div className="rounded overflow-hidden bg-black max-h-48"><video controls src={fileUrl} className="w-full max-h-48 object-contain" /></div>}
-      {isAudio && apiBase && <div className="pt-1"><audio controls src={fileUrl} className="w-full h-8" /></div>}
-      {!isImage && !isVideo && !isAudio && <div className="bg-slate-50 border border-slate-200 rounded p-2 text-[11px] font-mono text-slate-600 truncate">{cleanPath}</div>}
+
+      {isImage && apiBase && (
+        <div className="rounded overflow-hidden bg-studio-900 border border-studio-800 max-h-48 flex items-center justify-center">
+          <img src={fileUrl} alt={filename} className="max-h-48 object-contain" />
+        </div>
+      )}
+
+      {isVideo && apiBase && (
+        <div className="rounded overflow-hidden bg-black max-h-48">
+          <video controls src={fileUrl} className="w-full max-h-48 object-contain" />
+        </div>
+      )}
+
+      {isAudio && apiBase && (
+        <div className="pt-1">
+          <audio controls src={fileUrl} className="w-full h-8" />
+        </div>
+      )}
+
+      {!isImage && !isVideo && !isAudio && (
+        <div className="bg-studio-900 border border-studio-800 rounded p-2 text-2xs font-mono text-studio-300 truncate">
+          {cleanPath}
+        </div>
+      )}
     </div>
   );
 }
