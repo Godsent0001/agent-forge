@@ -167,10 +167,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {agentMessages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-studio-400 space-y-2 select-none">
-            <span className="text-3xl">💬</span>
-            <p className="font-semibold text-studio-200 text-sm">Interactive Test Console</p>
-            <p className="text-xs text-studio-500 max-w-sm">
-              Type a task or test prompt below. {agent.name} will execute its reasoning, invoke attached tools, and output trace logs.
+            <p className="font-semibold text-studio-200 text-sm">What would you like to work on?</p>
+            <p className="text-xs text-studio-500 max-w-sm leading-relaxed">
+              Send a task to {agent.name}. It can use its configured model, tools, and delegated agents to complete the work.
             </p>
           </div>
         )}
