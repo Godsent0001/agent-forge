@@ -137,7 +137,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   return (
     <div className="h-full flex flex-col bg-studio-950 min-w-0 text-studio-100">
       {/* Header bar showing active agent */}
-      <div className="px-6 py-3 border-b border-studio-800 bg-studio-900 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
+      <div className="px-6 py-4 border-b border-studio-800 bg-studio-900/95 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-md bg-accent-950 text-accent-400 flex items-center justify-center font-bold text-base border border-accent-800/80 shrink-0">
             🤖
@@ -218,14 +218,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               </div>
             ) : (
               <div
-                className={`max-w-2xl rounded-lg p-3.5 shadow-studio border ${
+                className={`max-w-4xl rounded-xl p-5 shadow-studio border ${
                   msg.sender === "user"
                     ? "bg-accent-600 text-white border-accent-500/80 rounded-tr-none"
                     : "bg-studio-900 text-studio-100 border-studio-750 rounded-tl-none"
                 }`}
               >
                 {msg.sender === "user" ? (
-                  <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">{msg.text}</p>
+                  <p className="whitespace-pre-wrap text-sm sm:text-base leading-7">{msg.text}</p>
                 ) : (
                   <ArtifactViewer content={msg.text} />
                 )}
@@ -235,13 +235,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div className="flex items-center gap-2 text-accent-400 text-xs py-2 px-3 bg-studio-900 border border-studio-700 rounded-md w-fit shadow-studio animate-pulse font-mono">
+          <div className="flex items-center gap-2 text-accent-300 text-sm py-3 px-4 bg-studio-900 border border-studio-700 rounded-md w-fit shadow-studio animate-pulse font-mono">
             <span>⚙️</span> {agent.name} is reasoning and executing tools…
           </div>
         )}
 
         {chatError && (
-          <div className="p-3 bg-red-950/60 border border-red-800 text-red-300 rounded-md text-xs font-medium">
+          <div className="p-4 bg-red-950/60 border border-red-800 text-red-300 rounded-xl text-sm font-medium">
             Error: {chatError}
           </div>
         )}
@@ -249,8 +249,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
 
       {/* Multi-Line Prompt Bar */}
-      <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
-        <div className="max-w-4xl mx-auto flex items-end gap-2 bg-studio-800 border border-studio-700 rounded-md p-2 shadow-studio focus-within:border-accent-500 transition-colors">
+      <div className="p-5 border-t border-studio-800 bg-studio-900/90 shrink-0">
+        <div className="max-w-5xl mx-auto flex items-end gap-3 bg-studio-800/90 border border-studio-700 rounded-xl p-3 shadow-studio focus-within:border-accent-500 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
@@ -263,7 +263,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             placeholder={`Prompt ${agent.name}… (Shift+Enter for new line, Enter to send)`}
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-xs sm:text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-1.5 px-2 min-h-[38px] max-h-32 overflow-y-auto"
+            className="flex-1 bg-transparent text-sm sm:text-base text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[48px] max-h-40 overflow-y-auto"
           />
           {isProcessing ? (
             <button
