@@ -173,6 +173,11 @@ export default function App() {
                 onOpenToolCatalog={() => setShowToolCatalogModal(true)}
                 isRunning={isRunningQuickRun}
               />
+              {!isPropertiesOpen && (
+                <button onClick={() => setIsPropertiesOpen(true)} className="absolute right-4 top-16 z-30 rounded-xl border border-studio-700 bg-studio-900/95 px-3 py-2 text-xs text-studio-200 shadow-elevated backdrop-blur hover:border-accent-400 hover:text-white">
+                  Show inspector
+                </button>
+              )}
             </div>
 
             {/* Lower: Integrated Live Console & Collaboration Chat */}
