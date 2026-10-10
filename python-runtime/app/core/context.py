@@ -1,4 +1,4 @@
-"""Context compilation for bounded, artifact-backed model prompts.
+""""Context compilation for bounded, artifact-backed model prompts.
 
 The execution transcript remains authoritative in RunnerCore/checkpoints. This module
 creates a disposable prompt view: it compacts old tool payloads into claim-check
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 DEFAULT_CONTEXT_CHAR_BUDGET = 48_000
@@ -130,8 +131,7 @@ class ContextCompiler:
         call_id = str(message.get("tool_call_id") or "unknown-tool-result")
         artifact_path: str | None = None
         if call_id != "unknown-tool-result":
-            # The Runner may already have saved the untruncated result under this ID.
-            # Reuse that artifact rather than overwriting it with a compacted excerpt.
+            # Reuse an existing full result instead of overwriting it with an excerpt.
             resolver = getattr(workspace, "resolve", None)
             relative = getattr(workspace, "relative", None)
             if callable(resolver) and callable(relative):
@@ -141,6 +141,17 @@ class ContextCompiler:
                         artifact_path = relative(existing)
                 except Exception:
                     artifact_path = None
+            else:
+                # Support lightweight workspace adapters that expose their root
+                # directory and writer but not the full Workspace helper methods.
+                root = getattr(workspace, "root", None)
+                if root is not None:
+                    try:
+                        existing = Path(root) / ".results" / f"{call_id}.txt"
+                        if existing.is_file():
+                            artifact_path = existing.relative_to(Path(root)).as_posix()
+                    except (OSError, ValueError, TypeError):
+                        artifact_path = None
 
         writer = getattr(workspace, "write_result", None)
         if not artifact_path and callable(writer) and call_id != "unknown-tool-result":
