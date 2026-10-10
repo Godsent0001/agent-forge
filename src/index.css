@@ -101,3 +101,43 @@ body {
 .animate-fade-in {
   animation: fade-in 150ms ease-out;
 }
+
+/* Studio interaction polish */
+button, [role="button"], input, textarea, select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.workflow-canvas {
+  background-image:
+    radial-gradient(circle at 50% 42%, rgba(99, 102, 241, 0.075), transparent 42%),
+    radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: auto, 22px 22px;
+}
+
+::selection {
+  color: #fff;
+  background: rgba(99, 102, 241, 0.42);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
