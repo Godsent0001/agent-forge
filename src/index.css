@@ -141,3 +141,10 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Product UI: restrained geometry, less decoration, clearer hierarchy */
+.rounded-2xl, .rounded-xl { border-radius: 4px !important; }
+.rounded-lg, .rounded-md { border-radius: 3px !important; }
+.shadow-elevated { box-shadow: 0 2px 6px rgba(0, 0, 0, .22) !important; }
+.bg-grid-pattern { background-image: radial-gradient(rgba(148, 163, 184, .10) .7px, transparent .7px); background-size: 24px 24px; }
+.workflow-canvas { background-image: radial-gradient(rgba(148, 163, 184, .035) 1px, transparent 1px) !important; background-size: 24px 24px !important; }
