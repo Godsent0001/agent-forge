@@ -27,10 +27,10 @@ export default function App() {
   const project = useStore((s) => s.project);
 
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("canvas");
+  const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("chat");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
-  const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(true);
+  const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
   const [isBottomConsoleExpanded, setIsBottomConsoleExpanded] = useState(true);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
@@ -193,8 +193,9 @@ export default function App() {
             <div className="flex min-h-12 items-center gap-2 border-b border-studio-800 bg-studio-900/90 px-3 py-2">
               <span className="mr-auto text-xs font-mono uppercase tracking-widest text-studio-400">Conversation workspace</span>
               <button onClick={() => setIsSidebarCollapsed((v) => !v)} className="rounded-lg border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isSidebarCollapsed ? "Show explorer" : "Hide explorer"}</button>
-              <button onClick={() => setIsExecutionTreeOpen((v) => !v)} className="rounded-lg border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isExecutionTreeOpen ? "Hide run details" : "Show run details"}</button>
-              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); }} className="rounded-lg border border-accent-500/50 bg-accent-900/30 px-3 py-2 text-xs font-medium text-accent-200 hover:bg-accent-900/60">Focus chat ↗</button>
+              <button onClick={() => { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} className={`border px-3 py-2 text-xs ${isPropertiesOpen && !isExecutionTreeOpen ? "border-studio-500 bg-studio-800 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800"}`}>Model & delegation</button>
+              <button onClick={() => { setIsExecutionTreeOpen((v) => !v); setIsPropertiesOpen(false); }} aria-pressed={isExecutionTreeOpen} className={`border px-3 py-2 text-xs ${isExecutionTreeOpen ? "border-studio-500 bg-studio-800 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800"}`}>{isExecutionTreeOpen ? "Hide run details" : "Run details"}</button>
+              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); setIsPropertiesOpen(false); }} className="border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:bg-studio-800">Focus chat</button>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
               <AgentChat onRunExecution={setActiveExecutionId} />
@@ -213,9 +214,17 @@ export default function App() {
             onClose={() => setIsPropertiesOpen(false)}
             onOpenToolCatalog={() => setShowToolCatalogModal(true)}
           />
-        ) : activeTab === "chat" ? (
+        ) : activeTab === "chat" && isPropertiesOpen && !isExecutionTreeOpen ? (
           <div className="w-80 border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
-            <ExecutionTree executionId={activeExecutionId} />
+            <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />
+          </div>
+        ) : activeTab === "chat" && isExecutionTreeOpen ? (
+          <div className="w-80 border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
+            <div className="flex h-10 items-center justify-between border-b border-studio-800 px-3">
+              <span className="text-xs font-medium text-studio-200">Run details</span>
+              <button onClick={() => setIsExecutionTreeOpen(false)} className="px-2 py-1 text-xs text-studio-400 hover:text-white" aria-label="Close run details">Close</button>
+            </div>
+            <div className="h-[calc(100%-2.5rem)]"><ExecutionTree executionId={activeExecutionId} /></div>
           </div>
         ) : null}
       </div>
