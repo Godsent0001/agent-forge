@@ -28,8 +28,11 @@ def test_scheduler_waits_for_dependencies():
                       "b":ScheduledTask(task_id="b",agent_id="x",instruction="B"),
                       "m":ScheduledTask(task_id="m",agent_id="root",instruction="merge",dependencies=["a","b"])})
     assert p.refresh_ready()==["a","b"]
-    t=p.claim_ready(1)[0];p.complete(t.task_id);assert p.refresh_ready()==[]
-    t=p.claim_ready(1)[0];p.complete(t.task_id);assert p.refresh_ready()==["m"]
+    first = p.claim_ready(1)[0]
+    assert p.complete(first.task_id) == []
+    second = p.claim_ready(1)[0]
+    assert p.complete(second.task_id) == ["m"]
+    assert p.claim_ready(1)[0].task_id == "m"
 
 def test_failed_task_blocks_dependents():
     p=TaskPlan(tasks={"a":ScheduledTask(task_id="a",agent_id="x",instruction="A"),
