@@ -139,8 +139,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       {/* Header bar showing active agent */}
       <div className="px-6 py-4 border-b border-studio-800 bg-studio-900/95 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-md bg-accent-950 text-accent-400 flex items-center justify-center font-bold text-base border border-accent-800/80 shrink-0">
-            🤖
+          <div className="w-8 h-8 border border-studio-600 bg-studio-800 text-studio-200 flex items-center justify-center font-mono font-semibold text-xs shrink-0">
+            AG
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-studio-100 text-sm leading-tight truncate">{agent.name}</h3>
@@ -218,7 +218,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               </div>
             ) : (
               <div
-                className={`max-w-4xl rounded-xl p-5 shadow-studio border ${
+                className={`max-w-4xl p-4 shadow-studio border ${
                   msg.sender === "user"
                     ? "bg-accent-600 text-white border-accent-500/80 rounded-tr-none"
                     : "bg-studio-900 text-studio-100 border-studio-750 rounded-tl-none"
@@ -250,7 +250,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-5 border-t border-studio-800 bg-studio-900/90 shrink-0">
-        <div className="max-w-5xl mx-auto flex items-end gap-3 bg-studio-800/90 border border-studio-700 rounded-xl p-3 shadow-studio focus-within:border-accent-500 transition-colors">
+        <div className="max-w-5xl mx-auto flex items-end gap-3 bg-studio-900 border border-studio-700 p-3 shadow-studio focus-within:border-studio-500 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
