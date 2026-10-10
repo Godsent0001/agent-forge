@@ -156,6 +156,9 @@ class ContextCompiler:
         if len(content) > 240:
             excerpt += "…"
         if artifact_path:
+            # Artifact references are prompt-facing identifiers, so keep them
+            # platform-independent even when the workspace runs on Windows.
+            artifact_path = str(artifact_path).replace("\\", "/")
             return (
                 f"[Earlier tool result compacted. Full result saved at {artifact_path}. "
                 f"Retrieve that artifact only if needed.]\nExcerpt: {excerpt}"
