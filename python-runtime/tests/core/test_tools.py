@@ -72,4 +72,7 @@ async def test_lessons_system():
     await reflect_on_signal("agent_1", "exec_1", "Tool crashed", "Used fallback parameter", store)
 
     block = await format_lessons_block(store, "agent_1")
-    assert "Tool crashed" in block or "verify parameters" in block
+    assert "inspect the error" in block
+    assert "validate inputs before retrying" in block
+    # Durable lessons should generalize the failure without retaining raw details.
+    assert "Tool crashed" not in block

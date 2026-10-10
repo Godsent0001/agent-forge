@@ -44,3 +44,28 @@ def test_build_system_prompt_stable_and_volatile_order():
 
     assert lessons_idx < plan_idx
     assert plan_idx < memory_idx
+
+
+
+def test_runtime_self_model_is_separate_from_memory_lessons_and_skill():
+    spec = AgentSpec(
+        id="a1",
+        name="Research Assistant",
+        provider="fake",
+        model="fake-model",
+        memory_enabled=True,
+        lessons_enabled=True,
+    )
+    prompt = build_system_prompt(
+        spec=spec,
+        self_model_block='{"configured_tool_bindings":[{"name":"web_search","kind":"web_search"}],"remaining_depth":2}',
+        memory_block="- [fact] User prefers concise answers",
+        lessons_block="- Check prerequisites before retrying",
+    )
+
+    assert '<self_model>' in prompt
+    assert '"remaining_depth":2' in prompt
+    assert '<memory>' in prompt
+    assert '<lessons>' in prompt
+    assert prompt.index('<self_model>') < prompt.index('<lessons>')
+    assert prompt.index('<lessons>') < prompt.index('<memory>')

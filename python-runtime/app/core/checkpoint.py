@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import sqlite3
+from contextlib import closing
 from datetime import datetime,timezone
 from pathlib import Path
 from typing import Any,Protocol
@@ -68,13 +69,14 @@ class SQLiteCheckpointStore:
         return connection
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute(
-                "CREATE TABLE IF NOT EXISTS agent_checkpoints ("
-                "execution_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, "
-                "updated_at TEXT NOT NULL, payload TEXT NOT NULL)"
-            )
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS agent_checkpoints ("
+                    "execution_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, "
+                    "updated_at TEXT NOT NULL, payload TEXT NOT NULL)"
+                )
 
     async def save(self, checkpoint: ExecutionCheckpoint) -> None:
         async with self._async_lock:
@@ -82,20 +84,21 @@ class SQLiteCheckpointStore:
 
     def _save_sync(self, checkpoint: ExecutionCheckpoint) -> None:
         payload = checkpoint.model_dump_json()
-        with self._connect() as connection:
-            connection.execute(
-                "INSERT INTO agent_checkpoints(execution_id, schema_version, updated_at, payload) "
-                "VALUES (?, ?, ?, ?) ON CONFLICT(execution_id) DO UPDATE SET "
-                "schema_version=excluded.schema_version, updated_at=excluded.updated_at, payload=excluded.payload",
-                (checkpoint.execution_id, checkpoint.schema_version, checkpoint.updated_at.isoformat(), payload),
-            )
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT INTO agent_checkpoints(execution_id, schema_version, updated_at, payload) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT(execution_id) DO UPDATE SET "
+                    "schema_version=excluded.schema_version, updated_at=excluded.updated_at, payload=excluded.payload",
+                    (checkpoint.execution_id, checkpoint.schema_version, checkpoint.updated_at.isoformat(), payload),
+                )
 
     async def load(self, execution_id: str) -> ExecutionCheckpoint | None:
         async with self._async_lock:
             return await asyncio.to_thread(self._load_sync, execution_id)
 
     def _load_sync(self, execution_id: str) -> ExecutionCheckpoint | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT payload FROM agent_checkpoints WHERE execution_id = ?", (execution_id,)
             ).fetchone()
@@ -106,5 +109,6 @@ class SQLiteCheckpointStore:
             await asyncio.to_thread(self._delete_sync, execution_id)
 
     def _delete_sync(self, execution_id: str) -> None:
-        with self._connect() as connection:
-            connection.execute("DELETE FROM agent_checkpoints WHERE execution_id = ?", (execution_id,))
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("DELETE FROM agent_checkpoints WHERE execution_id = ?", (execution_id,))
