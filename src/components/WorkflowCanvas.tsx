@@ -81,7 +81,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   };
   const wire = (from: GraphNode, to: GraphNode) => {
     const a = at(from.id), b = at(to.id);
-    return `M ${a.x + from.width} ${a.y + Math.min(from.height / 2, 70)} C ${a.x + from.width + 80} ${a.y + Math.min(from.height / 2, 70)}, ${b.x - 70} ${b.y + b.height / 2}, ${b.x} ${b.y + b.height / 2}`;
+    return `M ${a.x + from.width} ${a.y + Math.min(from.height / 2, 70)} C ${a.x + from.width + 80} ${a.y + Math.min(from.height / 2, 70)}, ${b.x - 70} ${b.y + to.height / 2}, ${b.x} ${b.y + to.height / 2}`;
   };
   const trigger = nodes[0];
   const agentNode = nodes.find((n) => n.kind === "agent");
