@@ -193,9 +193,7 @@ export default function App() {
             <div className="flex min-h-11 items-center gap-1.5 border-b border-studio-800 bg-studio-900 px-3 py-2">
               <div className="mr-auto flex min-w-0 items-center gap-2">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-success" />
-                <span className="truncate text-xs font-medium text-studio-200">Chat</span>
-                <span className="hidden sm:inline text-xs text-studio-600">/</span>
-                <span className="hidden min-w-0 truncate text-xs text-studio-400 sm:inline">{agents.find((agent) => agent.id === selectedAgentId)?.name || "Select an agent"}</span>
+                <span className="truncate text-xs font-medium text-studio-200">Chat workspace</span>
               </div>
               <button onClick={() => setIsSidebarCollapsed((v) => !v)} title={isSidebarCollapsed ? "Show agent explorer" : "Hide agent explorer"} className="rounded-md border border-studio-700 px-2.5 py-1.5 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isSidebarCollapsed ? "Explorer" : "Hide explorer"}</button>
               <button onClick={() => { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "border-accent-500/70 bg-accent-900 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800 hover:text-studio-200"}`}>Model & delegation</button>
