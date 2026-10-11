@@ -283,7 +283,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
                 {node.kind === "tool" && <div className="mt-2 text-[11px] text-emerald-300/80">Connected to one or more agents</div>}
               </div>
               {node.kind !== "trigger" && <button type="button" data-node-id={node.id} data-port="input" aria-label={`Connect to ${node.title}`} onPointerDown={(event) => event.stopPropagation()} className="absolute -left-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-studio-400 transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Connection input" />}
-              {node.agentId && <button type="button" data-node-id={node.id} data-port="output" aria-label={`Connect from ${node.title}`} onPointerDown={(event) => beginConnection(event, node)} className="absolute -right-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-accent-400 transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Drag to another agent or tool" />
+              {node.agentId && <button type="button" data-node-id={node.id} data-port="output" aria-label={`Connect from ${node.title}`} onPointerDown={(event) => beginConnection(event, node)} className="absolute -right-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-accent-400 transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Drag to another agent or tool" />}
             </div>
           );
         })}
