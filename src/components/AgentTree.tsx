@@ -137,7 +137,7 @@ export function AgentTree({
         >
           <div className="flex items-center gap-2">
             <span className="font-mono text-2xs text-accent-400">AG</span>
-            <span>Workflows & Agents</span>
+            <span>Agents</span>
           </div>
           <span className="text-2xs font-mono text-studio-500">{agents.length}</span>
         </button>
@@ -152,7 +152,7 @@ export function AgentTree({
         >
           <div className="flex items-center gap-2">
             <span className="text-emerald-400">⊞</span>
-            <span>Node Library</span>
+            <span>Tools</span>
           </div>
           <span className="text-2xs font-mono text-studio-500">{tools.length}</span>
         </button>
@@ -162,7 +162,7 @@ export function AgentTree({
           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-studio-400 hover:bg-studio-850 hover:text-studio-200 transition-colors text-xs"
         >
           <span className="text-amber-400">📚</span>
-          <span>Catalog Shelves (40+)</span>
+          <span>Browse tool catalog</span>
         </button>
 
         <button
@@ -170,7 +170,7 @@ export function AgentTree({
           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-studio-400 hover:bg-studio-850 hover:text-studio-200 transition-colors text-xs"
         >
           <span>⚙️</span>
-          <span>LLM Provider Keys</span>
+          <span>Provider credentials</span>
         </button>
       </div>
 
@@ -180,7 +180,7 @@ export function AgentTree({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Filter nodes…"
+          placeholder="Search agents and tools…"
           className="w-full bg-studio-800 text-studio-100 placeholder:text-studio-500 border border-studio-700 rounded px-2.5 py-1 text-2xs focus:outline-none focus:border-accent-500 transition-colors"
         />
       </div>

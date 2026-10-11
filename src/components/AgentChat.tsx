@@ -151,13 +151,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {agent.child_agent_ids && agent.child_agent_ids.length > 0 && (
-            <span className="text-2xs font-mono px-2 py-0.5 rounded bg-blue-950/60 border border-blue-800 text-blue-300 font-medium shrink-0">
-              🔗 {agent.child_agent_ids.length} Sub-agent(s)
+            <span className="text-2xs font-mono px-2 py-0.5 rounded border border-studio-700 bg-studio-850 text-studio-300 font-medium shrink-0">
+              {agent.child_agent_ids.length} delegated
             </span>
           )}
           {agent.tool_ids && agent.tool_ids.length > 0 && (
-            <span className="text-2xs font-mono px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800 text-emerald-300 font-medium shrink-0">
-              🛠 {agent.tool_ids.length} Tools
+            <span className="text-2xs font-mono px-2 py-0.5 rounded border border-studio-700 bg-studio-850 text-studio-300 font-medium shrink-0">
+              {agent.tool_ids.length} tools
             </span>
           )}
         </div>
@@ -174,9 +174,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             </p>
             <div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">
               {[
-                { label: "Plan an implementation", prompt: "Help me plan an implementation. Ask any essential clarifying questions, then give me a concise step-by-step plan." },
-                { label: "Investigate a bug", prompt: "Help me investigate a bug. Start by identifying the information you need, then work through likely causes systematically." },
-                { label: "Review an approach", prompt: "Review my proposed approach for correctness, edge cases, and simpler alternatives. Ask me to share the approach if I have not provided it." },
+                { label: "Plan a feature", prompt: "Help me plan an implementation. Ask any essential clarifying questions, then give me a concise step-by-step plan." },
+                { label: "Investigate a failure", prompt: "Help me investigate a bug. Start by identifying the information you need, then work through likely causes systematically." },
+                { label: "Review a design", prompt: "Review my proposed approach for correctness, edge cases, and simpler alternatives. Ask me to share the approach if I have not provided it." },
               ].map((starter) => (
                 <button
                   key={starter.label}
@@ -251,8 +251,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div className="flex items-center gap-2 text-accent-300 text-sm py-3 px-4 bg-studio-900 border border-studio-700 rounded-md w-fit shadow-studio animate-pulse font-mono">
-            <span>⚙️</span> {agent.name} is reasoning and executing tools…
+          <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 border border-studio-700 rounded-md w-fit font-mono">
+            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {agent.name} is running the task…
           </div>
         )}
 
@@ -265,7 +265,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
 
       {/* Multi-Line Prompt Bar */}
-      <div className="p-5 border-t border-studio-800 bg-studio-900/90 shrink-0">
+      <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
         <div className="max-w-5xl mx-auto flex items-end gap-3 bg-studio-900 border border-studio-700 p-3 shadow-studio focus-within:border-studio-500 transition-colors">
           <textarea
             value={promptInput}
@@ -277,7 +277,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               }
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
-            placeholder={`Prompt ${agent.name}… (Shift+Enter for new line, Enter to send)`}
+            aria-label={`Task for ${agent.name}`}
+            placeholder={`Message ${agent.name}… (Shift+Enter for new line)`}
             disabled={isProcessing}
             className="flex-1 bg-transparent text-sm sm:text-base text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[48px] max-h-40 overflow-y-auto"
           />
@@ -296,7 +297,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               disabled={!promptInput.trim()}
               className="bg-accent-600 hover:bg-accent-500 active:bg-accent-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 shadow-studio cursor-pointer"
             >
-              <span>Run Test</span> ➔
+              <span>Send task</span> →
             </button>
           )}
         </div>

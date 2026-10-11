@@ -36,7 +36,12 @@ vi.mock("./components/ExecutionTree", () => ({
 }));
 
 vi.mock("./components/AgentChat", () => ({
-  AgentChat: () => <main data-testid="agent-chat">Agent chat</main>,
+  AgentChat: ({ onRunExecution }: { onRunExecution: (id: string) => void }) => (
+    <main data-testid="agent-chat">
+      Agent chat
+      <button onClick={() => onRunExecution("execution-123")}>Simulate chat run</button>
+    </main>
+  ),
 }));
 
 vi.mock("./components/AgentEditor", () => ({
@@ -88,5 +93,15 @@ describe("App bootstrap and workspace layout", () => {
     expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
     expect(fetchProjects).toHaveBeenCalledTimes(1);
     expect(loadProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the live Activity inspector when a chat execution starts", async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId("agent-chat")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Simulate chat run" }));
+
+    expect(await screen.findByTestId("execution-tree")).toHaveTextContent("execution-123");
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
   });
 });

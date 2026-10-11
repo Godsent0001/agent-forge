@@ -28,9 +28,9 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
         <div className="w-10 h-10 rounded-full bg-studio-800 border border-studio-700 flex items-center justify-center text-studio-400 mb-2">
           ⚙️
         </div>
-        <h3 className="text-xs font-semibold text-studio-200 mb-1">Properties Inspector</h3>
+        <h3 className="text-xs font-semibold text-studio-200 mb-1">Agent setup</h3>
         <p className="text-2xs text-studio-500 max-w-xs leading-relaxed">
-          Select any agent or node on the workflow canvas to configure its properties, models, and capabilities.
+          Select an agent from the explorer to configure its model, instructions, tools, and delegation.
         </p>
       </aside>
     );
@@ -64,7 +64,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
       {/* Properties Header */}
       <div className="p-3 border-b border-studio-800 bg-studio-850 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-semibold text-studio-100 text-xs">Properties</span>
+          <span className="font-semibold text-studio-100 text-xs">Agent settings</span>
           <span className="text-2xs font-mono text-accent-400 bg-studio-800 px-1.5 py-0.5 rounded border border-studio-700 truncate max-w-[120px]">
             ID: {selectedAgent.id.replace("agent-", "")}
           </span>
@@ -91,7 +91,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
               : "border-transparent text-studio-400 hover:text-studio-200"
           }`}
         >
-          Config
+          Setup
         </button>
         <button
           onClick={() => setActiveTab("prompt")}
@@ -101,7 +101,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
               : "border-transparent text-studio-400 hover:text-studio-200"
           }`}
         >
-          Prompt
+          Instructions
         </button>
         <button
           onClick={() => setActiveTab("tools")}
@@ -121,7 +121,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
               : "border-transparent text-studio-400 hover:text-studio-200"
           }`}
         >
-          Sub-Agents ({attachedSubAgents.length})
+          Delegation ({attachedSubAgents.length})
         </button>
       </div>
 

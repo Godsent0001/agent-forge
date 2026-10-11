@@ -30,7 +30,6 @@ export function TopBar({
   const [showToolCatalog, setShowToolCatalog] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [isWorkflowActive, setIsWorkflowActive] = useState(true);
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
 
@@ -132,26 +131,6 @@ export function TopBar({
 
         {/* Right: Active Toggle, Catalog, Run Button, Settings */}
         <div className="flex items-center gap-2">
-          {/* Active status toggle (Concept 1 style) */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-studio-850 border border-studio-700/60">
-            <button
-              onClick={() => setIsWorkflowActive(!isWorkflowActive)}
-              className={`w-7 h-4 rounded-full transition-colors relative cursor-pointer ${
-                isWorkflowActive ? "bg-emerald-600" : "bg-studio-700"
-              }`}
-              title="Toggle Workflow Active state"
-            >
-              <span
-                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-                  isWorkflowActive ? "left-3.5" : "left-0.5"
-                }`}
-              />
-            </button>
-            <span className="text-2xs font-mono text-studio-300">
-              {isWorkflowActive ? "Active" : "Paused"}
-            </span>
-          </div>
-
           {/* Quick Tool Catalog Button */}
           <Button
             size="xs"
@@ -162,16 +141,18 @@ export function TopBar({
             + Catalog
           </Button>
 
-          {/* Primary Run Workflow Button */}
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={onTriggerQuickRun}
-            disabled={isRunning}
-            icon={isRunning ? "⚙️" : "▶"}
-          >
-            {isRunning ? "Running…" : activeTab === "chat" ? "Run task" : "Run Workflow"}
-          </Button>
+          {/* Workflow runs belong to the editor; chat tasks are submitted from the composer. */}
+          {activeTab !== "chat" && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={onTriggerQuickRun}
+              disabled={isRunning || !project || !selectedAgent}
+              icon={isRunning ? "⚙️" : "▶"}
+            >
+              {isRunning ? "Running…" : "Run workflow"}
+            </Button>
+          )}
 
           {/* LLM Settings */}
           <button

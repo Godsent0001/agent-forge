@@ -82,6 +82,13 @@ export default function App() {
     };
   }, [fetchProjects, loadProject]);
 
+  // A chat run should surface its live trace immediately, without leaving the conversation.
+  const handleChatRunStarted = (executionId: string) => {
+    setActiveExecutionId(executionId);
+    setIsExecutionTreeOpen(true);
+    setIsPropertiesOpen(false);
+  };
+
   // Primary Run Workflow trigger
   const handleTriggerRun = async () => {
     const currentAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
@@ -198,10 +205,10 @@ export default function App() {
               <button onClick={() => setIsSidebarCollapsed((v) => !v)} title={isSidebarCollapsed ? "Show agent explorer" : "Hide agent explorer"} className="rounded-md border border-studio-700 px-2.5 py-1.5 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isSidebarCollapsed ? "Explorer" : "Hide explorer"}</button>
               <button onClick={() => { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "border-accent-500/70 bg-accent-900 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800 hover:text-studio-200"}`}>Model & delegation</button>
               <button onClick={() => { setIsExecutionTreeOpen((v) => !v); setIsPropertiesOpen(false); }} aria-pressed={isExecutionTreeOpen} className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${isExecutionTreeOpen ? "border-accent-500/70 bg-accent-900 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800 hover:text-studio-200"}`}>{isExecutionTreeOpen ? "Hide activity" : "Activity"}</button>
-              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); setIsPropertiesOpen(false); }} className="rounded-md px-2.5 py-1.5 text-xs text-studio-400 hover:bg-studio-800 hover:text-studio-100">Focus</button>
+              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); setIsPropertiesOpen(false); }} className="rounded-md px-2.5 py-1.5 text-xs text-studio-400 hover:bg-studio-800 hover:text-studio-100">Focus chat</button>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <AgentChat onRunExecution={setActiveExecutionId} />
+              <AgentChat onRunExecution={handleChatRunStarted} />
             </div>
           </div>
         ) : (
@@ -218,11 +225,11 @@ export default function App() {
             onOpenToolCatalog={() => setShowToolCatalogModal(true)}
           />
         ) : activeTab === "chat" && isPropertiesOpen && !isExecutionTreeOpen ? (
-          <div className="w-84 border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
+          <div className="w-[clamp(15rem,25vw,21rem)] border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
             <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />
           </div>
         ) : activeTab === "chat" && isExecutionTreeOpen ? (
-          <div className="w-80 border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
+          <div className="w-[clamp(16rem,24vw,20rem)] border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
             <div className="flex h-10 items-center justify-between border-b border-studio-800 px-3">
               <span className="text-xs font-medium text-studio-200">Run details</span>
               <button onClick={() => setIsExecutionTreeOpen(false)} className="px-2 py-1 text-xs text-studio-400 hover:text-white" aria-label="Close run details">Close</button>
