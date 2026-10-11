@@ -24,6 +24,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   const attachedTools = tools.filter((tool) => activeAgent?.tool_ids?.includes(tool.id));
   const otherAgents = agents.filter((agent) => agent.id !== activeAgent?.id);
   const delegatedIds = activeAgent?.child_agent_ids || [];
+  const delegationSignature = delegatedIds.join("|");
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 12, y: 8 });
@@ -79,9 +80,23 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
     } catch {
       // Storage may be disabled; graph edits remain available for this session.
     }
+    if (saved && activeAgent) {
+      // Delegation is source-of-truth in the agent model, not just in local editor state.
+      const nonDelegationEdges = saved.filter((edge) =>
+        !(edge.source === activeAgent.id && edge.target.startsWith("child-"))
+      );
+      const actualDelegations = otherAgents
+        .filter((agent) => delegatedIds.includes(agent.id))
+        .map((agent) => ({
+          id: `${activeAgent.id}->child-${agent.id}`,
+          source: activeAgent.id,
+          target: `child-${agent.id}`,
+        }));
+      saved = [...nonDelegationEdges, ...actualDelegations];
+    }
     setConnections(saved ?? defaults());
     setHydratedConnectionKey(storageKey);
-  }, [storageKey]);
+  }, [storageKey, delegationSignature]);
 
   useEffect(() => {
     if (!storageKey || hydratedConnectionKey !== storageKey) return;
@@ -91,7 +106,6 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   useEffect(() => {
     if (!positionStorageKey) {
       setPositions({});
-      setHydratedPositionKey(null);
       return;
     }
     let saved: Record<string, Point> = {};
@@ -111,13 +125,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
       // Ignore malformed or inaccessible stored layouts.
     }
     setPositions(saved);
-    setHydratedPositionKey(positionStorageKey);
   }, [positionStorageKey]);
-
-  useEffect(() => {
-    if (!positionStorageKey || hydratedPositionKey !== positionStorageKey) return;
-    try { window.localStorage.setItem(positionStorageKey, JSON.stringify(positions)); } catch { /* Keep in-session edits. */ }
-  }, [positionStorageKey, hydratedPositionKey, positions]);
 
   const childPositions = Object.fromEntries(otherAgents.map((agent, index) => [`child-${agent.id}`, { x: 790, y: 90 + index * 132 }]));
   const at = (id: string): Point => positions[id] ||
@@ -158,6 +166,10 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
     } else if (isPanning) setPan({ x: panStart.origin.x + event.clientX - panStart.x, y: panStart.origin.y + event.clientY - panStart.y });
   };
   const handlePointerUp = (event?: React.PointerEvent) => {
+    if (drag.id && drag.moved && positionStorageKey) {
+      // Local storage is synchronous: persist once at drag end, not for every pointer move.
+      try { window.localStorage.setItem(positionStorageKey, JSON.stringify(positions)); } catch { /* Keep the layout for this session. */ }
+    }
     if (drag.id && !drag.moved) {
       const clickedNode = nodeById(drag.id);
       if (clickedNode?.agentId) selectAgent?.(clickedNode.agentId);
@@ -186,7 +198,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   const removeConnection = async (connection: WorkflowConnection) => {
     setConnections((current) => current.filter((edge) => edge.id !== connection.id));
     const from = nodeById(connection.source), to = nodeById(connection.target);
-    if (from?.agentId && to?.agentId && (to.kind === "subagent" || to.kind === "candidate")) {
+    if (from?.agentId && from.agentId === activeAgent?.id && to?.agentId && (to.kind === "subagent" || to.kind === "candidate")) {
       try { await detachChildFromAgent(from.agentId, to.agentId); setConnectionNotice("Delegation removed"); }
       catch (error) { setConnections((current) => [...current, connection]); setConnectionNotice(error instanceof Error ? error.message : "Could not remove delegation"); }
     } else setConnectionNotice("Editor link removed.");

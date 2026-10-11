@@ -24,6 +24,7 @@ import { WorkflowCanvas } from "./WorkflowCanvas";
 describe("WorkflowCanvas editing", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    agents[0].child_agent_ids = [];
     vi.clearAllMocks();
     attachChildToAgent.mockResolvedValue(undefined);
     detachChildFromAgent.mockResolvedValue(undefined);
@@ -44,6 +45,27 @@ describe("WorkflowCanvas editing", () => {
     await waitFor(() => expect(attachChildToAgent).toHaveBeenCalledWith("agent-a", "agent-b"));
     expect(window.localStorage.getItem("agentforge.workflow.connections.project-1.agent-a")).toContain("agent-a->child-agent-b");
     expect(screen.getByRole("status")).toHaveTextContent("Delegation updated");
+  });
+
+  it("reconciles stored editor links with actual delegated agents", async () => {
+    agents[0].child_agent_ids = ["agent-b"];
+    window.localStorage.setItem("agentforge.workflow.connections.project-1.agent-a", JSON.stringify([]));
+    render(<WorkflowCanvas />);
+
+    expect(await screen.findByRole("button", { name: "Remove connection from Alpha to Beta" })).toBeInTheDocument();
+  });
+
+  it("does not change the primary agent when starting a connection from a candidate", async () => {
+    vi.spyOn(document, "elementFromPoint").mockImplementation(() => screen.getByRole("button", { name: "Connect to Alpha" }));
+    render(<WorkflowCanvas />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connect from Beta" }), { pointerId: 3, button: 0, clientX: 1026, clientY: 130 });
+    fireEvent.pointerMove(screen.getByTestId("workflow-canvas"), { pointerId: 3, clientX: 500, clientY: 230 });
+    fireEvent.pointerUp(screen.getByTestId("workflow-canvas"), { pointerId: 3, clientX: 500, clientY: 230 });
+
+    expect(selectAgent).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Remove connection from Beta to Alpha" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Editor link saved");
   });
 
   it("moves a node and persists its layout across mounts", async () => {
