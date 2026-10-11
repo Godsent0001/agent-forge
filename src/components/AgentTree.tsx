@@ -79,7 +79,7 @@ export function AgentTree({
             className="p-2 text-studio-400 hover:text-accent-400 hover:bg-studio-800 rounded transition-colors"
             title="Workflows"
           >
-            🤖
+            AG
           </button>
           <button
             onClick={() => {
@@ -89,7 +89,7 @@ export function AgentTree({
             className="p-2 text-studio-400 hover:text-emerald-400 hover:bg-studio-800 rounded transition-colors"
             title="Node Library"
           >
-            🧩
+            TL
           </button>
         </div>
 
@@ -98,7 +98,7 @@ export function AgentTree({
           className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
           title="Settings"
         >
-          ⚙️
+          SET
         </button>
       </aside>
     );
@@ -136,7 +136,7 @@ export function AgentTree({
           }`}
         >
           <div className="flex items-center gap-2">
-            <span className="text-accent-400">❖</span>
+            <span className="font-mono text-2xs text-accent-400">AG</span>
             <span>Workflows & Agents</span>
           </div>
           <span className="text-2xs font-mono text-studio-500">{agents.length}</span>
