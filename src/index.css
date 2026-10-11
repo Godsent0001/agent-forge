@@ -19,12 +19,12 @@
   --color-surface-700: #2d3a54;
   --color-surface-600: #475569;
 
-  --color-accent-600: #4f46e5;
-  --color-accent-500: #6366f1;
-  --color-accent-400: #818cf8;
-  --color-accent-300: #a5b4fc;
+  --color-accent-600: #2563eb;
+  --color-accent-500: #3b82f6;
+  --color-accent-400: #60a5fa;
+  --color-accent-300: #93c5fd;
   --color-accent-100: #e0e7ff;
-  --color-accent-900: rgba(99, 102, 241, 0.15);
+  --color-accent-900: rgba(59, 130, 246, 0.14);
 
   --color-node-agent: #3b82f6;
   --color-node-tool: #10b981;
@@ -63,7 +63,7 @@ body {
 }
 
 ::selection {
-  background-color: rgba(99, 102, 241, 0.3);
+  background-color: rgba(59, 130, 246, 0.28);
 }
 
 ::-webkit-scrollbar {
@@ -85,7 +85,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(99, 102, 241, 0.6);
+  outline: 2px solid rgba(59, 130, 246, 0.65);
   outline-offset: 1px;
 }
 
@@ -130,7 +130,7 @@ button:disabled {
 
 ::selection {
   color: #fff;
-  background: rgba(99, 102, 241, 0.42);
+  background: rgba(59, 130, 246, 0.42);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -141,10 +141,3 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
-
-/* Product UI: restrained geometry, less decoration, clearer hierarchy */
-.rounded-2xl, .rounded-xl { border-radius: 4px !important; }
-.rounded-lg, .rounded-md { border-radius: 3px !important; }
-.shadow-elevated { box-shadow: 0 2px 6px rgba(0, 0, 0, .22) !important; }
-.bg-grid-pattern { background-image: radial-gradient(rgba(148, 163, 184, .10) .7px, transparent .7px); background-size: 24px 24px; }
-.workflow-canvas { background-image: radial-gradient(rgba(148, 163, 184, .035) 1px, transparent 1px) !important; background-size: 24px 24px !important; }
