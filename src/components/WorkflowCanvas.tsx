@@ -230,7 +230,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
     <div ref={canvasRef} data-testid="workflow-canvas" className="workflow-canvas h-full w-full relative overflow-hidden bg-studio-950 bg-grid-pattern"
       onWheel={handleWheel} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp}
       onPointerCancel={() => { setConnectionDraft(null); setDrag({ id: null, startX: 0, startY: 0, origin: { x: 0, y: 0 }, moved: false }); setIsPanning(false); }}
-      onPointerDown={(event) => { if (event.target === canvasRef.current || (event.target as HTMLElement).dataset.canvasBackground === "true") { setIsPanning(true); setPanStart({ x: event.clientX, y: event.clientY, origin: pan }); } }}>
+      onPointerDown={(event) => { if (event.target === canvasRef.current || (event.target as HTMLElement).dataset.canvasBackground === "true" || event.target instanceof SVGSVGElement) { setIsPanning(true); setPanStart({ x: event.clientX, y: event.clientY, origin: pan }); } }}>
       <div className="absolute z-20 top-3 left-3 flex items-center gap-1 border border-studio-700/80 bg-studio-900/95 p-1 shadow-studio">
         <span className="px-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Workflow</span><span className="h-4 w-px bg-studio-700" />
         <button onClick={fitView} className="px-2 py-1.5 text-xs text-studio-300 hover:bg-studio-800 hover:text-white">Fit view</button>

@@ -17,42 +17,67 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
   const [shelves, setShelves] = useState<CatalogShelf[]>([]);
   const [selectedShelf, setSelectedShelf] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [addingKind, setAddingKind] = useState<string | null>(null);
+  const [addingKey, setAddingKey] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.catalog.shelves().then((data) => {
+  const loadShelves = async () => {
+    setIsLoading(true);
+    setCatalogError(null);
+    try {
+      const data = await api.catalog.shelves();
       setShelves(data);
-      if (data.length > 0) {
-        setSelectedShelf(data[0].shelf);
-      }
-    });
-  }, []);
+      setSelectedShelf((current) => data.some((shelf) => shelf.shelf === current) ? current : data[0]?.shelf ?? "");
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : "Could not load the tool catalog.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadShelves(); }, []);
 
   const activeShelf = shelves.find((s) => s.shelf === selectedShelf) ?? shelves[0];
 
-  // Attached tool names for current agent
-  const attachedToolNames = new Set(
-    tools
-      .filter((t) => selectedAgent?.tool_ids?.includes(t.id))
-      .map((t) => t.name.toLowerCase())
+  const findProjectTool = (item: CatalogToolEntry) => tools.find(
+    (tool) => tool.name.trim().toLowerCase() === item.name.trim().toLowerCase() && tool.kind === item.kind
   );
 
   const handleAddAndAttach = async (item: CatalogToolEntry) => {
-    setAddingKind(item.kind);
+    const actionKey = `${item.kind}:${item.name.trim().toLowerCase()}`;
+    setAddingKey(actionKey);
+    setActionNotice(null);
     try {
-      await createTool(item.name, item.kind);
-      if (selectedAgentId) {
-        // Find newly created tool in refreshed store
-        const currentTools = useStore.getState().tools;
-        const created = currentTools.find((t) => t.name === item.name);
-        if (created) {
-          await attachToolToSelected(created.id);
-        }
+      let projectTool = useStore.getState().tools.find(
+        (tool) => tool.name.trim().toLowerCase() === item.name.trim().toLowerCase() && tool.kind === item.kind
+      );
+      if (!projectTool) {
+        const existingIds = new Set(useStore.getState().tools.map((tool) => tool.id));
+        await createTool(item.name, item.kind);
+        projectTool = useStore.getState().tools.find(
+          (tool) => !existingIds.has(tool.id) &&
+            tool.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
+            tool.kind === item.kind
+        );
       }
-    } catch (err) {
-      console.error("Failed to add tool from catalog:", err);
+      if (!projectTool) throw new Error("The tool was not returned after creation. Refresh the catalog and retry.");
+
+      if (selectedAgentId) {
+        const latestAgent = useStore.getState().agents.find((agent) => agent.id === selectedAgentId);
+        if (latestAgent?.tool_ids?.includes(projectTool.id)) {
+          setActionNotice(`"${projectTool.name}" is already attached to this agent.`);
+          return;
+        }
+        await attachToolToSelected(projectTool.id);
+        setActionNotice(`Attached "${projectTool.name}" to ${latestAgent?.name ?? "the selected agent"}.`);
+      } else {
+        setActionNotice(`Added "${projectTool.name}" to the project.`);
+      }
+    } catch (error) {
+      setActionNotice(error instanceof Error ? error.message : "Could not add this tool. Please retry.");
     } finally {
-      setAddingKind(null);
+      setAddingKey(null);
     }
   };
 
@@ -122,7 +147,15 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
 
           {/* Right: Tools in Selected Shelf */}
           <div className="overflow-y-auto p-5 space-y-4 bg-studio-900">
-            {activeShelf ? (
+            {actionNotice && <div role="status" className="mb-3 border border-studio-700 bg-studio-850 px-3 py-2 text-xs text-studio-300">{actionNotice}</div>}
+            {isLoading ? (
+              <p role="status" className="p-3 text-xs text-studio-400">Loading catalog shelves…</p>
+            ) : catalogError ? (
+              <div className="border border-status-error/40 bg-studio-950 p-4 text-xs text-studio-300">
+                <p className="mb-3">{catalogError}</p>
+                <Button size="xs" variant="secondary" onClick={() => void loadShelves()}>Retry</Button>
+              </div>
+            ) : activeShelf ? (
               <>
                 <div className="flex items-center justify-between pb-2 border-b border-studio-800">
                   <div className="flex items-center gap-2">
@@ -142,12 +175,13 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filteredTools.map((item) => {
-                    const isAttached = attachedToolNames.has(item.name.toLowerCase());
-                    const isBusy = addingKind === item.kind;
+                    const existingTool = findProjectTool(item);
+                    const isAttached = !!selectedAgent && !!existingTool && selectedAgent.tool_ids?.includes(existingTool.id);
+                    const isBusy = addingKey === `${item.kind}:${item.name.trim().toLowerCase()}`;
 
                     return (
                       <div
-                        key={item.kind}
+                        key={`${activeShelf.shelf}:${item.kind}:${item.name}`}
                         className="p-3.5 border border-studio-800 rounded-md hover:border-studio-700 transition-all bg-studio-950/40 flex flex-col justify-between space-y-3"
                       >
                         <div>
@@ -172,16 +206,18 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                           <Button
                             size="xs"
                             variant={isAttached ? "secondary" : "primary"}
-                            disabled={isAttached || isBusy}
+                            disabled={isAttached || isBusy || (!selectedAgent && !!existingTool)}
                             onClick={() => handleAddAndAttach(item)}
                           >
                             {isBusy
                               ? "Adding…"
                               : isAttached
-                              ? "Already Attached"
+                              ? "Already attached"
+                              : existingTool && !selectedAgent
+                              ? "In project"
                               : selectedAgent
-                              ? "+ Attach to Agent"
-                              : "+ Add to Project"}
+                              ? existingTool ? "Attach to agent" : "+ Create & attach"
+                              : "+ Add to project"}
                           </Button>
                         </div>
                       </div>
@@ -196,7 +232,7 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                 </div>
               </>
             ) : (
-              <p className="text-xs text-studio-400">Loading catalog shelves…</p>
+              <p className="text-xs text-studio-400">No catalog shelves are available.</p>
             )}
           </div>
         </div>

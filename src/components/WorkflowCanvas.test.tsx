@@ -52,6 +52,19 @@ describe("WorkflowCanvas editing", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("pans the canvas when dragging empty space beneath the connection layer", () => {
+    render(<WorkflowCanvas />);
+    const canvas = screen.getByTestId("workflow-canvas");
+    const connectionLayer = screen.getByLabelText("Workflow connections");
+
+    fireEvent.pointerDown(connectionLayer, { pointerId: 10, button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(canvas, { pointerId: 10, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(canvas, { pointerId: 10, clientX: 100, clientY: 100 });
+
+    const graphSurface = canvas.querySelector("[data-canvas-background='true']");
+    expect(graphSurface?.getAttribute("style")).toContain("translate(62px, 58px)");
+  });
+
   it("connects an agent output to another agent input through real delegation state", async () => {
     vi.spyOn(document, "elementFromPoint").mockImplementation(() => screen.getByRole("button", { name: "Connect to Beta" }));
     render(<WorkflowCanvas />);
