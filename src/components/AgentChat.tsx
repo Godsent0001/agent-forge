@@ -166,11 +166,28 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       {/* Chat Messages scroll area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {agentMessages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-studio-400 space-y-2 select-none">
-            <p className="font-semibold text-studio-200 text-sm">What would you like to work on?</p>
-            <p className="text-xs text-studio-500 max-w-sm leading-relaxed">
-              Send a task to {agent.name}. It can use its configured model, tools, and delegated agents to complete the work.
+          <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
+            <div className="mb-5 flex h-10 w-10 items-center justify-center border border-studio-700 bg-studio-900 font-mono text-xs font-semibold text-studio-200">AF</div>
+            <p className="font-semibold text-studio-100 text-base">What are we working on?</p>
+            <p className="mt-2 max-w-md text-sm text-studio-400 leading-6">
+              Give {agent.name} a task. Its configured model, tools, and delegated agents will be used as needed.
             </p>
+            <div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">
+              {[
+                { label: "Plan an implementation", prompt: "Help me plan an implementation. Ask any essential clarifying questions, then give me a concise step-by-step plan." },
+                { label: "Investigate a bug", prompt: "Help me investigate a bug. Start by identifying the information you need, then work through likely causes systematically." },
+                { label: "Review an approach", prompt: "Review my proposed approach for correctness, edge cases, and simpler alternatives. Ask me to share the approach if I have not provided it." },
+              ].map((starter) => (
+                <button
+                  key={starter.label}
+                  type="button"
+                  onClick={() => setPromptInput(starter.prompt)}
+                  className="rounded-md border border-studio-700 bg-studio-900 px-3 py-2 text-xs text-studio-300 transition-colors hover:border-studio-500 hover:bg-studio-800 hover:text-studio-100"
+                >
+                  {starter.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -217,7 +234,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               </div>
             ) : (
               <div
-                className={`max-w-4xl p-4 shadow-studio border ${
+                className={`max-w-4xl rounded-md p-4 shadow-studio border ${
                   msg.sender === "user"
                     ? "bg-accent-600 text-white border-accent-500/80 rounded-tr-none"
                     : "bg-studio-900 text-studio-100 border-studio-750 rounded-tl-none"
@@ -240,7 +257,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         )}
 
         {chatError && (
-          <div className="p-4 bg-red-950/60 border border-red-800 text-red-300 rounded-xl text-sm font-medium">
+          <div className="rounded-md border border-red-800 bg-red-950/60 p-4 text-sm font-medium text-red-300">
             Error: {chatError}
           </div>
         )}
