@@ -64,6 +64,7 @@ import App from "./App";
 
 describe("App bootstrap and workspace layout", () => {
   beforeEach(() => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
     vi.clearAllMocks();
     fetchProjects.mockResolvedValue([
       {
@@ -93,6 +94,17 @@ describe("App bootstrap and workspace layout", () => {
     expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
     expect(fetchProjects).toHaveBeenCalledTimes(1);
     expect(loadProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts compact viewports with chat unobstructed and opens settings on demand", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId("agent-chat")).toBeInTheDocument());
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
+    expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
   });
 
   it("opens the live Activity inspector when a chat execution starts", async () => {

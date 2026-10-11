@@ -29,11 +29,27 @@ export default function App() {
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("chat");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
   const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
   const [isBottomConsoleExpanded, setIsBottomConsoleExpanded] = useState(true);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
+
+  useEffect(() => {
+    const updateViewport = () => setIsCompactViewport(window.innerWidth < 768);
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactViewport) return;
+    // On phones, start with chat unobstructed; the explorer and inspector open on demand.
+    setIsSidebarCollapsed(true);
+    setIsPropertiesOpen(false);
+    setIsExecutionTreeOpen(false);
+  }, [isCompactViewport]);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,12 +168,12 @@ export default function App() {
       />
 
       {/* Main Studio Viewport */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex min-h-0 overflow-hidden">
         {/* Left: Collapsible Project Explorer Sidebar */}
         <div
-          className={`${
-            isSidebarCollapsed ? "w-12" : "w-64"
-          } transition-all shrink-0 h-full border-r border-studio-800`}
+          className={`${isSidebarCollapsed ? "w-12" : "w-64"} transition-all shrink-0 h-full border-r border-studio-800 ${
+            isCompactViewport ? "absolute inset-y-0 left-0 z-40 shadow-elevated" : ""
+          }`}
         >
           <AgentTree
             onOpenConfig={() => {
@@ -220,16 +236,18 @@ export default function App() {
 
         {/* Right: Contextual Properties Inspector (in Canvas Mode) or Execution Tree */}
         {activeTab === "canvas" && isPropertiesOpen ? (
-          <PropertiesPanel
-            onClose={() => setIsPropertiesOpen(false)}
-            onOpenToolCatalog={() => setShowToolCatalogModal(true)}
-          />
+          <div className={isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-84 shrink-0"}>
+            <PropertiesPanel
+              onClose={() => setIsPropertiesOpen(false)}
+              onOpenToolCatalog={() => setShowToolCatalogModal(true)}
+            />
+          </div>
         ) : activeTab === "chat" && isPropertiesOpen && !isExecutionTreeOpen ? (
-          <div className="w-[clamp(15rem,25vw,21rem)] border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
+          <div className={`${isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-[clamp(15rem,25vw,21rem)]"} border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0`}>
             <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />
           </div>
         ) : activeTab === "chat" && isExecutionTreeOpen ? (
-          <div className="w-[clamp(16rem,24vw,20rem)] border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0">
+          <div className={`${isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-[clamp(16rem,24vw,20rem)]"} border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0`}>
             <div className="flex h-10 items-center justify-between border-b border-studio-800 px-3">
               <span className="text-xs font-medium text-studio-200">Run details</span>
               <button onClick={() => setIsExecutionTreeOpen(false)} className="px-2 py-1 text-xs text-studio-400 hover:text-white" aria-label="Close run details">Close</button>
