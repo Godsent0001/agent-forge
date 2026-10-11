@@ -22,7 +22,14 @@ vi.mock("./store/useStore", () => ({
 }));
 
 vi.mock("./components/TopBar", () => ({
-  TopBar: () => <div data-testid="top-bar">Top bar</div>,
+  TopBar: ({ onTabChange }: { onTabChange: (tab: "canvas" | "chat" | "config") => void }) => (
+    <div data-testid="top-bar">
+      Top bar
+      <button onClick={() => onTabChange("canvas")}>Editor</button>
+      <button onClick={() => onTabChange("chat")}>Chat</button>
+      <button onClick={() => onTabChange("config")}>Agent</button>
+    </div>
+  ),
 }));
 
 vi.mock("./components/AgentTree", () => ({
@@ -86,16 +93,35 @@ describe("App bootstrap and workspace layout", () => {
     expect(screen.getByTestId("agent-chat")).toBeInTheDocument();
     expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
+    expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+    expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+    expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
+    expect(fetchProjects).toHaveBeenCalledTimes(1);
+    expect(loadProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Editor and Chat separate and toggles editor inspector and logs from the side rail", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("agent-chat")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.getByTestId("workflow-canvas")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-chat")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Inspector" }));
     expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Inspector" }));
     expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "View logs" }));
     expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
     fireEvent.click(screen.getByRole("button", { name: "View logs" }));
     expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
-    expect(fetchProjects).toHaveBeenCalledTimes(1);
-    expect(loadProject).toHaveBeenCalledTimes(1);
   });
 
   it("starts compact viewports with chat unobstructed and opens settings on demand", async () => {
