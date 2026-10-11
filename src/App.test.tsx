@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { fetchProjects, loadProject, syncKeysToBackend, createProject } = vi.hoisted(() => ({
@@ -82,6 +82,9 @@ describe("App bootstrap and workspace layout", () => {
 
     expect(screen.getByTestId("agent-tree")).toBeInTheDocument();
     expect(screen.getByTestId("agent-chat")).toBeInTheDocument();
+    expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
     expect(fetchProjects).toHaveBeenCalledTimes(1);
     expect(loadProject).toHaveBeenCalledTimes(1);
