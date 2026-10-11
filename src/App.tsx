@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { api, getApiBase } from "./api/client";
 import { AgentChat } from "./components/AgentChat";
 import { AgentEditor } from "./components/AgentEditor";
@@ -7,9 +8,9 @@ import { ExecutionTree } from "./components/ExecutionTree";
 import { TopBar } from "./components/TopBar";
 import { WorkflowCanvas } from "./components/WorkflowCanvas";
 import { PropertiesPanel } from "./components/PropertiesPanel";
-import { LiveConsoleDrawer } from "./components/LiveConsoleDrawer";
 import { ToolCatalogModal } from "./components/ToolCatalogModal";
 import { useStore } from "./store/useStore";
+import { Icon } from "./components/ui/Icon";
 
 type BootState = "checking-sidecar" | "sidecar-down" | "loading-project" | "ready";
 
@@ -29,10 +30,12 @@ export default function App() {
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("chat");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const [inspectorWidth, setInspectorWidth] = useState(320);
+  const [resizeDrag, setResizeDrag] = useState<{ panel: "sidebar" | "inspector"; startX: number; startWidth: number } | null>(null);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
   const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
-  const [isBottomConsoleExpanded, setIsBottomConsoleExpanded] = useState(true);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
 
@@ -105,6 +108,28 @@ export default function App() {
     setIsPropertiesOpen(false);
   };
 
+  const beginResize = (panel: "sidebar" | "inspector", event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isCompactViewport) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizeDrag({ panel, startX: event.clientX, startWidth: panel === "sidebar" ? sidebarWidth : inspectorWidth });
+  };
+  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!resizeDrag) return;
+    const delta = event.clientX - resizeDrag.startX;
+    if (resizeDrag.panel === "sidebar") setSidebarWidth(Math.max(184, Math.min(440, resizeDrag.startWidth + delta)));
+    else setInspectorWidth(Math.max(240, Math.min(560, resizeDrag.startWidth - delta)));
+  };
+  const endResize = () => setResizeDrag(null);
+  const toggleInspector = () => {
+    if (isPropertiesOpen && !isExecutionTreeOpen) setIsPropertiesOpen(false);
+    else { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }
+  };
+  const toggleLogs = () => {
+    if (isExecutionTreeOpen) setIsExecutionTreeOpen(false);
+    else { setIsExecutionTreeOpen(true); setIsPropertiesOpen(false); }
+  };
+
   // Primary Run Workflow trigger
   const handleTriggerRun = async () => {
     const currentAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
@@ -115,7 +140,8 @@ export default function App() {
       const task = `Automated workflow execution for ${currentAgent.name}: verify triggers, run capability tools, and synthesize output.`;
       const execution = await api.executions.run(project.id, currentAgent.id, task);
       setActiveExecutionId(execution.id);
-      setIsBottomConsoleExpanded(true);
+      setIsExecutionTreeOpen(true);
+      setIsPropertiesOpen(false);
     } catch (err) {
       console.error("Run error:", err);
     } finally {
@@ -169,97 +195,62 @@ export default function App() {
 
       {/* Main Studio Viewport */}
       <div className="relative flex-1 flex min-h-0 overflow-hidden">
-        {/* Left: Collapsible Project Explorer Sidebar */}
-        <div
-          className={`${isSidebarCollapsed ? "w-12" : "w-64"} transition-all shrink-0 h-full border-r border-studio-800 ${
-            isCompactViewport ? "absolute inset-y-0 left-0 z-40 shadow-elevated" : ""
-          }`}
-        >
+        <div className={`relative h-full shrink-0 border-r border-studio-800 ${isCompactViewport ? "absolute inset-y-0 left-0 z-40 shadow-elevated" : ""}`} style={{ width: isSidebarCollapsed ? 44 : sidebarWidth }}>
           <AgentTree
-            onOpenConfig={() => {
-              setActiveTab("canvas");
-              setIsPropertiesOpen(true);
-            }}
+            onOpenConfig={() => { setActiveTab("config"); setIsPropertiesOpen(false); setIsExecutionTreeOpen(false); }}
             isCollapsed={isSidebarCollapsed}
-            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onToggleCollapse={() => setIsSidebarCollapsed((value) => !value)}
             onSelectExecution={setActiveExecutionId}
           />
+          {!isSidebarCollapsed && !isCompactViewport && (
+            <div role="separator" aria-label="Resize explorer" aria-orientation="vertical" tabIndex={0}
+              onPointerDown={(event) => beginResize("sidebar", event)} onPointerMove={moveResize}
+              onPointerUp={endResize} onPointerCancel={endResize}
+              onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(184, Math.min(440, width + (event.key === "ArrowRight" ? 12 : -12)))); } }}
+              className="absolute right-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+            />
+          )}
         </div>
 
-        {/* Center Workspace */}
         {activeTab === "canvas" ? (
-          // Concept 1: Workflow Studio Primary IDE View
-          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-            {/* Upper: Interactive Node Graph Canvas */}
-            <div className="flex-1 min-h-0 relative overflow-hidden">
-              <WorkflowCanvas
-                onOpenToolCatalog={() => setShowToolCatalogModal(true)}
-                isRunning={isRunningQuickRun}
-              />
-              {!isPropertiesOpen && (
-                <button onClick={() => setIsPropertiesOpen(true)} className="absolute right-4 top-16 z-30 rounded-xl border border-studio-700 bg-studio-900/95 px-3 py-2 text-xs text-studio-200 shadow-elevated backdrop-blur hover:border-accent-400 hover:text-white">
-                  Show inspector
-                </button>
-              )}
-            </div>
-
-            {/* Lower: Integrated Live Console & Collaboration Chat */}
-            <LiveConsoleDrawer
-              executionId={activeExecutionId}
-              onRunExecution={setActiveExecutionId}
-              isExpanded={isBottomConsoleExpanded}
-              onToggleExpand={() => setIsBottomConsoleExpanded(!isBottomConsoleExpanded)}
-            />
-          </div>
+          <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} onOpenLogs={toggleLogs} isRunning={isRunningQuickRun} /></div>
         ) : activeTab === "chat" ? (
-          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-            <div className="flex min-h-11 items-center gap-1.5 border-b border-studio-800 bg-studio-900 px-3 py-2">
-              <div className="mr-auto flex min-w-0 items-center gap-2">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-success" />
-                <span className="truncate text-xs font-medium text-studio-200">Chat workspace</span>
-              </div>
-              <button onClick={() => setIsSidebarCollapsed((v) => !v)} title={isSidebarCollapsed ? "Show agent explorer" : "Hide agent explorer"} className="rounded-md border border-studio-700 px-2.5 py-1.5 text-xs text-studio-300 hover:border-studio-500 hover:bg-studio-800">{isSidebarCollapsed ? "Explorer" : "Hide explorer"}</button>
-              <button onClick={() => { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "border-accent-500/70 bg-accent-900 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800 hover:text-studio-200"}`}>Model & delegation</button>
-              <button onClick={() => { setIsExecutionTreeOpen((v) => !v); setIsPropertiesOpen(false); }} aria-pressed={isExecutionTreeOpen} className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${isExecutionTreeOpen ? "border-accent-500/70 bg-accent-900 text-studio-100" : "border-studio-700 text-studio-400 hover:bg-studio-800 hover:text-studio-200"}`}>{isExecutionTreeOpen ? "Hide activity" : "Activity"}</button>
-              <button onClick={() => { setIsSidebarCollapsed(true); setIsExecutionTreeOpen(false); setIsPropertiesOpen(false); }} className="rounded-md px-2.5 py-1.5 text-xs text-studio-400 hover:bg-studio-800 hover:text-studio-100">Focus chat</button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <AgentChat onRunExecution={handleChatRunStarted} />
-            </div>
-          </div>
+          <div className="flex-1 flex min-w-0 h-full overflow-hidden"><AgentChat onRunExecution={handleChatRunStarted} /></div>
         ) : (
-          // Dedicated Full Inspector Surface
-          <div className="flex-1 min-w-0 h-full overflow-hidden">
-            <AgentEditor />
+          <div className="flex-1 min-w-0 h-full overflow-hidden"><AgentEditor /></div>
+        )}
+
+        {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && (
+          <div className={`relative h-full shrink-0 bg-studio-900 border-l border-studio-700/80 ${isCompactViewport ? "absolute inset-y-0 right-11 z-40 shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
+            {!isCompactViewport && (
+              <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
+                onPointerDown={(event) => beginResize("inspector", event)} onPointerMove={moveResize}
+                onPointerUp={endResize} onPointerCancel={endResize}
+                onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setInspectorWidth((width) => Math.max(240, Math.min(560, width + (event.key === "ArrowLeft" ? 12 : -12)))); } }}
+                className="absolute left-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+              />
+            )}
+            {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
           </div>
         )}
 
-        {/* Right: Contextual Properties Inspector (in Canvas Mode) or Execution Tree */}
-        {activeTab === "canvas" && isPropertiesOpen ? (
-          <div className={isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-84 shrink-0"}>
-            <PropertiesPanel
-              onClose={() => setIsPropertiesOpen(false)}
-              onOpenToolCatalog={() => setShowToolCatalogModal(true)}
-            />
-          </div>
-        ) : activeTab === "chat" && isPropertiesOpen && !isExecutionTreeOpen ? (
-          <div className={`${isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-[clamp(15rem,25vw,21rem)]"} border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0`}>
-            <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />
-          </div>
-        ) : activeTab === "chat" && isExecutionTreeOpen ? (
-          <div className={`${isCompactViewport ? "absolute inset-y-0 right-0 z-40 w-[min(22rem,calc(100vw-3rem))] shadow-elevated" : "w-[clamp(16rem,24vw,20rem)]"} border-l border-studio-700/80 bg-studio-900 h-full shrink-0 min-w-0`}>
-            <div className="flex h-10 items-center justify-between border-b border-studio-800 px-3">
-              <span className="text-xs font-medium text-studio-200">Run details</span>
-              <button onClick={() => setIsExecutionTreeOpen(false)} className="px-2 py-1 text-xs text-studio-400 hover:text-white" aria-label="Close run details">Close</button>
-            </div>
-            <div className="h-[calc(100%-2.5rem)]"><ExecutionTree executionId={activeExecutionId} /></div>
-          </div>
-        ) : null}
+        {activeTab !== "config" && (
+          <aside aria-label="Workspace panels" className="z-30 flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-studio-800 bg-studio-900 py-2">
+            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model and delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
+              className={`rounded-md p-2 transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              <Icon name="inspector" />
+            </button>
+            <button type="button" onClick={toggleLogs} aria-label={activeTab === "chat" ? "Activity" : "View logs"} aria-pressed={isExecutionTreeOpen} title={activeTab === "chat" ? "Activity" : "View logs"}
+              className={`rounded-md p-2 transition-colors ${isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              <Icon name="logs" />
+            </button>
+          </aside>
+        )}
       </div>
 
-      {showToolCatalogModal && (
-        <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />
-      )}
+      {showToolCatalogModal && <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />}
     </div>
+  );
+}    </div>
   );
 }

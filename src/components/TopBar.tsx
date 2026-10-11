@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import { useStore } from "../store/useStore";
-import { SettingsModal } from "./SettingsModal";
-import { ToolCatalogModal } from "./ToolCatalogModal";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import { Button } from "./ui/Button";
 
@@ -26,8 +24,6 @@ export function TopBar({
   const switchProject = useStore((s) => s.switchProject);
   const createProject = useStore((s) => s.createProject);
 
-  const [showSettings, setShowSettings] = useState(false);
-  const [showToolCatalog, setShowToolCatalog] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
 
@@ -121,7 +117,7 @@ export function TopBar({
             options={[
               { value: "canvas", label: "Editor" },
               { value: "chat", label: "Chat" },
-              { value: "config", label: "Inspector" },
+              { value: "config", label: "Agent" },
             ]}
             value={activeTab}
             onChange={(val) => onTabChange?.(val)}
@@ -129,19 +125,9 @@ export function TopBar({
           />
         </div>
 
-        {/* Right: Active Toggle, Catalog, Run Button, Settings */}
+        {/* Workflow execution controls */}
         <div className="flex items-center gap-2">
-          {/* Quick Tool Catalog Button */}
-          <Button
-            size="xs"
-            variant="secondary"
-            onClick={() => setShowToolCatalog(true)}
-            className="hidden md:inline-flex"
-          >
-            + Catalog
-          </Button>
-
-          {/* Workflow runs belong to the editor; chat tasks are submitted from the composer. */}
+          {/* Chat tasks are submitted from the composer. */}
           {activeTab !== "chat" && (
             <Button
               size="sm"
@@ -154,19 +140,9 @@ export function TopBar({
             </Button>
           )}
 
-          {/* LLM Settings */}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="p-1.5 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md transition-colors"
-            title="Configure API Keys & Settings"
-          >
-            ⚙️
-          </button>
         </div>
       </header>
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showToolCatalog && <ToolCatalogModal onClose={() => setShowToolCatalog(false)} />}
     </>
   );
 }

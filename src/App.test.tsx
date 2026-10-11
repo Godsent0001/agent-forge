@@ -56,10 +56,6 @@ vi.mock("./components/PropertiesPanel", () => ({
   PropertiesPanel: () => <aside data-testid="properties-panel">Properties panel</aside>,
 }));
 
-vi.mock("./components/LiveConsoleDrawer", () => ({
-  LiveConsoleDrawer: () => <section data-testid="live-console">Live console</section>,
-}));
-
 import App from "./App";
 
 describe("App bootstrap and workspace layout", () => {

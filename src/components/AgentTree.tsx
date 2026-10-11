@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useStore } from "../store/useStore";
 import { ToolCatalogModal } from "./ToolCatalogModal";
 import { SettingsModal } from "./SettingsModal";
+import { Icon } from "./ui/Icon";
 
 interface AgentTreeProps {
   onOpenConfig?: () => void;
@@ -61,45 +62,15 @@ export function AgentTree({
 
   if (isCollapsed) {
     return (
-      <aside className="h-full w-12 bg-studio-900 border-r border-studio-700/80 flex flex-col items-center py-3 select-none justify-between shrink-0">
-        <div className="flex flex-col items-center gap-3">
-          <button
-            onClick={onToggleCollapse}
-            className="p-1.5 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
-            title="Expand Project Explorer"
-          >
-            ▶
-          </button>
-          <div className="h-px w-6 bg-studio-800" />
-          <button
-            onClick={() => {
-              onToggleCollapse?.();
-              setActiveNavSection("workflows");
-            }}
-            className="p-2 text-studio-400 hover:text-accent-400 hover:bg-studio-800 rounded transition-colors"
-            title="Workflows"
-          >
-            AG
-          </button>
-          <button
-            onClick={() => {
-              onToggleCollapse?.();
-              setActiveNavSection("tools");
-            }}
-            className="p-2 text-studio-400 hover:text-emerald-400 hover:bg-studio-800 rounded transition-colors"
-            title="Node Library"
-          >
-            TL
-          </button>
+      <aside className="h-full w-full bg-studio-900 border-r border-studio-700/80 flex flex-col items-center py-3 select-none justify-between shrink-0">
+        <div className="flex flex-col items-center gap-2">
+          <button onClick={onToggleCollapse} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Expand explorer" aria-label="Expand explorer"><Icon name="chevron-right" size={18} /></button>
+          <div className="h-px w-6 bg-studio-800 my-1" />
+          <button onClick={() => { setActiveNavSection("workflows"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Agents" aria-label="Agents"><Icon name="agents" /></button>
+          <button onClick={() => { setActiveNavSection("tools"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Tools" aria-label="Tools"><Icon name="tools" /></button>
+          <button onClick={() => setShowCatalogModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Tool catalog" aria-label="Tool catalog"><Icon name="catalog" /></button>
         </div>
-
-        <button
-          onClick={() => setShowSettingsModal(true)}
-          className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
-          title="Settings"
-        >
-          SET
-        </button>
+        <button onClick={() => setShowSettingsModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Provider settings" aria-label="Provider settings"><Icon name="settings" /></button>
       </aside>
     );
   }
@@ -109,7 +80,7 @@ export function AgentTree({
       {/* Explorer Header */}
       <div className="px-3.5 py-3 border-b border-studio-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-accent-500" />
+          <Icon name="agents" size={16} className="text-accent-400" />
           <span className="font-semibold text-studio-100 text-xs tracking-tight">
             Project Explorer
           </span>
@@ -120,7 +91,7 @@ export function AgentTree({
             className="p-1 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
             title="Collapse Sidebar"
           >
-            ◀
+            <Icon name="sidebar-collapse" size={17} />
           </button>
         )}
       </div>
@@ -136,7 +107,7 @@ export function AgentTree({
           }`}
         >
           <div className="flex items-center gap-2">
-            <span className="font-mono text-2xs text-accent-400">AG</span>
+            <Icon name="agents" size={16} className="text-accent-400" />
             <span>Agents</span>
           </div>
           <span className="text-2xs font-mono text-studio-500">{agents.length}</span>
@@ -151,7 +122,7 @@ export function AgentTree({
           }`}
         >
           <div className="flex items-center gap-2">
-            <span className="text-emerald-400">⊞</span>
+            <Icon name="tools" size={16} className="text-emerald-400" />
             <span>Tools</span>
           </div>
           <span className="text-2xs font-mono text-studio-500">{tools.length}</span>
@@ -161,7 +132,7 @@ export function AgentTree({
           onClick={() => setShowCatalogModal(true)}
           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-studio-400 hover:bg-studio-850 hover:text-studio-200 transition-colors text-xs"
         >
-          <span className="text-amber-400">📚</span>
+          <Icon name="catalog" size={16} className="text-studio-400" />
           <span>Browse tool catalog</span>
         </button>
 
@@ -169,8 +140,8 @@ export function AgentTree({
           onClick={() => setShowSettingsModal(true)}
           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-studio-400 hover:bg-studio-850 hover:text-studio-200 transition-colors text-xs"
         >
-          <span>⚙️</span>
-          <span>Provider credentials</span>
+          <Icon name="settings" size={16} />
+          <span>Provider settings</span>
         </button>
       </div>
 
@@ -270,7 +241,7 @@ export function AgentTree({
                             className="p-1 text-studio-400 hover:text-studio-100 rounded"
                             title="Configure Agent"
                           >
-                            ⚙️
+                            <Icon name="settings" size={14} />
                           </button>
                         )}
                         <button
@@ -379,7 +350,7 @@ export function AgentTree({
           onClick={() => setIsCreatingAgent(true)}
           className="w-full py-1.5 px-3 bg-accent-600 hover:bg-accent-500 text-white text-xs font-semibold rounded shadow-studio transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
         >
-          <span>+</span> New Workflow Node
+          <Icon name="plus" size={15} /> New agent
         </button>
       </div>
 

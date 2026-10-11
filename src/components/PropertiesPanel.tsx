@@ -24,7 +24,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
 
   if (!selectedAgent) {
     return (
-      <aside className="w-84 h-full bg-studio-900 border-l border-studio-700/80 flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
+      <aside className="w-full h-full bg-studio-900 border-l border-studio-700/80 flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
         <div className="w-10 h-10 rounded-full bg-studio-800 border border-studio-700 flex items-center justify-center text-studio-400 mb-2">
           ⚙️
         </div>
@@ -60,7 +60,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
   const attachedSubAgents = agents.filter((a) => childAgentIds.includes(a.id));
 
   return (
-    <aside className="w-full sm:w-84 h-full bg-studio-900 border-l border-studio-700/80 flex flex-col text-xs select-none shrink-0 overflow-hidden min-w-0 z-20">
+    <aside className="w-full h-full bg-studio-900 border-l border-studio-700/80 flex flex-col text-xs select-none shrink-0 overflow-hidden min-w-0 z-20">
       {/* Properties Header */}
       <div className="p-3 border-b border-studio-800 bg-studio-850 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">

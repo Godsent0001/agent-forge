@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import type { CatalogShelf, CatalogToolEntry } from "../types";
 import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
 
 export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
   const createTool = useStore((s) => s.createTool);
@@ -71,17 +72,8 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-studio-800 flex items-center justify-between bg-studio-850 shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="w-6 h-6 rounded bg-accent-900 text-accent-400 border border-accent-400/30 flex items-center justify-center text-xs">
-              📚
-            </span>
-            <div>
-              <h2 className="text-sm font-semibold text-studio-100">
-                Tool Catalog & Domain Shelves
-              </h2>
-              <p className="text-2xs text-studio-400">
-                Explore 40+ specialized production tools across 12 domain shelves
-              </p>
-            </div>
+            <span className="w-7 h-7 rounded border border-studio-700 bg-studio-800 text-studio-200 flex items-center justify-center"><Icon name="catalog" size={16} /></span>
+            <div><h2 className="text-sm font-semibold text-studio-100">Tool catalog</h2><p className="text-2xs text-studio-400">Browse by category and add tools to the selected agent.</p></div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -163,9 +155,7 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                             <h4 className="text-xs font-semibold text-studio-100">
                               {item.name}
                             </h4>
-                            <span className="text-2xs font-mono text-emerald-400/90 bg-emerald-950/40 border border-emerald-900/60 px-1.5 py-0.2 rounded shrink-0">
-                              {item.status}
-                            </span>
+
                           </div>
                           <span className="text-2xs font-mono text-studio-500 block mt-0.5">
                             {item.kind}
