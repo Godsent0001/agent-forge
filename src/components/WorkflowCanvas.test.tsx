@@ -88,6 +88,7 @@ describe("WorkflowCanvas editing", () => {
   });
 
   it("removes a saved agent connection using the wire itself", async () => {
+    agents[0].child_agent_ids = ["agent-b"];
     window.localStorage.setItem("agentforge.workflow.connections.project-1.agent-a", JSON.stringify([
       { id: "agent-a->child-agent-b", source: "agent-a", target: "child-agent-b" },
     ]));
