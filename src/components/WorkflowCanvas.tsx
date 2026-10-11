@@ -40,7 +40,6 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   const storageKey = projectId && activeAgent ? `agentforge.workflow.connections.${projectId}.${activeAgent.id}` : null;
   const positionStorageKey = storageKey ? `${storageKey}.positions` : null;
   const [hydratedConnectionKey, setHydratedConnectionKey] = useState<string | null>(null);
-  const [hydratedPositionKey, setHydratedPositionKey] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const nodes: GraphNode[] = [

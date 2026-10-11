@@ -3,7 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const { agents, tools, selectAgent, attachChildToAgent, detachChildFromAgent } = vi.hoisted(() => ({
   agents: [
-    { id: "agent-a", project_id: "project-1", name: "Alpha", description: "", provider: "google", model: "gemini-test", system_prompt: "", tool_use_schema: "", memory_enabled: false, created_at: "", tool_ids: [], child_agent_ids: [] },
+    { id: "agent-a", project_id: "project-1", name: "Alpha", description: "", provider: "google", model: "gemini-test", system_prompt: "", tool_use_schema: "", memory_enabled: false, created_at: "", tool_ids: [] as string[], child_agent_ids: [] as string[] },
     { id: "agent-b", project_id: "project-1", name: "Beta", description: "", provider: "openai", model: "gpt-test", system_prompt: "", tool_use_schema: "", memory_enabled: false, created_at: "", tool_ids: [], child_agent_ids: [] },
   ],
   tools: [] as Array<{ id: string; name: string; kind: string }>,
