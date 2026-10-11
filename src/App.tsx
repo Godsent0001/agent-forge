@@ -232,12 +232,6 @@ export default function App() {
         ) : null}
       </div>
 
-      {/* Hidden test-hook renderers for backward compatibility with component tests */}
-      <div className="hidden" aria-hidden="true">
-        <div data-testid="agent-chat">Interactive Test Surface</div>
-        <div data-testid="execution-tree">{activeExecutionId ?? "No execution"}</div>
-      </div>
-
       {showToolCatalogModal && (
         <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />
       )}
