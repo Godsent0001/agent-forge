@@ -213,7 +213,7 @@ export default function App() {
         </div>
 
         {activeTab === "canvas" ? (
-          <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} onOpenLogs={toggleLogs} isRunning={isRunningQuickRun} /></div>
+          <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
         ) : activeTab === "chat" ? (
           <div className="flex-1 flex min-w-0 h-full overflow-hidden"><AgentChat onRunExecution={handleChatRunStarted} /></div>
         ) : (

@@ -86,8 +86,14 @@ describe("App bootstrap and workspace layout", () => {
     expect(screen.getByTestId("agent-chat")).toBeInTheDocument();
     expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Inspector" }));
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Inspector" }));
+    expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View logs" }));
     expect(screen.getByTestId("execution-tree")).toHaveTextContent("No execution");
+    fireEvent.click(screen.getByRole("button", { name: "View logs" }));
+    expect(screen.queryByTestId("execution-tree")).not.toBeInTheDocument();
     expect(fetchProjects).toHaveBeenCalledTimes(1);
     expect(loadProject).toHaveBeenCalledTimes(1);
   });
@@ -101,6 +107,8 @@ describe("App bootstrap and workspace layout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
     expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
   });
 
   it("opens the live Activity inspector when a chat execution starts", async () => {
