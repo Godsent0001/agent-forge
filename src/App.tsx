@@ -251,6 +251,4 @@ export default function App() {
       {showToolCatalogModal && <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />}
     </div>
   );
-}    </div>
-  );
 }
