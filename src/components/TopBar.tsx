@@ -61,7 +61,7 @@ export function TopBar({
           {/* Breadcrumbs with Project Switcher */}
           <div className="flex items-center gap-1.5 text-studio-400 min-w-0">
             <span className="text-2xs font-mono uppercase text-studio-500 hidden md:inline">
-              Workflows /
+              Workspace /
             </span>
 
             {isCreatingProject ? (
@@ -121,7 +121,7 @@ export function TopBar({
           <SegmentedControl
             options={[
               { value: "canvas", label: "Editor" },
-              { value: "chat", label: "Test" },
+              { value: "chat", label: "Chat" },
               { value: "config", label: "Inspector" },
             ]}
             value={activeTab}
@@ -170,7 +170,7 @@ export function TopBar({
             disabled={isRunning}
             icon={isRunning ? "⚙️" : "▶"}
           >
-            {isRunning ? "Running…" : "Run Workflow"}
+            {isRunning ? "Running…" : activeTab === "chat" ? "Run task" : "Run Workflow"}
           </Button>
 
           {/* LLM Settings */}
