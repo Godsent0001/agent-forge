@@ -236,7 +236,7 @@ export default function App() {
 
         {activeTab !== "config" && (
           <aside aria-label="Workspace panels" className="z-30 flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-studio-800 bg-studio-900 py-2">
-            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model and delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
+            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
               className={`rounded-md p-2 transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
               <Icon name="inspector" />
             </button>
