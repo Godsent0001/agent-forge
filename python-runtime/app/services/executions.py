@@ -11,7 +11,8 @@ from app import models
 from app.contracts.events import EventDraft, RunEvent
 from app.contracts.run import RunRequest, RunResult, Totals
 from app.db import SessionLocal
-from app.services.core_adapters import LegacyToolFactory, NullApprovals, Workspace
+from app.services.core_adapters import NullApprovals, Workspace
+from app.tools.registry import DefaultToolFactory
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
 
@@ -182,7 +183,7 @@ class ExecutionManager:
                         cancel=token,
                         approvals=NullApprovals(),
                         workspace=workspace,
-                        tools=LegacyToolFactory(),
+                        tools=DefaultToolFactory(),
                         memory=None,
                         lessons=None,
                         intents=None,

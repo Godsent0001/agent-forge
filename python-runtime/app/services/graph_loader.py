@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import models
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
-from app.contracts.naming import dedupe_names
+from app.contracts.naming import dedupe_names, sanitize_tool_name
 
 
 def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentGraph:
@@ -31,7 +31,7 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
         seen.add(row.id)
 
         tool_rows = list(row.tool_links)
-        tool_names = dedupe_names([link.tool.name for link in tool_rows])
+        tool_names = dedupe_names([sanitize_tool_name(link.tool.name) for link in tool_rows])
         bindings = [
             ToolBinding(
                 id=link.tool.id,

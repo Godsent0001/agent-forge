@@ -31,6 +31,7 @@ from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.spans import span
+from app.tools.specs import tool_spec
 
 logger = logging.getLogger(__name__)
 
@@ -548,18 +549,7 @@ class RunnerCore:
             tool_inst = tools_factory.build(tb)
             tool_instances[name] = tool_inst
 
-            schema = {}
-            input_cls = getattr(tool_inst, "Input", None)
-            if input_cls and hasattr(input_cls, "model_json_schema"):
-                schema = input_cls.model_json_schema()
-
-            tool_specs.append(
-                ToolSpec(
-                    name=name,
-                    description=tb.description or getattr(tool_inst, "default_description", ""),
-                    parameters=schema,
-                )
-            )
+            tool_specs.append(tool_spec(tb, tool_inst, name=name))
 
         for child in spec.children:
             name = deduped[idx]

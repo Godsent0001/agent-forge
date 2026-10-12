@@ -12,6 +12,10 @@ descriptions shown in the picker UI).
 
 from __future__ import annotations
 
+from app.contracts.graph import ToolBinding
+from app.contracts.tools import Tool as V2Tool
+from app.tools.adapter import LegacyToolAdapter
+
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
     CacheEngineTool,
@@ -164,10 +168,6 @@ def build_tool(kind: str, config: dict) -> Tool:
 
 # v2 registry contract (D-08). Keep build_tool() above unchanged: the legacy
 # engine calls it directly and must retain its historical behavior.
-from app.contracts.graph import ToolBinding
-from app.contracts.tools import Tool as V2Tool
-from app.tools.adapter import LegacyToolAdapter
-
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {}
 
 
