@@ -8,6 +8,7 @@ import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { LogoMark } from "./ui/LogoMark";
 import { isSimulatedText } from "../utils/simulated";
+import { buildRunHistory } from "../utils/chatHistory";
 import { useExecutionStream } from "../hooks/useExecutionStream";
 
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
@@ -236,16 +237,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setIsProcessing(true);
 
     try {
-      // C-1 defines history as structured user/assistant turns. Tool spans stay in the
-      // execution log, and demo placeholders must never become real-model context.
-      const history = agentMessages
-        .filter((message) => message.sender === "user" || message.sender === "agent")
-        .filter((message) => message.sender !== "agent" || !isSimulatedText(message.text))
-        .slice(-20)
-        .map((message) => ({
-          role: message.sender === "user" ? "user" as const : "assistant" as const,
-          content: message.text,
-        }));
+      const history = buildRunHistory(agentMessages);
 
       const execution = await api.executions.run(project.id, agent.id, userText, history);
       processedExecutionRef.current = null;
