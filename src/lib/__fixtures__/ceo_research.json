@@ -90,7 +90,7 @@
     "ts": "2026-10-12T12:00:00.120Z",
     "type": "span_started",
     "span_id": "agent-research",
-    "parent_span_id": null,
+    "parent_span_id": "tool-research",
     "kind": "agent",
     "name": "Research Agent",
     "status": null,
