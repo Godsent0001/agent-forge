@@ -451,7 +451,8 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
           if (event.type === "approval_requested") pending.set(approvalId, event);
           if (event.type === "approval_resolved") pending.delete(approvalId);
         }
-        const request = [...pending.values()].at(-1);
+        const pendingRequests = [...pending.values()];
+        const request = pendingRequests[pendingRequests.length - 1];
         if (!request) return null;
         const toolName = String(request.data?.tool ?? request.data?.tool_name ?? request.name ?? "requested tool");
         return (
