@@ -73,6 +73,17 @@ class FakeRunner:
         root_output = ""
         root_started = False
 
+        async def emit_safely(event: EventDraft) -> None:
+            # Don't interrupt an event between durable persistence and publication.
+            pending = asyncio.create_task(emit(event))
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                try:
+                    await pending
+                finally:
+                    raise
+
         async def close_open(status: str) -> None:
             while stack:
                 current = stack.pop()
@@ -82,7 +93,7 @@ class FakeRunner:
                     else {"result_preview": "Span closed before completion",
                           "is_error": status != "ok", "artifacts": []}
                 )
-                await emit(EventDraft(
+                await emit_safely(EventDraft(
                     type="span_ended", span_id=current["id"],
                     parent_span_id=current["parent_id"], kind=current["kind"],
                     name=current["name"], status=status, data=data,
@@ -120,21 +131,21 @@ class FakeRunner:
                         depth = parent_agent["depth"] + 1
                     span_id = str(uuid4())
                     parent_id = parent["id"] if parent else None
-                    await emit(EventDraft(
+                                        stack.append({"id": span_id, "parent_id": parent_id,
+                                  "kind": "agent", "name": name[:2000], "depth": depth})
+await emit_safely(EventDraft(
                         type="span_started", span_id=span_id,
                         parent_span_id=parent_id, kind="agent", name=name[:2000],
                         data={"agent_id": agent_id[:2000], "depth": depth,
                               "input_preview": str(op.get("input", req.task))[:2000]},
                     ))
-                    stack.append({"id": span_id, "parent_id": parent_id,
-                                  "kind": "agent", "name": name[:2000], "depth": depth})
 
                 elif operation == "agent_end":
                     if not stack or stack[-1]["kind"] != "agent":
                         raise ValueError("agent_end must close the current agent after its children")
                     current = stack.pop()
                     output = str(op.get("output", ""))
-                    await emit(EventDraft(
+                    await emit_safely(EventDraft(
                         type="span_ended", span_id=current["id"],
                         parent_span_id=current["parent_id"], kind="agent",
                         name=current["name"], status="ok",
@@ -149,7 +160,11 @@ class FakeRunner:
                     parent = stack[-1]
                     span_id = str(uuid4())
                     name = str(op.get("name") or "llm")[:2000]
-                    await emit(EventDraft(
+                    stack.append({
+                        "id": span_id, "parent_id": parent["id"], "kind": "llm_call",
+                        "name": name,
+                    })
+                    await emit_safely(EventDraft(
                         type="span_started", span_id=span_id,
                         parent_span_id=parent["id"], kind="llm_call", name=name,
                         data={"provider": str(op.get("provider", "fake"))[:2000],
@@ -170,7 +185,8 @@ class FakeRunner:
                     elif totals.cost_usd is not None:
                         totals.cost_usd += max(0.0, float(cost))
                     called_tools = op.get("tools") or []
-                    await emit(EventDraft(
+                    try:
+                    await emit_safely(EventDraft(
                         type="span_ended", span_id=span_id,
                         parent_span_id=parent["id"], kind="llm_call", name=name,
                         status="ok", data={
@@ -182,6 +198,15 @@ class FakeRunner:
                             "tool_calls": called_tools,
                         },
                     ))
+
+                    except asyncio.CancelledError:
+                        # emit_safely finishes the end write before propagating Stop.
+                        if stack and stack[-1]["id"] == span_id:
+                            stack.pop()
+                        raise
+                    else:
+                        if stack and stack[-1]["id"] == span_id:
+                            stack.pop()
                     await sleep_ms(int(op.get("ms", 0)))
 
                 elif operation == "tool_start":
@@ -193,15 +218,15 @@ class FakeRunner:
                     args = op.get("args", {})
                     if not isinstance(args, str):
                         args = json.dumps(args, ensure_ascii=False, separators=(",", ":"))
-                    await emit(EventDraft(
+                                        stack.append({"id": span_id, "parent_id": parent["id"],
+                                  "kind": "tool_call", "name": name, "denied": False})
+await emit_safely(EventDraft(
                         type="span_started", span_id=span_id,
                         parent_span_id=parent["id"], kind="tool_call", name=name,
                         data={"tool_name": name,
                               "tool_call_id": str(op.get("tool_call_id") or uuid4())[:2000],
                               "args": str(args)[:2000]},
                     ))
-                    stack.append({"id": span_id, "parent_id": parent["id"],
-                                  "kind": "tool_call", "name": name, "denied": False})
 
                 elif operation == "approval":
                     tool_span = next((item for item in reversed(stack)
@@ -232,7 +257,7 @@ class FakeRunner:
                     )
                     totals.tool_calls += 1
                     artifacts = op.get("artifacts", [])
-                    await emit(EventDraft(
+                    await emit_safely(EventDraft(
                         type="span_ended", span_id=current["id"],
                         parent_span_id=current["parent_id"], kind="tool_call",
                         name=current["name"], status="ok" if ok else "error",
