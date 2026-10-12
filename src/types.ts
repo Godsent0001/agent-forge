@@ -29,6 +29,8 @@ export type ChatMessage =
       agentName?: string;
       text: string;
       timestamp: string;
+      /** The run that produced this reply, so its trace/log can be reopened later. */
+      executionId?: string;
     }
   | {
       id: string;

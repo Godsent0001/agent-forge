@@ -1,4 +1,5 @@
 import { keychain } from "./keychain";
+import { providersNeedingKeys } from "../config/providers";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
 let currentApiBase = "http://127.0.0.1:8000";
@@ -126,37 +127,41 @@ export const api = {
     shelves: () => request<CatalogShelf[]>("/catalog/shelves"),
   },
   settings: {
-    getKeys: async () => ({
-      anthropic: (await keychain.get("anthropic")) ?? "",
-      openai: (await keychain.get("openai")) ?? "",
-      google: (await keychain.get("google")) ?? "",
-    }),
-    setKeys: async (keys: { anthropic?: string; openai?: string; google?: string }) => {
-      if (keys.anthropic !== undefined) await keychain.save("anthropic", keys.anthropic);
-      if (keys.openai !== undefined) await keychain.save("openai", keys.openai);
-      if (keys.google !== undefined) await keychain.save("google", keys.google);
-
-      // Sync keys to python sidecar runtime process
-      const currentKeys = {
-        anthropic: (await keychain.get("anthropic")) ?? "",
-        openai: (await keychain.get("openai")) ?? "",
-        google: (await keychain.get("google")) ?? "",
-      };
-      await request("/settings/keys", {
-        method: "POST",
-        body: JSON.stringify(currentKeys),
-      });
+    /**
+     * Which providers have a stored key. Only a masked hint (last 4 characters) is returned,
+     * so the full key never has to live in React state.
+     */
+    getKeyStatus: async (): Promise<Record<string, { saved: boolean; hint: string }>> => {
+      const status: Record<string, { saved: boolean; hint: string }> = {};
+      for (const provider of providersNeedingKeys()) {
+        const value = await keychain.get(provider.keyId);
+        status[provider.keyId] = { saved: !!value, hint: value ? `••••${value.slice(-4)}` : "" };
+      }
+      return status;
     },
+    /** Saves the given keys (by key slot) to the keychain, then pushes all stored keys to the runtime. */
+    setKeys: async (keys: Record<string, string | undefined>) => {
+      for (const [slot, value] of Object.entries(keys)) {
+        if (value) await keychain.save(slot, value);
+      }
+      await api.settings.syncKeysToBackend();
+    },
+    removeKey: async (slot: string) => {
+      await keychain.remove(slot);
+      // An explicit empty string clears the variable in the runtime process.
+      await request("/settings/keys", { method: "POST", body: JSON.stringify({ [slot]: "" }) });
+    },
+    /** Pushes every stored key to the runtime (called at startup, since the runtime keeps keys in memory only). */
     syncKeysToBackend: async () => {
-      const currentKeys = {
-        anthropic: (await keychain.get("anthropic")) ?? "",
-        openai: (await keychain.get("openai")) ?? "",
-        google: (await keychain.get("google")) ?? "",
-      };
-      return request("/settings/keys", {
-        method: "POST",
-        body: JSON.stringify(currentKeys),
-      });
+      const stored: Record<string, string> = {};
+      for (const provider of providersNeedingKeys()) {
+        const value = await keychain.get(provider.keyId);
+        if (value) stored[provider.keyId] = value;
+      }
+      if (Object.keys(stored).length === 0) return { status: "ok" };
+      return request("/settings/keys", { method: "POST", body: JSON.stringify(stored) });
     },
+    /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
+    runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
   },
 };

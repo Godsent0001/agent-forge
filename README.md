@@ -71,3 +71,15 @@ Produces the installer / application bundle inside `dist-electron/`.
 ## Documentation
 
 See [`docs/`](docs/) for project plans, contracts, task cards, and testing guidance.
+
+## Running with real models
+
+By default the backend uses a built-in **test runner** that answers with `FakeRunner completed: <your task>`. The UI labels those replies "Simulated". To use real models:
+
+1. Start the app with the live runner: `npm run dev:live` (same as `npm run dev` with `AGENTFORGE_RUNNER=v2`).
+2. Open **Provider settings** and save a key for the provider you want (keys stay on your device and are re-applied to the runtime at every start).
+3. Pick the provider and model on the agent. Any model your provider offers can be used through **Custom model ID**.
+
+Models are routed through LiteLLM as `<provider>/<model>`. Providers listed in `src/config/providers.ts` need the matching key handled by the runtime (`app/routers/settings.py`).
+
+Chat history is saved locally (last 300 messages per agent) and each reply links to its run log, which can be exported as JSON from the run panel.

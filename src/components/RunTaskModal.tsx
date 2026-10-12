@@ -53,7 +53,7 @@ export function RunTaskModal({ agentName, onClose, onSubmit }: RunTaskModalProps
               Run workflow
             </h2>
             <p className="mt-0.5 text-2xs text-studio-400">
-              <span className="font-mono text-studio-300">{agentName}</span> will receive this task and may delegate to its team.
+              <span className="font-mono text-studio-300">{agentName}</span> will receive this task and may delegate to its team. It is saved in this agent’s chat history.
             </p>
           </div>
           <button

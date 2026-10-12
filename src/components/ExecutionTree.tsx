@@ -42,6 +42,15 @@ function asText(value: unknown): string {
   }
 }
 
+function downloadJson(filename: string, payload: unknown) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function copyToClipboard(text: string) {
   try {
     void navigator.clipboard?.writeText(text);
@@ -334,11 +343,23 @@ export function ExecutionTree({ executionId }: ExecutionTreeProps) {
           </span>
           <StatusBadge status={badge.status} label={badge.label} />
         </div>
-        {isRunning && (
-          <Button size="xs" variant="danger" onClick={handleCancelRun} disabled={isCancelling || !run}>
-            {isCancelling ? "Cancelling…" : "Cancel run"}
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {events.length > 0 && (
+            <button
+              type="button"
+              onClick={() => downloadJson(`agentforge-run-${executionId.slice(0, 8)}.json`, { execution_id: executionId, run, events })}
+              className="rounded px-2 py-1 text-2xs font-mono text-studio-400 transition-colors hover:bg-studio-800 hover:text-studio-100"
+              title="Download this run's full event log as JSON"
+            >
+              Export log
+            </button>
+          )}
+          {isRunning && (
+            <Button size="xs" variant="danger" onClick={handleCancelRun} disabled={isCancelling || !run}>
+              {isCancelling ? "Cancelling…" : "Cancel run"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {cancelError && (

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
-import { DEFAULT_MODELS } from "../config/models";
+import { ModelPicker } from "./ModelPicker";
 
 export function AgentEditor() {
   const agents = useStore((s) => s.agents);
@@ -30,13 +30,6 @@ export function AgentEditor() {
       </div>
     );
   }
-
-  const handleProviderChange = (provider: "google" | "anthropic" | "openai") => {
-    updateAgent(selectedAgent.id, {
-      provider,
-      model: DEFAULT_MODELS[provider],
-    });
-  };
 
   const attachedToolIds = selectedAgent.tool_ids || [];
   const unattachedTools = tools.filter((t) => !attachedToolIds.includes(t.id));
@@ -119,28 +112,12 @@ export function AgentEditor() {
               />
             </div>
 
-            <div>
-              <label className="block text-2xs font-mono uppercase text-studio-400 mb-1">Provider</label>
-              <select
-                value={selectedAgent.provider || "google"}
-                onChange={(e) => handleProviderChange(e.target.value as any)}
-                className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded px-3 py-1.5 focus:outline-none focus:border-accent-500"
-              >
-                <option value="google">Google Gemini</option>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic Claude</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-2xs font-mono uppercase text-studio-400 mb-1">Model</label>
-              <input
-                type="text"
-                value={selectedAgent.model}
-                onChange={(e) => updateAgent(selectedAgent.id, { model: e.target.value })}
-                className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded px-3 py-1.5 font-mono focus:outline-none focus:border-accent-500"
-              />
-            </div>
+            <ModelPicker
+              key={`model-${selectedAgent.id}`}
+              provider={selectedAgent.provider}
+              model={selectedAgent.model}
+              onChange={(patch) => void updateAgent(selectedAgent.id, patch)}
+            />
           </div>
         )}
 

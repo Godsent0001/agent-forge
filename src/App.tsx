@@ -26,6 +26,8 @@ export default function App() {
   const loadProject = useStore((s) => s.loadProject);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agents = useStore((s) => s.agents);
+  const selectAgent = useStore((s) => s.selectAgent);
+  const queueTask = useStore((s) => s.queueTask);
   const project = useStore((s) => s.project);
 
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
@@ -133,18 +135,16 @@ export default function App() {
   };
 
   // Primary Run Workflow trigger
+  // "Run workflow" is the chat composer with room for more options later: the task is queued into the
+  // selected agent's conversation, so it is saved to chat history and produces a run log like any message.
   const handleTriggerRun = async (task: string) => {
     const currentAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
     if (!project || !currentAgent) throw new Error("Create an agent before running a workflow.");
+    selectAgent(currentAgent.id);
+    queueTask(currentAgent.id, task);
+    setActiveTab("chat");
     setIsRunningQuickRun(true);
-    try {
-      const execution = await api.executions.run(project.id, currentAgent.id, task);
-      setActiveExecutionId(execution.id);
-      setIsExecutionTreeOpen(true);
-      setIsPropertiesOpen(false);
-    } finally {
-      setIsRunningQuickRun(false);
-    }
+    setTimeout(() => setIsRunningQuickRun(false), 1200);
   };
 
   if (boot === "checking-sidecar" || boot === "loading-project") {

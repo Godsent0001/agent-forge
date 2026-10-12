@@ -30,6 +30,7 @@ from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.spans import span
+from app.core.llm.model_names import litellm_model
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +378,7 @@ class RunnerCore:
                         messages=messages,
                         tools=tools,
                         params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                        model=litellm_model(spec.provider, spec.model),
                     )
                 except LLMContextTooLong:
                     _trim_messages(messages)
@@ -385,7 +386,7 @@ class RunnerCore:
                         messages=messages,
                         tools=tools,
                         params=spec.params,
-                        model=f"{spec.provider}/{spec.model}" if spec.provider else spec.model,
+                        model=litellm_model(spec.provider, spec.model),
                     )
 
             budget.record_llm_call(

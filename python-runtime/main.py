@@ -56,7 +56,8 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    # "fake" = built-in test runner (placeholder replies); "v2" = real models via LiteLLM.
+    return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "fake")}
 
 
 def main() -> None:

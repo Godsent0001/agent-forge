@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
-import { DEFAULT_MODELS, MODEL_OPTIONS, Provider } from "../config/models";
+import { ModelPicker } from "./ModelPicker";
 import { Input, Textarea } from "./ui/Input";
 import type { InputProps, TextareaProps } from "./ui/Input";
 import { Button } from "./ui/Button";
@@ -63,10 +63,6 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
     } catch {
       setSaveIndicator("Save failed");
     }
-  };
-
-  const handleProviderChange = (provider: Provider) => {
-    void persist({ provider, model: DEFAULT_MODELS[provider] });
   };
 
   const handleFieldChange = (field: keyof Agent, value: Agent[keyof Agent]) => {
@@ -157,42 +153,12 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-2xs font-mono uppercase tracking-wider text-studio-400">
-                LLM Provider
-              </label>
-              <select
-                value={selectedAgent.provider || "google"}
-                onChange={(e) => handleProviderChange(e.target.value as Provider)}
-                className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent-500 transition-colors"
-              >
-                <option value="google">Google Gemini (Recommended)</option>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic Claude</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="agent-model" className="block text-2xs font-mono uppercase tracking-wider text-studio-400">
-                Chat Model
-              </label>
-              <select
-                id="agent-model"
-                value={selectedAgent.model || DEFAULT_MODELS[selectedAgent.provider as Provider] || ""}
-                onChange={(e) => handleFieldChange("model", e.target.value)}
-                className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded-md px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-accent-500 transition-colors"
-              >
-                {selectedAgent.model &&
-                  !(MODEL_OPTIONS[selectedAgent.provider as Provider] ?? []).some((o) => o.value === selectedAgent.model) && (
-                    <option value={selectedAgent.model}>{selectedAgent.model} (not in list)</option>
-                  )}
-                {(MODEL_OPTIONS[selectedAgent.provider as Provider] ?? []).map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ModelPicker
+              key={`model-${selectedAgent.id}`}
+              provider={selectedAgent.provider}
+              model={selectedAgent.model}
+              onChange={(patch) => void persist(patch)}
+            />
 
             <div className="pt-2 border-t border-studio-800 flex items-center justify-between">
               <div>

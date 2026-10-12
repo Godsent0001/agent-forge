@@ -1,3 +1,4 @@
+import { LogoMark } from "./ui/LogoMark";
 import React, { useState } from "react";
 import { useStore } from "../store/useStore";
 import { SegmentedControl } from "./ui/SegmentedControl";
@@ -43,9 +44,7 @@ export function TopBar({
         {/* Left: Brand Identity & Breadcrumbs */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-6 h-6 rounded bg-accent-600 flex items-center justify-center font-mono font-bold text-white text-xs shadow-studio">
-              AF
-            </div>
+            <LogoMark size={26} />
             <span className="font-semibold text-studio-100 tracking-tight text-sm hidden sm:inline">
               AgentForge
             </span>
