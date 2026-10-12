@@ -296,3 +296,48 @@ def test_websocket_stream_replays_without_duplicates(test_session_factory, monke
     assert [event["seq"] for event in replayed] == [event["seq"] for event in expected]
     assert all(event["seq"] > 2 for event in replayed)
     client.close()
+
+
+def test_http_long_running_scenario_streams_and_can_be_cancelled(test_session_factory, monkeypatch):
+    factory, (project_id, agent_id) = test_session_factory
+    client, manager = _build_test_api(monkeypatch, factory)
+    monkeypatch.setattr(manager, "shutdown", lambda: None)
+
+    response = client.post(
+        "/v2/executions",
+        json={
+            "project_id": project_id,
+            "root_agent_id": agent_id,
+            "task": "stream and cancel the long-running scenario",
+            "options": {"scenario": "long_running"},
+        },
+    )
+    assert response.status_code == 200
+    execution_id = response.json()["id"]
+
+    received = []
+    with client.websocket_connect(f"/v2/executions/{execution_id}/stream") as websocket:
+        while True:
+            event = websocket.receive_json()
+            received.append(event)
+            if event["type"] == "span_started" and event.get("kind") == "agent":
+                break
+
+        cancelled = client.post(f"/v2/executions/{execution_id}/cancel")
+        assert cancelled.status_code == 200
+        while True:
+            event = websocket.receive_json()
+            received.append(event)
+            if event["type"] == "execution_ended":
+                break
+
+    seqs = [event["seq"] for event in received]
+    assert seqs == sorted(set(seqs))
+    assert any(
+        event["type"] == "span_ended" and event.get("status") == "cancelled"
+        for event in received
+    )
+    detail = client.get(f"/v2/executions/{execution_id}")
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "cancelled"
+    client.close()
