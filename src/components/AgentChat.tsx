@@ -4,6 +4,8 @@ import { useStore } from "../store/useStore";
 import type { ChatMessage } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
 import { executionToolMessages } from "../utils/executionToolMessages";
+import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
 
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
@@ -11,12 +13,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const project = useStore((s) => s.project);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
+  const agentCount = useStore((s) => s.agents.length);
+  const createAgent = useStore((s) => s.createAgent);
 
   const [promptInput, setPromptInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [chatNotice, setChatNotice] = useState<string | null>(null);
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
+  const [createAgentError, setCreateAgentError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
@@ -25,15 +32,54 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [agentMessages, isProcessing, agent?.id]);
 
+  const handleCreateFirstAgent = async () => {
+    if (isCreatingAgent) return;
+    setIsCreatingAgent(true);
+    setCreateAgentError(null);
+    try {
+      await createAgent("Assistant");
+    } catch (e) {
+      setCreateAgentError(e instanceof Error ? e.message : "Could not create the agent.");
+    } finally {
+      setIsCreatingAgent(false);
+    }
+  };
+
   if (!selectedAgentId || !agent || !project) {
+    const hasAgents = agentCount > 0;
     return (
-      <div className="h-full flex items-center justify-center text-studio-400 text-sm bg-studio-950 p-6 select-none">
-        <div className="text-center max-w-sm space-y-2">
-          <span className="text-3xl block">💬</span>
-          <p className="font-semibold text-studio-200">No Agent Selected</p>
-          <p className="text-xs text-studio-500">
-            Select an agent from the left explorer sidebar or canvas to start an interactive testing session.
+      <div className="h-full w-full flex-1 flex items-center justify-center bg-studio-950 p-6 select-none">
+        <div className="text-center max-w-sm">
+          <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-studio-700 bg-studio-900 text-accent-400">
+            <Icon name={hasAgents ? "chat" : "agents"} size={20} />
+          </div>
+          <p className="font-semibold text-studio-100 text-base">
+            {hasAgents ? "Pick an agent to chat with" : "Create your first agent"}
           </p>
+          <p className="mt-2 text-sm leading-6 text-studio-400">
+            {hasAgents
+              ? "Choose an agent from the explorer on the left to start a conversation."
+              : "Agents are the building blocks of a workflow. Start with one, then give it tools or let it delegate to other agents."}
+          </p>
+          {!hasAgents && (
+            <>
+              <Button
+                className="mt-5"
+                variant="primary"
+                size="md"
+                icon={<Icon name="plus" size={14} />}
+                onClick={handleCreateFirstAgent}
+                disabled={isCreatingAgent}
+              >
+                {isCreatingAgent ? "Creating…" : "Create agent"}
+              </Button>
+              {createAgentError && (
+                <p role="alert" className="mt-3 text-xs text-red-300">
+                  {createAgentError}
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
@@ -49,6 +95,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     const userText = promptInput.trim();
     setPromptInput("");
     setChatError(null);
+    setChatNotice(null);
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -93,12 +140,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       }
 
       if (completedExecution.status === "cancelled") {
-        setChatError("Execution cancelled.");
+        setChatNotice("Run stopped before it finished.");
         return;
       }
 
       if (completedExecution.status !== "completed") {
-        throw new Error("Execution did not complete. Check the execution tree for details.");
+        throw new Error(
+          completedExecution.error ||
+            (completedExecution.status === "budget_exceeded"
+              ? "The run hit its budget limit before finishing."
+              : "The run did not complete. Open the activity panel to see which step failed."),
+        );
       }
 
       const agentMsg: ChatMessage = {
@@ -135,11 +187,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   };
 
   return (
-    <div className="h-full flex flex-col bg-studio-950 min-w-0 text-studio-100">
+    <div className="h-full w-full flex-1 flex flex-col bg-studio-950 min-w-0 text-studio-100">
       {/* Header bar showing active agent */}
       <div className="px-6 py-4 border-b border-studio-800 bg-studio-900/95 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 border border-studio-600 bg-studio-800 text-studio-200 flex items-center justify-center font-mono font-semibold text-xs shrink-0">
+          <div className="w-8 h-8 rounded-md border border-studio-600 bg-studio-800 text-studio-200 flex items-center justify-center font-mono font-semibold text-xs shrink-0">
             AG
           </div>
           <div className="min-w-0">
@@ -164,7 +216,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
 
       {/* Chat Messages scroll area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+      <div role="log" aria-label={`Conversation with ${agent.name}`} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {agentMessages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
             <div className="mb-5 flex h-10 w-10 items-center justify-center border border-studio-700 bg-studio-900 font-mono text-xs font-semibold text-studio-200">AF</div>
@@ -234,14 +286,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               </div>
             ) : (
               <div
-                className={`max-w-4xl rounded-md p-4 shadow-studio border ${
+                className={`max-w-3xl rounded-2xl px-4 py-3 shadow-studio border ${
                   msg.sender === "user"
-                    ? "bg-accent-600 text-white border-accent-500/80 rounded-tr-none"
-                    : "bg-studio-900 text-studio-100 border-studio-750 rounded-tl-none"
+                    ? "bg-accent-600 text-white border-accent-500/80 rounded-br-md"
+                    : "bg-studio-900 text-studio-100 border-studio-750 rounded-bl-md"
                 }`}
               >
                 {msg.sender === "user" ? (
-                  <p className="whitespace-pre-wrap text-sm sm:text-base leading-7">{msg.text}</p>
+                  <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p>
                 ) : (
                   <ArtifactViewer content={msg.text} />
                 )}
@@ -256,9 +308,15 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           </div>
         )}
 
+        {chatNotice && (
+          <div role="status" className="rounded-md border border-studio-700 bg-studio-900 px-4 py-3 text-sm text-studio-300">
+            {chatNotice}
+          </div>
+        )}
+
         {chatError && (
-          <div className="rounded-md border border-red-800 bg-red-950/60 p-4 text-sm font-medium text-red-300">
-            Error: {chatError}
+          <div role="alert" className="rounded-md border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-300">
+            <span className="font-semibold">Something went wrong.</span> {chatError}
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -266,7 +324,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
-        <div className="max-w-5xl mx-auto flex items-end gap-3 bg-studio-900 border border-studio-700 p-3 shadow-studio focus-within:border-studio-500 transition-colors">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-950 border border-studio-700 rounded-xl p-2.5 shadow-studio focus-within:border-accent-500/70 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
@@ -278,9 +336,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             aria-label={`Task for ${agent.name}`}
-            placeholder={`Message ${agent.name}… (Shift+Enter for new line)`}
+            placeholder={`Message ${agent.name}…  (Enter to send, Shift+Enter for a new line)`}
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-sm sm:text-base text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[48px] max-h-40 overflow-y-auto"
+            className="flex-1 bg-transparent text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
           />
           {isProcessing ? (
             <button
@@ -297,7 +355,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               disabled={!promptInput.trim()}
               className="bg-accent-600 hover:bg-accent-500 active:bg-accent-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 shadow-studio cursor-pointer"
             >
-              <span>Send task</span> →
+              <span>Send</span> <Icon name="chevron-right" size={14} />
             </button>
           )}
         </div>

@@ -44,6 +44,8 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   const storageKey = projectId && activeAgent ? `agentforge.workflow.connections.${projectId}.${activeAgent.id}` : null;
   const positionStorageKey = storageKey ? `${storageKey}.positions` : null;
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [layoutReadyKey, setLayoutReadyKey] = useState<string | null>(null);
+  const fittedKey = useRef<string | null>(null);
 
   const nodes: GraphNode[] = [
     { id: "trigger-input", title: "Task input", subtitle: "Entry point for chat or API requests", kind: "trigger", width: 236, height: 92 },
@@ -106,6 +108,7 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
       }
     } catch { /* Ignore invalid saved layouts instead of blocking the editor. */ }
     setPositions(saved);
+    setLayoutReadyKey(positionStorageKey);
   }, [positionStorageKey]);
 
   const childPositions = Object.fromEntries(otherAgents.map((agent, index) => [`child-${agent.id}`, { x: 790, y: 90 + index * 132 }]));
@@ -223,6 +226,17 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
     setZoom(scale);
     setPan({ x: (rect.width - contentWidth * scale) / 2 - minX * scale, y: (rect.height - contentHeight * scale) / 2 - minY * scale });
   };
+
+  // Show the whole graph the first time a workflow is opened (instead of nodes hidden behind panels).
+  useEffect(() => {
+    if (!positionStorageKey || layoutReadyKey !== positionStorageKey || fittedKey.current === positionStorageKey) return;
+    if (nodes.length < 2) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    fittedKey.current = positionStorageKey;
+    fitView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutReadyKey, positionStorageKey, nodes.length]);
   const openCatalog = () => onOpenToolCatalog ? onOpenToolCatalog() : setCatalogModalOpen(true);
   const renderedConnections = connections.filter((edge) => nodeById(edge.source) && nodeById(edge.target));
 

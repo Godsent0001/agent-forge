@@ -6,6 +6,7 @@ import { AgentEditor } from "./components/AgentEditor";
 import { AgentTree } from "./components/AgentTree";
 import { ExecutionTree } from "./components/ExecutionTree";
 import { TopBar } from "./components/TopBar";
+import { RunTaskModal } from "./components/RunTaskModal";
 import { WorkflowCanvas } from "./components/WorkflowCanvas";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ToolCatalogModal } from "./components/ToolCatalogModal";
@@ -35,6 +36,7 @@ export default function App() {
   const [resizeDrag, setResizeDrag] = useState<{ panel: "sidebar" | "inspector"; startX: number; startWidth: number } | null>(null);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
+  const [showRunDialog, setShowRunDialog] = useState(false);
   const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
@@ -131,21 +133,17 @@ export default function App() {
   };
 
   // Primary Run Workflow trigger
-  const handleTriggerRun = async () => {
+  const handleTriggerRun = async (task: string) => {
     const currentAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
-    if (!project || !currentAgent || isRunningQuickRun) return;
-
+    if (!project || !currentAgent) throw new Error("Create an agent before running a workflow.");
     setIsRunningQuickRun(true);
     try {
-      const task = `Automated workflow execution for ${currentAgent.name}: verify triggers, run capability tools, and synthesize output.`;
       const execution = await api.executions.run(project.id, currentAgent.id, task);
       setActiveExecutionId(execution.id);
       setIsExecutionTreeOpen(true);
       setIsPropertiesOpen(false);
-    } catch (err) {
-      console.error("Run error:", err);
     } finally {
-      setTimeout(() => setIsRunningQuickRun(false), 1200);
+      setIsRunningQuickRun(false);
     }
   };
 
@@ -189,7 +187,7 @@ export default function App() {
         onRun={setActiveExecutionId}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onTriggerQuickRun={handleTriggerRun}
+        onTriggerQuickRun={() => setShowRunDialog(true)}
         isRunning={isRunningQuickRun}
       />
 
@@ -249,6 +247,13 @@ export default function App() {
       </div>
 
       {showToolCatalogModal && <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />}
+      {showRunDialog && (
+        <RunTaskModal
+          agentName={(agents.find((a) => a.id === selectedAgentId) || agents[0])?.name ?? "Agent"}
+          onClose={() => setShowRunDialog(false)}
+          onSubmit={handleTriggerRun}
+        />
+      )}
     </div>
   );
 }

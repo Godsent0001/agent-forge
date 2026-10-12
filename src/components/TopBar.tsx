@@ -97,6 +97,7 @@ export function TopBar({
                   onClick={() => setIsCreatingProject(true)}
                   className="p-1 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
                   title="Create new project"
+                  aria-label="Create new project"
                 >
                   +
                 </button>

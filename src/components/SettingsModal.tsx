@@ -1,8 +1,10 @@
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { Button } from "./ui/Button";
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
+  useEscapeKey(onClose);
   const [anthropicKey, setAnthropicKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
@@ -33,8 +35,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
-      <div className="bg-studio-900 border border-studio-700 rounded-panel shadow-elevated w-full max-w-md p-5 space-y-4 text-studio-100">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label="Provider settings" className="bg-studio-900 border border-studio-700 rounded-panel shadow-elevated w-full max-w-md p-5 space-y-4 text-studio-100">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-studio-800 pb-3">
           <div className="flex items-center gap-2">

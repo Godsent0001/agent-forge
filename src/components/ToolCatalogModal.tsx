@@ -4,8 +4,10 @@ import { useStore } from "../store/useStore";
 import type { CatalogShelf, CatalogToolEntry } from "../types";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
+  useEscapeKey(onClose);
   const createTool = useStore((s) => s.createTool);
   const attachToolToSelected = useStore((s) => s.attachToolToSelected);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
@@ -92,8 +94,8 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
-      <div className="bg-studio-900 border border-studio-700/90 rounded-panel shadow-elevated w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden text-studio-100">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label="Tool catalog" className="bg-studio-900 border border-studio-700/90 rounded-panel shadow-elevated w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden text-studio-100">
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-studio-800 flex items-center justify-between bg-studio-850 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -112,9 +114,10 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
             <button
               onClick={onClose}
               className="p-1.5 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors text-xs cursor-pointer"
-              title="Close Catalog"
+              title="Close catalog"
+              aria-label="Close catalog"
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
         </div>

@@ -1,8 +1,26 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
-import { DEFAULT_MODELS, Provider } from "../config/models";
+import { DEFAULT_MODELS, MODEL_OPTIONS, Provider } from "../config/models";
 import { Input, Textarea } from "./ui/Input";
+import type { InputProps, TextareaProps } from "./ui/Input";
 import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
+import { useDraft } from "../hooks/useDraft";
+import type { Agent } from "../types";
+
+type DraftProps = { value: string; onCommit: (next: string) => void };
+
+function DraftInput({ value, onCommit, ...props }: DraftProps & Omit<InputProps, "value" | "onChange">) {
+  const draft = useDraft(value, onCommit);
+  return <Input {...props} value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.flush} />;
+}
+
+function DraftTextarea({ value, onCommit, ...props }: DraftProps & Omit<TextareaProps, "value" | "onChange">) {
+  const draft = useDraft(value, onCommit);
+  return <Textarea {...props} value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.flush} />;
+}
+
+type SaveState = "Synced" | "Saving…" | "Saved" | "Save failed";
 
 interface PropertiesPanelProps {
   onClose: () => void;
@@ -20,13 +38,13 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
   const [activeTab, setActiveTab] = useState<"properties" | "prompt" | "tools" | "subagents">("properties");
-  const [saveIndicator, setSaveIndicator] = useState<string>("Synced");
+  const [saveIndicator, setSaveIndicator] = useState<SaveState>("Synced");
 
   if (!selectedAgent) {
     return (
       <aside className="w-full h-full bg-studio-900 border-l border-studio-700/80 flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
         <div className="w-10 h-10 rounded-full bg-studio-800 border border-studio-700 flex items-center justify-center text-studio-400 mb-2">
-          ⚙️
+          <Icon name="settings" size={18} />
         </div>
         <h3 className="text-xs font-semibold text-studio-200 mb-1">Agent setup</h3>
         <p className="text-2xs text-studio-500 max-w-xs leading-relaxed">
@@ -36,19 +54,23 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
     );
   }
 
-  const handleProviderChange = (provider: Provider) => {
-    updateAgent(selectedAgent.id, {
-      provider,
-      model: DEFAULT_MODELS[provider],
-    });
-    setSaveIndicator("Saved");
-    setTimeout(() => setSaveIndicator("Synced"), 1500);
+  const persist = async (patch: Partial<Agent>) => {
+    setSaveIndicator("Saving…");
+    try {
+      await updateAgent(selectedAgent.id, patch);
+      setSaveIndicator("Saved");
+      setTimeout(() => setSaveIndicator((current) => (current === "Saved" ? "Synced" : current)), 1500);
+    } catch {
+      setSaveIndicator("Save failed");
+    }
   };
 
-  const handleFieldChange = (field: string, value: any) => {
-    updateAgent(selectedAgent.id, { [field]: value });
-    setSaveIndicator("Saved");
-    setTimeout(() => setSaveIndicator("Synced"), 1500);
+  const handleProviderChange = (provider: Provider) => {
+    void persist({ provider, model: DEFAULT_MODELS[provider] });
+  };
+
+  const handleFieldChange = (field: keyof Agent, value: Agent[keyof Agent]) => {
+    void persist({ [field]: value } as Partial<Agent>);
   };
 
   const attachedToolIds = selectedAgent.tool_ids || [];
@@ -70,59 +92,44 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-2xs font-mono text-studio-500">{saveIndicator}</span>
+          <span role="status" className={`text-2xs font-mono ${saveIndicator === "Save failed" ? "text-red-400" : "text-studio-500"}`}>{saveIndicator}</span>
           <button
             onClick={onClose}
             className="p-1 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
-            title="Close Inspector"
+            title="Close inspector"
+            aria-label="Close inspector"
           >
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
       </div>
 
       {/* Inspector Tabs */}
-      <div className="flex border-b border-studio-800 bg-studio-950 px-2 gap-1 shrink-0">
-        <button
-          onClick={() => setActiveTab("properties")}
-          className={`px-2.5 py-2 text-2xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            activeTab === "properties"
-              ? "border-accent-500 text-accent-400 font-semibold"
-              : "border-transparent text-studio-400 hover:text-studio-200"
-          }`}
-        >
-          Setup
-        </button>
-        <button
-          onClick={() => setActiveTab("prompt")}
-          className={`px-2.5 py-2 text-2xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            activeTab === "prompt"
-              ? "border-accent-500 text-accent-400 font-semibold"
-              : "border-transparent text-studio-400 hover:text-studio-200"
-          }`}
-        >
-          Instructions
-        </button>
-        <button
-          onClick={() => setActiveTab("tools")}
-          className={`px-2.5 py-2 text-2xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            activeTab === "tools"
-              ? "border-accent-500 text-accent-400 font-semibold"
-              : "border-transparent text-studio-400 hover:text-studio-200"
-          }`}
-        >
-          Tools ({attachedTools.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("subagents")}
-          className={`px-2.5 py-2 text-2xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            activeTab === "subagents"
-              ? "border-accent-500 text-accent-400 font-semibold"
-              : "border-transparent text-studio-400 hover:text-studio-200"
-          }`}
-        >
-          Delegation ({attachedSubAgents.length})
-        </button>
+      <div role="tablist" aria-label="Agent settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-studio-800 bg-studio-950 px-2">
+        {([
+          { id: "properties", label: "Setup" },
+          { id: "prompt", label: "Instructions" },
+          { id: "tools", label: "Tools", count: attachedTools.length },
+          { id: "subagents", label: "Delegation", count: attachedSubAgents.length },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-2 text-xs font-medium transition-colors ${
+              activeTab === tab.id
+                ? "border-accent-500 text-accent-400"
+                : "border-transparent text-studio-400 hover:text-studio-200"
+            }`}
+          >
+            {tab.label}
+            {"count" in tab && (
+              <span className="ml-1.5 rounded bg-studio-800 px-1 font-mono text-2xs text-studio-400">{tab.count}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Content Area */}
@@ -130,20 +137,22 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
         {activeTab === "properties" && (
           <div className="space-y-3.5">
             <div>
-              <Input
+              <DraftInput
+                key={`name-${selectedAgent.id}`}
                 label="Node Name"
                 value={selectedAgent.name}
-                onChange={(e) => handleFieldChange("name", e.target.value)}
+                onCommit={(next) => handleFieldChange("name", next)}
                 placeholder="Agent name…"
               />
             </div>
 
             <div>
-              <Textarea
+              <DraftTextarea
+                key={`desc-${selectedAgent.id}`}
                 label="Description"
                 rows={2}
                 value={selectedAgent.description || ""}
-                onChange={(e) => handleFieldChange("description", e.target.value)}
+                onCommit={(next) => handleFieldChange("description", next)}
                 placeholder="Autonomous agent role and purpose…"
               />
             </div>
@@ -164,57 +173,25 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
             </div>
 
             <div className="space-y-1">
-              <label className="block text-2xs font-mono uppercase tracking-wider text-studio-400">
+              <label htmlFor="agent-model" className="block text-2xs font-mono uppercase tracking-wider text-studio-400">
                 Chat Model
               </label>
               <select
-                value={selectedAgent.model || DEFAULT_MODELS[selectedAgent.provider as Provider] || "gemini-2.5-flash"}
+                id="agent-model"
+                value={selectedAgent.model || DEFAULT_MODELS[selectedAgent.provider as Provider] || ""}
                 onChange={(e) => handleFieldChange("model", e.target.value)}
                 className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded-md px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-accent-500 transition-colors"
               >
-                {selectedAgent.provider === "google" && (
-                  <>
-                    <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Reasoning)</option>
-                    <option value="gemini-2.5-pro">gemini-2.5-pro (Deep Analytics)</option>
-                  </>
-                )}
-                {selectedAgent.provider === "openai" && (
-                  <>
-                    <option value="gpt-4o-mini">gpt-4o-mini</option>
-                    <option value="gpt-4o">gpt-4o</option>
-                  </>
-                )}
-                {selectedAgent.provider === "anthropic" && (
-                  <>
-                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5</option>
-                    <option value="claude-sonnet-4-5-20251001">claude-sonnet-4-5</option>
-                  </>
-                )}
+                {selectedAgent.model &&
+                  !(MODEL_OPTIONS[selectedAgent.provider as Provider] ?? []).some((o) => o.value === selectedAgent.model) && (
+                    <option value={selectedAgent.model}>{selectedAgent.model} (not in list)</option>
+                  )}
+                {(MODEL_OPTIONS[selectedAgent.provider as Provider] ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div>
-                <label className="block text-2xs font-mono uppercase tracking-wider text-studio-400 mb-1">
-                  Max Iterations
-                </label>
-                <input
-                  type="number"
-                  defaultValue={10}
-                  className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded px-2.5 py-1 text-xs font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-2xs font-mono uppercase tracking-wider text-studio-400 mb-1">
-                  Memory Budget
-                </label>
-                <input
-                  type="text"
-                  defaultValue="50k tokens"
-                  readOnly
-                  className="w-full bg-studio-850 text-studio-400 border border-studio-800 rounded px-2.5 py-1 text-xs font-mono cursor-not-allowed"
-                />
-              </div>
             </div>
 
             <div className="pt-2 border-t border-studio-800 flex items-center justify-between">
@@ -234,14 +211,13 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
 
         {activeTab === "prompt" && (
           <div className="space-y-2 h-full flex flex-col">
-            <label className="block text-2xs font-mono uppercase tracking-wider text-studio-400">
-              System Instructions & Persona
-            </label>
-            <textarea
+            <DraftTextarea
+              key={`prompt-${selectedAgent.id}`}
+              label="System instructions & persona"
               value={selectedAgent.system_prompt || ""}
-              onChange={(e) => handleFieldChange("system_prompt", e.target.value)}
+              onCommit={(next) => handleFieldChange("system_prompt", next)}
               placeholder="Define agent instructions, tone, and step-by-step reasoning behavior…"
-              className="w-full h-64 bg-studio-800 text-studio-100 border border-studio-700 rounded-md p-2.5 font-mono text-xs leading-relaxed focus:outline-none focus:border-accent-500 resize-none"
+              className="h-64 leading-relaxed"
             />
             <p className="text-2xs text-studio-500">
               Tip: Explicitly define how the agent should structure tool calls and synthesize multi-agent findings.
