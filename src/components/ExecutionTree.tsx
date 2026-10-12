@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { buildSpanTree, formatCost, formatDuration } from "../lib/buildSpanTree";
 import type { RunState, SpanNode } from "../lib/buildSpanTree";
 import type { ExecutionEvent } from "../types";
+import { useStore } from "../store/useStore";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { SegmentedControl } from "./ui/SegmentedControl";
@@ -12,6 +13,7 @@ import { StatusBadge } from "./ui/StatusBadge";
 
 interface ExecutionTreeProps {
   executionId: string | null;
+  onSelectExecution: (executionId: string) => void;
   onSelectStep?: (spanId: string) => void;
 }
 
@@ -261,8 +263,30 @@ function eventTitle(event: ExecutionEvent): string {
   return event.name ? `${type} · ${event.name}` : type;
 }
 
-export function ExecutionTree({ executionId }: ExecutionTreeProps) {
+export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeProps) {
+  const projectId = useStore((s) => s.project?.id ?? null);
+  const [recentRuns, setRecentRuns] = useState<import("../api/client").ExecutionSummary[]>([]);
+  const [runsError, setRunsError] = useState<string | null>(null);
   const { events } = useExecutionStream(executionId);
+
+  useEffect(() => {
+    if (!projectId) {
+      setRecentRuns([]);
+      return;
+    }
+    let cancelled = false;
+    void api.executions.list(projectId, 10).then((runs) => {
+      if (!cancelled) {
+        setRecentRuns(runs);
+        setRunsError(null);
+      }
+    }).catch((error) => {
+      if (!cancelled) {
+        setRunsError(error instanceof Error ? error.message : "Could not load recent runs.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [projectId, executionId]);
   const { roots, run, spanCount } = useMemo(() => buildSpanTree(events), [events]);
 
   const [view, setView] = useState<"trace" | "events">("trace");
@@ -292,14 +316,31 @@ export function ExecutionTree({ executionId }: ExecutionTreeProps) {
 
   if (!executionId) {
     return (
-      <div className="flex h-full select-none flex-col items-center justify-center bg-studio-900 p-6 text-center text-xs">
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-studio-700 bg-studio-800 text-studio-400">
+      <div className="flex h-full select-none flex-col items-center justify-center gap-3 overflow-y-auto bg-studio-900 p-4 text-center text-xs">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-studio-700 bg-studio-800 text-studio-400">
           <Icon name="logs" size={18} />
         </div>
-        <h3 className="mb-1 font-semibold text-studio-200">No run selected</h3>
-        <p className="max-w-xs text-2xs leading-relaxed text-studio-500">
-          Send a task from Chat, or press Run workflow, to watch agents, tool calls and delegation happen live.
-        </p>
+        <div>
+          <h3 className="mb-1 font-semibold text-studio-200">No run selected</h3>
+          <p className="max-w-xs text-2xs leading-relaxed text-studio-500">
+            Send a task from Chat, or choose a previous run below to reopen its trace.
+          </p>
+        </div>
+        {runsError && <p role="alert" className="text-2xs text-red-300">{runsError}</p>}
+        {recentRuns.length > 0 && (
+          <div className="w-full max-w-sm space-y-1 text-left">
+            <p className="px-1 text-2xs font-mono uppercase tracking-wider text-studio-500">Recent runs</p>
+            {recentRuns.map((item) => (
+              <button key={item.id} type="button" onClick={() => onSelectExecution(item.id)}
+                className="w-full rounded border border-studio-800 bg-studio-950/60 px-2 py-2 text-left hover:bg-studio-850">
+                <span className="block truncate text-xs text-studio-200">{item.task_preview || "Untitled run"}</span>
+                <span className="mt-1 block text-2xs font-mono text-studio-500">
+                  {item.status} · {new Date(item.started_at).toLocaleString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -338,10 +379,25 @@ export function ExecutionTree({ executionId }: ExecutionTreeProps) {
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-studio-800 bg-studio-850 p-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-semibold text-studio-100">
+          <span className="shrink-0 font-semibold text-studio-100">
             Run <span className="font-mono text-studio-400">#{executionId.slice(0, 8)}</span>
           </span>
           <StatusBadge status={badge.status} label={badge.label} />
+          {recentRuns.length > 0 && (
+            <select
+              aria-label="Open a recent run"
+              value={executionId}
+              onChange={(event) => onSelectExecution(event.target.value)}
+              className="min-w-0 max-w-40 truncate rounded border border-studio-700 bg-studio-950 px-1.5 py-1 text-2xs text-studio-300"
+            >
+              {!recentRuns.some((item) => item.id === executionId) && <option value={executionId}>Current run</option>}
+              {recentRuns.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {(item.task_preview || "Untitled run").slice(0, 48)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {events.length > 0 && (
@@ -388,6 +444,23 @@ export function ExecutionTree({ executionId }: ExecutionTreeProps) {
           {run.error}
         </div>
       )}
+      {(() => {
+        const pending = new Map<string, ExecutionEvent>();
+        for (const event of events) {
+          const approvalId = String(event.data?.approval_id ?? event.data?.approvalId ?? event.seq);
+          if (event.type === "approval_requested") pending.set(approvalId, event);
+          if (event.type === "approval_resolved") pending.delete(approvalId);
+        }
+        const request = [...pending.values()].at(-1);
+        if (!request) return null;
+        const toolName = String(request.data?.tool ?? request.data?.tool_name ?? request.name ?? "requested tool");
+        return (
+          <div role="status" aria-live="polite" className="shrink-0 border-b border-amber-800/70 bg-amber-950/40 px-3 py-2 text-2xs text-amber-200">
+            <strong>Waiting for approval</strong> · {toolName}
+            <p className="mt-0.5 text-amber-300/80">This run is paused until the approval controls resolve this request.</p>
+          </div>
+        );
+      })()}
 
       {/* View switch */}
       <div className="shrink-0 border-b border-studio-800 bg-studio-950/70 p-1.5">

@@ -228,7 +228,7 @@ export default function App() {
                 className="absolute left-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
               />
             )}
-            {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
+            {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} onSelectExecution={setActiveExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
           </div>
         )}
 

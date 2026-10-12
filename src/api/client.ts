@@ -71,6 +71,15 @@ export interface ExecutionResult {
   completed_at?: string | null;
 }
 
+export interface ExecutionSummary {
+  id: string;
+  task_preview: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  totals: Record<string, unknown>;
+}
+
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
@@ -117,6 +126,10 @@ export const api = {
     getEvents: (id: string, after_seq = 0) =>
       request<import("../types").ExecutionEvent[]>(
         `/v2/executions/${id}/events?after_seq=${after_seq}`,
+      ),
+    list: (project_id: string, limit = 10) =>
+      request<ExecutionSummary[]>(
+        `/v2/executions?project_id=${encodeURIComponent(project_id)}&limit=${limit}`,
       ),
     cancel: (id: string) =>
       request<{ status: string }>(`/v2/executions/${id}/cancel`, {
