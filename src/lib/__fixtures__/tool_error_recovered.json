@@ -1,0 +1,138 @@
+[
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 1,
+    "ts": "2026-10-12T12:00:00.000Z",
+    "type": "execution_started",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "task": "fixture scenario: tool_error_recovered"
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 2,
+    "ts": "2026-10-12T12:00:00.040Z",
+    "type": "span_started",
+    "span_id": "agent-1",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "Recovery Agent",
+    "status": null,
+    "data": {
+      "depth": 0,
+      "agent_id": "agent-1",
+      "input_preview": "Test input"
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 3,
+    "ts": "2026-10-12T12:00:00.060Z",
+    "type": "span_started",
+    "span_id": "tool-1",
+    "parent_span_id": "agent-1",
+    "kind": "tool_call",
+    "name": "unstable_tool",
+    "status": null,
+    "data": {
+      "tool_name": "unstable_tool",
+      "tool_call_id": "call-tool-1",
+      "args": "{\"query\":\"simulate recoverable failure\"}"
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 4,
+    "ts": "2026-10-12T12:00:00.080Z",
+    "type": "span_ended",
+    "span_id": "tool-1",
+    "parent_span_id": "agent-1",
+    "kind": "tool_call",
+    "name": "unstable_tool",
+    "status": "error",
+    "data": {
+      "result_preview": "Temporary tool error (scenario test).",
+      "is_error": true,
+      "artifacts": []
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 5,
+    "ts": "2026-10-12T12:00:00.100Z",
+    "type": "span_started",
+    "span_id": "llm-1",
+    "parent_span_id": "agent-1",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 6,
+    "ts": "2026-10-12T12:00:00.120Z",
+    "type": "span_ended",
+    "span_id": "llm-1",
+    "parent_span_id": "agent-1",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 80,
+        "output_tokens": 40,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.001,
+      "finish_reason": "stop",
+      "tool_calls": []
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 7,
+    "ts": "2026-10-12T12:00:00.140Z",
+    "type": "span_ended",
+    "span_id": "agent-1",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "Recovery Agent",
+    "status": "ok",
+    "data": {
+      "output_preview": "The tool failed, but the agent recovered and completed the task."
+    }
+  },
+  {
+    "execution_id": "fixture-tool_error_recovered",
+    "seq": 8,
+    "ts": "2026-10-12T12:00:00.160Z",
+    "type": "execution_ended",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "status": "completed",
+      "final_output": "The tool failed, but the agent recovered and completed the task.",
+      "error": null,
+      "totals": {
+        "llm_calls": 1,
+        "tool_calls": 0,
+        "input_tokens": 120,
+        "output_tokens": 35,
+        "cost_usd": 0.001
+      }
+    }
+  }
+]

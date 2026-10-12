@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ExecutionEvent } from "../types";
+import singleAnswer from "./__fixtures__/single_answer.json";
+import ceoResearch from "./__fixtures__/ceo_research.json";
+import toolErrorRecovered from "./__fixtures__/tool_error_recovered.json";
+import longRunning from "./__fixtures__/long_running.json";
+import approvalPython from "./__fixtures__/approval_python.json";
+import budgetExceeded from "./__fixtures__/budget_exceeded.json";
 import { buildSpanTree, formatCost, formatDuration } from "./buildSpanTree";
 
 let seq = 0;
@@ -28,6 +34,51 @@ function delegationRun(final: Partial<ExecutionEvent> = {}): ExecutionEvent[] {
     ev({ type: "execution_ended", ...final }),
   ];
 }
+
+describe("buildSpanTree with FakeRunner fixtures", () => {
+  const events = (fixture: unknown) => fixture as ExecutionEvent[];
+
+  it("renders the single-answer root as completed", () => {
+    const tree = buildSpanTree(events(singleAnswer));
+    expect(tree.roots).toHaveLength(1);
+    expect(tree.roots[0].kind).toBe("agent");
+    expect(tree.roots[0].status).toBe("ok");
+  });
+
+  it("nests CEO research delegation under its tool-call span", () => {
+    const tree = buildSpanTree(events(ceoResearch));
+    const root = tree.roots[0];
+    const delegation = root.children.find((span) => span.kind === "tool_call" && span.label === "research_agent");
+    expect(root.status).toBe("ok");
+    expect(delegation?.children[0].label).toBe("Research Agent");
+    expect(delegation?.children[0].status).toBe("ok");
+  });
+
+  it("keeps the root successful when a tool error is recovered", () => {
+    const tree = buildSpanTree(events(toolErrorRecovered));
+    const failedTool = tree.roots[0].children.find((span) => span.kind === "tool_call");
+    expect(tree.roots[0].status).toBe("ok");
+    expect(failedTool?.status).toBe("error");
+  });
+
+  it("shows cancelled spans for the long-running scenario", () => {
+    const tree = buildSpanTree(events(longRunning));
+    expect(tree.run?.status).toBe("cancelled");
+    expect(tree.roots[0].status).toBe("cancelled");
+  });
+
+  it("renders the approval scenario without breaking the trace", () => {
+    const tree = buildSpanTree(events(approvalPython));
+    expect(tree.roots[0].status).toBe("ok");
+    expect(tree.roots[0].children.some((span) => span.kind === "tool_call" && span.label === "python")).toBe(true);
+  });
+
+  it("preserves the budget-exceeded run status", () => {
+    const tree = buildSpanTree(events(budgetExceeded));
+    expect(tree.run?.status).toBe("budget_exceeded");
+    expect(tree.roots[0].status).toBe("error");
+  });
+});
 
 describe("buildSpanTree", () => {
   it("returns an empty result for no events", () => {

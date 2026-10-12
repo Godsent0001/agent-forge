@@ -22,8 +22,12 @@ from app.dev.fake_runner import SCENARIO_NAMES, FakeRunner  # noqa: E402
 
 
 class _Cancel:
+    def __init__(self):
+        self.cancelled = False
+
     def raise_if_cancelled(self):
-        return None
+        if self.cancelled:
+            raise asyncio.CancelledError
 
 
 class _Approvals:
@@ -41,23 +45,59 @@ async def export_one(name: str, target: Path) -> None:
         root_id: AgentSpec(id=root_id, name="Root Agent", provider="fake", model="fake/scenario"),
     })
     drafts: list[EventDraft] = []
+    cancel = _Cancel()
 
     async def emit(event: EventDraft) -> None:
         drafts.append(event)
 
-    await FakeRunner().run(
-        request, graph=graph, emit=emit, cancel=_Cancel(), approvals=_Approvals(),
+    task = asyncio.create_task(FakeRunner().run(
+        request, graph=graph, emit=emit, cancel=cancel, approvals=_Approvals(),
         memory=None, workspace=None, tools=None,
-    )
+    ))
+    result = None
+    terminal_status = "completed"
+    try:
+        if name == "long_running":
+            await asyncio.sleep(1)
+            cancel.cancelled = True
+        result = await task
+        terminal_status = result.status
+    except asyncio.CancelledError:
+        if name != "long_running":
+            raise
+        terminal_status = "cancelled"
+
     now = datetime.now(timezone.utc)
-    events = [
-        RunEvent(execution_id=execution_id, seq=seq, ts=now + timedelta(microseconds=seq),
+    span_events = [
+        RunEvent(execution_id=execution_id, seq=seq, ts=now + timedelta(milliseconds=seq * 20),
                  **event.model_dump())
         for seq, event in enumerate(drafts, 1)
     ]
-    issues = check_events(events, platform_events=False, complete=True)
+    issues = check_events(span_events, platform_events=False, complete=True)
     if issues:
         raise RuntimeError(f"{name} produced an invalid trace:\n" + "\n".join(issues))
+
+    totals = result.totals.model_dump(mode="json") if result is not None else {}
+    started = RunEvent(
+        execution_id=execution_id, seq=1, ts=now, type="execution_started",
+        data={"task": request.task},
+    )
+    ended = RunEvent(
+        execution_id=execution_id, seq=len(span_events) + 2,
+        ts=now + timedelta(milliseconds=(len(span_events) + 2) * 20),
+        type="execution_ended",
+        data={
+            "status": terminal_status,
+            "final_output": result.final_output if result is not None else None,
+            "error": result.error if result is not None else None,
+            "totals": totals,
+        },
+    )
+    events = [started]
+    for event in span_events:
+        event.seq += 1
+        events.append(event)
+    events.append(ended)
     target.mkdir(parents=True, exist_ok=True)
     (target / f"{name}.json").write_text(
         json.dumps([event.model_dump(mode="json") for event in events], indent=2) + "\n",
