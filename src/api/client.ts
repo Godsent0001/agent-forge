@@ -1,5 +1,6 @@
 import { keychain } from "./keychain";
 import { providersNeedingKeys } from "../config/providers";
+import type { ChatMessage as RunChatMessage } from "../contracts";
 import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
 
 let currentApiBase = "http://127.0.0.1:8000";
@@ -107,10 +108,10 @@ export const api = {
     remove: (id: string) => request<{ deleted: string }>(`/tools/${id}`, { method: "DELETE" }),
   },
   executions: {
-    run: (project_id: string, root_agent_id: string, task: string) =>
+    run: (project_id: string, root_agent_id: string, task: string, history: RunChatMessage[] = []) =>
       request<{ id: string; status: "running" }>("/v2/executions", {
         method: "POST",
-        body: JSON.stringify({ project_id, root_agent_id, task }),
+        body: JSON.stringify({ project_id, root_agent_id, task, history }),
       }),
     get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
     getEvents: (id: string, after_seq = 0) =>

@@ -53,60 +53,89 @@ export function useExecutionStream(executionId: string | null) {
 
     let cancelled = false;
     let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 500;
 
+    const lastSeq = () => {
+      const current = eventsRef.current;
+      return current.length ? current[current.length - 1].seq : 0;
+    };
     const addEvents = (incoming: ExecutionEvent[]) => {
       if (!incoming.length) return;
-      const merged = [...eventsRef.current, ...incoming];
       const unique = new Map<number, ExecutionEvent>();
-      for (const event of merged) unique.set(event.seq, event);
+      for (const event of [...eventsRef.current, ...incoming]) unique.set(event.seq, event);
       const ordered = [...unique.values()].sort((a, b) => a.seq - b.seq);
       eventsRef.current = ordered;
       setEvents(ordered);
     };
-
+    const pollOnce = async () => {
+      if (cancelled) return;
+      try {
+        const latest = await api.executions.getEvents(executionId, lastSeq());
+        if (!cancelled) addEvents(latest);
+      } catch (err) {
+        console.error("Error reconciling execution events:", err);
+      }
+    };
     const startPolling = () => {
-      if (pollInterval) return;
-      pollInterval = setInterval(async () => {
+      if (pollInterval || cancelled) return;
+      void pollOnce();
+      pollInterval = setInterval(() => void pollOnce(), 1000);
+    };
+    const stopPolling = () => {
+      if (!pollInterval) return;
+      clearInterval(pollInterval);
+      pollInterval = null;
+    };
+    const scheduleReconnect = () => {
+      startPolling();
+      if (cancelled || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    };
+    const connect = async () => {
+      try {
+        const apiBase = await getApiBase();
         if (cancelled) return;
-        try {
-          const lastSeq = eventsRef.current.length
-            ? eventsRef.current[eventsRef.current.length - 1].seq
-            : 0;
-          const latest = await api.executions.getEvents(executionId, lastSeq);
-          if (!cancelled) addEvents(latest);
-        } catch (err) {
-          console.error("Error reconciling execution events:", err);
-        }
-      }, 1000);
+        const wsBase = apiBase.replace(/^http/, "ws");
+        const ws = new WebSocket(
+          wsBase + "/v2/executions/" + encodeURIComponent(executionId) +
+          "/stream?after_seq=" + lastSeq(),
+        );
+        wsRef.current = ws;
+        ws.onopen = () => {
+          reconnectDelay = 500;
+          stopPolling();
+        };
+        ws.onmessage = (msg) => {
+          try {
+            addEvents([JSON.parse(msg.data) as ExecutionEvent]);
+          } catch (err) {
+            console.error("Error parsing execution websocket message:", err);
+          }
+        };
+        ws.onerror = () => ws.close();
+        ws.onclose = () => {
+          if (wsRef.current === ws) wsRef.current = null;
+          scheduleReconnect();
+        };
+      } catch (err) {
+        console.error("Unable to connect to execution stream:", err);
+        scheduleReconnect();
+      }
     };
 
-    getApiBase().then((apiBase) => {
-      if (cancelled) return;
-      const wsBase = apiBase.replace(/^http/, "ws");
-      const ws = new WebSocket(
-        `${wsBase}/v2/executions/${executionId}/stream?after_seq=0`,
-      );
-      wsRef.current = ws;
-
-      ws.onmessage = (msg) => {
-        try {
-          addEvents([JSON.parse(msg.data) as ExecutionEvent]);
-        } catch (err) {
-          console.error("Error parsing execution websocket message:", err);
-        }
-      };
-
-      ws.onerror = () => startPolling();
-      ws.onclose = () => startPolling();
-    });
-
+    void connect();
     return () => {
       cancelled = true;
-      if (pollInterval) clearInterval(pollInterval);
+      stopPolling();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       wsRef.current?.close();
       wsRef.current = null;
     };
   }, [executionId]);
-
   return { events, tree: reduceEvents(events) };
 }

@@ -46,7 +46,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTask, agent?.id, isProcessing]);
 
-  const simulatedReply = agentMessages.some((m) => m.sender === "agent" && isSimulatedText(m.text));
+  const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
+  const simulatedReply = !!lastAgentMessage && isSimulatedText(lastAgentMessage.text);
 
   const exportChat = () => {
     if (!agent) return;
@@ -146,20 +147,18 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setIsProcessing(true);
 
     try {
-      const historyTurns = agentMessages
-        .slice(-10)
-        .map((m) => {
-          if (m.sender === "user") return `User: ${m.text}`;
-          if (m.sender === "tool") return `Tool (${m.toolName}) result: ${m.toolOutput}`;
-          return `Assistant: ${m.text}`;
-        })
-        .join("\n\n");
+      // C-1 defines history as structured user/assistant turns. Tool spans stay in the
+      // execution log, and demo placeholders must never become real-model context.
+      const history = agentMessages
+        .filter((message) => message.sender === "user" || message.sender === "agent")
+        .filter((message) => message.sender !== "agent" || !isSimulatedText(message.text))
+        .slice(-20)
+        .map((message) => ({
+          role: message.sender === "user" ? "user" as const : "assistant" as const,
+          content: message.text,
+        }));
 
-      const fullTask = historyTurns
-        ? `[RECENT CONVERSATION HISTORY]\n${historyTurns}\n\n[CURRENT USER INSTRUCTION]\n${userText}`
-        : userText;
-
-      const execution = await api.executions.run(project.id, agent.id, fullTask);
+      const execution = await api.executions.run(project.id, agent.id, userText, history);
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
 
@@ -204,7 +203,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         executionId: execution.id,
       };
       addChatMessage(agent.id, agentMsg);
-      useStore.getState().updateAgent(agent.id, {});
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Failed to get agent response");
     } finally {

@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from app.contracts.graph import ToolBinding
+from app.contracts.naming import sanitize_tool_name
 from app.contracts.tools import ArtifactRef, ToolContext, ToolError, ToolResult
 from app.contracts.tools import Tool as V2Tool
 from app.tools.registry import build_tool
@@ -30,12 +31,13 @@ class LegacyToolAdapter(V2Tool):
 
     def __init__(self, binding: ToolBinding):
         self.kind = binding.kind
+        self._name = sanitize_tool_name(binding.name or binding.kind)
         self.default_description = binding.description or binding.kind
         self._legacy = build_tool(binding.kind, binding.config or {})
 
     @property
     def name(self) -> str:
-        return self.kind
+        return self._name
 
     async def run(self, args: LegacyToolInput, ctx: ToolContext) -> ToolResult:
         payload = args.model_dump(exclude_none=True)
