@@ -537,11 +537,15 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
             <span className="h-2 w-2 animate-pulse rounded-full bg-amber-300" /> Waiting for the run to start…
           </div>
         ) : view === "trace" ? (
-          roots.length === 0 ? (
-            <p className="px-1 py-4 text-studio-500">No steps recorded yet.</p>
+          visibleRoots.length === 0 ? (
+            <p className="px-1 py-4 text-studio-500">
+              {roots.length === 0
+                ? "No steps recorded yet."
+                : "LLM calls are hidden. Enable them to inspect model activity."}
+            </p>
           ) : (
             <div role="tree" aria-label="Run trace" className="space-y-0.5">
-              {roots.map((node) => (
+              {visibleRoots.map((node) => (
                 <TraceNode
                   key={node.id}
                   node={node}
