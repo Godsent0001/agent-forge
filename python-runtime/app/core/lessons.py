@@ -49,12 +49,21 @@ async def reflect_on_signal(
     if not error_message or not recovered_output or not store:
         return []
 
+    # A resumed/completion-retried run must not create duplicate lessons.
+    try:
+        existing = await store.active(agent_id, limit=100)
+        if any(item.evidence_execution_id == execution_id for item in existing):
+            return []
+    except Exception:
+        existing = []
+
     if not llm_complete_fn:
-        # Fallback reflection
+        # Keep the durable lesson generic: raw tool errors can contain credentials,
+        # URLs, user data, or other details that should not become long-term memory.
         lesson = Lesson(
             id=str(uuid.uuid4()),
             agent_id=agent_id,
-            text=f"On error '{error_message[:100]}', verify parameters before retrying.",
+            text="After a tool error, inspect the error and validate inputs before retrying; confirm a later step actually succeeded.",
             evidence_execution_id=execution_id,
             status="active",
             created_at=datetime.now(timezone.utc),
