@@ -5,5 +5,5 @@
  * Ideal long-term fix: expose the runner mode from GET /health and read it there.
  */
 export function isSimulatedText(text: string | null | undefined): boolean {
-  return !!text && text.startsWith("FakeRunner completed:");
+  return !!text && text.startsWith("FakeRunner completed");
 }

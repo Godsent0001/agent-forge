@@ -30,7 +30,7 @@ describe("buildRunHistory", () => {
   it("never includes simulated demo replies in real model context", () => {
     const history = buildRunHistory([
       user("u1", "hello"),
-      assistant("a1", "DEMO MODE: this is a simulated reply, not a real model response."),
+      assistant("a1", "FakeRunner completed: this is a simulated reply."),
       assistant("a2", "A genuine prior model answer."),
     ]);
     expect(history).toEqual([
