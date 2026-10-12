@@ -1,0 +1,24 @@
+[
+  {
+    "op": "agent_start",
+    "name": "Long Running Agent"
+  },
+  {
+    "op": "llm",
+    "ms": 10,
+    "usage": {
+      "in": 15,
+      "out": 8
+    },
+    "cost": 0.001,
+    "tools": []
+  },
+  {
+    "op": "sleep",
+    "ms": 10000
+  },
+  {
+    "op": "agent_end",
+    "output": "Long-running scenario completed."
+  }
+]

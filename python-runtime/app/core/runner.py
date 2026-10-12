@@ -29,8 +29,8 @@ from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
-from app.core.spans import span
 from app.core.llm.model_names import litellm_model
+from app.core.spans import span
 
 logger = logging.getLogger(__name__)
 
