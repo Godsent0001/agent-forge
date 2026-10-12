@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useExecutionStream } from "../hooks/useExecutionStream";
 import { api } from "../api/client";
@@ -32,6 +32,14 @@ function runBadge(status: RunState): { status: string; label: string } {
     default:
       return { status: "error", label: "Failed" };
   }
+}
+
+function withoutLlmCalls(nodes: SpanNode[], show: boolean): SpanNode[] {
+  if (show) return nodes;
+  return nodes.flatMap((node) => {
+    if (node.kind === "llm_call") return [];
+    return [{ ...node, children: withoutLlmCalls(node.children, show) }];
+  });
 }
 
 function asText(value: unknown): string {
@@ -206,6 +214,7 @@ function TraceNode({
         aria-level={depth + 1}
         aria-selected={isSelected}
         aria-expanded={hasChildren ? !isCollapsed : undefined}
+        data-span-id={node.id}
         onClick={() => onSelect(node.id)}
         onKeyDown={handleKey}
         className={`group flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-xs transition-colors ${
@@ -287,7 +296,33 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
     });
     return () => { cancelled = true; };
   }, [projectId, executionId]);
+
+  useEffect(() => {
+    if (!projectId || !events.some((event) => event.type === "execution_ended")) return;
+    let cancelled = false;
+    void api.executions.list(projectId, 10).then((runs) => {
+      if (!cancelled) setRecentRuns(runs);
+    }).catch(() => {
+      // The current run remains usable even if refreshing the history list fails.
+    });
+    return () => { cancelled = true; };
+  }, [projectId, events]);
   const { roots, run, spanCount } = useMemo(() => buildSpanTree(events), [events]);
+  const [showLlmCalls, setShowLlmCalls] = useState(true);
+  const traceContainerRef = useRef<HTMLDivElement>(null);
+  const visibleRoots = useMemo(() => withoutLlmCalls(roots, showLlmCalls), [roots, showLlmCalls]);
+  const latestRunningSpanId = useMemo(() => {
+    const open = new Map<string, string>();
+    for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+      if (event.type === "span_started" && event.span_id) {
+        open.set(event.span_id, event.name ?? "Current step");
+      } else if (event.type === "span_ended" && event.span_id) {
+        open.delete(event.span_id);
+      }
+    }
+    const ids = [...open.keys()];
+    return ids.length ? ids[ids.length - 1] : null;
+  }, [events]);
 
   const [view, setView] = useState<"trace" | "events">("trace");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -303,6 +338,14 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
     setCollapsed(new Set());
     setCancelError(null);
   }, [executionId]);
+
+  useEffect(() => {
+    if (view !== "trace" || !latestRunningSpanId) return;
+    const target = traceContainerRef.current?.querySelector(
+      `[data-span-id="${latestRunningSpanId}"]`,
+    );
+    target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [latestRunningSpanId, view]);
 
   const allSpans = useMemo(() => {
     const out = new Map<string, SpanNode>();
@@ -464,7 +507,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
       })()}
 
       {/* View switch */}
-      <div className="shrink-0 border-b border-studio-800 bg-studio-950/70 p-1.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-studio-800 bg-studio-950/70 p-1.5">
         <SegmentedControl
           size="sm"
           value={view}
@@ -474,10 +517,21 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
             { value: "events", label: "Events", badge: events.length },
           ]}
         />
+        {view === "trace" && (
+          <label className="flex shrink-0 items-center gap-1.5 px-1 text-2xs text-studio-400">
+            <input
+              type="checkbox"
+              checked={showLlmCalls}
+              onChange={(event) => setShowLlmCalls(event.target.checked)}
+              className="accent-accent-500"
+            />
+            Show LLM calls
+          </label>
+        )}
       </div>
 
       {/* List */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div ref={traceContainerRef} className="min-h-0 flex-1 overflow-y-auto p-2">
         {events.length === 0 ? (
           <div className="flex items-center gap-2 px-1 py-4 text-studio-400" role="status" aria-live="polite">
             <span className="h-2 w-2 animate-pulse rounded-full bg-amber-300" /> Waiting for the run to start…

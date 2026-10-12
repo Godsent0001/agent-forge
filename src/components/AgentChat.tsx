@@ -122,6 +122,19 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     })();
   }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
 
+  const activeSpanName = (() => {
+    const open = new Map<string, string>();
+    for (const event of [...activeExecutionEvents].sort((a, b) => a.seq - b.seq)) {
+      if (event.type === "span_started" && event.span_id) {
+        open.set(event.span_id, event.name ?? "Current step");
+      } else if (event.type === "span_ended" && event.span_id) {
+        open.delete(event.span_id);
+      }
+    }
+    const names = [...open.values()];
+    return names.length ? names[names.length - 1] : null;
+  })();
+
   const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
   const simulatedReply = !!lastAgentMessage && isSimulatedText(lastAgentMessage.text);
 
@@ -435,7 +448,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
         {isProcessing && (
           <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 border border-studio-700 rounded-md w-fit font-mono">
-            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {agent.name} is running the task…
+            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeSpanName ? `${activeSpanName} is running…` : `${agent.name} is running the task…`}
           </div>
         )}
 
