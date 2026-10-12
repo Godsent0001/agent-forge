@@ -28,8 +28,11 @@ def test_scheduler_waits_for_dependencies():
                       "b":ScheduledTask(task_id="b",agent_id="x",instruction="B"),
                       "m":ScheduledTask(task_id="m",agent_id="root",instruction="merge",dependencies=["a","b"])})
     assert p.refresh_ready()==["a","b"]
-    t=p.claim_ready(1)[0];p.complete(t.task_id);assert p.refresh_ready()==[]
-    t=p.claim_ready(1)[0];p.complete(t.task_id);assert p.refresh_ready()==["m"]
+    first = p.claim_ready(1)[0]
+    assert p.complete(first.task_id) == []
+    second = p.claim_ready(1)[0]
+    assert p.complete(second.task_id) == ["m"]
+    assert p.claim_ready(1)[0].task_id == "m"
 
 def test_failed_task_blocks_dependents():
     p=TaskPlan(tasks={"a":ScheduledTask(task_id="a",agent_id="x",instruction="A"),
@@ -79,3 +82,14 @@ def test_budget_snapshot_restores_cumulative_usage():
     assert restored.totals.output_tokens == 7
     assert restored.totals.cost_usd == pytest.approx(0.02)
     assert restored.elapsed_seconds >= snapshot["elapsed_seconds"]
+
+
+def test_scheduler_claims_ready_tasks_by_priority_then_id():
+    plan = TaskPlan(tasks={
+        "low": ScheduledTask(task_id="low", agent_id="root", instruction="low", priority=1),
+        "z-high": ScheduledTask(task_id="z-high", agent_id="root", instruction="high z", priority=9),
+        "a-high": ScheduledTask(task_id="a-high", agent_id="root", instruction="high a", priority=9),
+    })
+    plan.refresh_ready()
+    claimed = plan.claim_ready(2)
+    assert [task.task_id for task in claimed] == ["a-high", "z-high"]

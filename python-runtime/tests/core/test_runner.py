@@ -297,6 +297,8 @@ async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
         {"role": "system", "content": "system"},
         {"role": "user", "content": request.task},
         {"role": "assistant", "content": "searching", "tool_calls": [
+            {"id": "tc-done", "type": "function",
+             "function": {"name": "web_search", "arguments": "{}"}},
             {"id": "tc-interrupted", "type": "function",
              "function": {"name": "web_search", "arguments": "{}"}}
         ]},
@@ -311,10 +313,12 @@ async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
             invocation_id="33333333-3333-4333-8333-333333333333",
             agent_id="root", span_id=root_span_id, task=request.task, depth=0,
             iteration=1, messages=messages, pending_tool_call_ids=["tc-interrupted"],
+            completed_tool_results={"tc-done": "Previously completed search result."},
         )],
         task_state={
             "messages": messages, "iterations": 1, "tool_call_history": [],
             "pending_tool_call_ids": ["tc-interrupted"], "root_span_id": root_span_id,
+            "completed_tool_results": {"tc-done": "Previously completed search result."},
         },
         budget_state=budget.snapshot(),
         metadata={
@@ -351,6 +355,11 @@ async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
     assert any(
         m.get("role") == "tool" and m.get("tool_call_id") == "tc-interrupted"
         and "outcome is unknown" in m.get("content", "")
+        for m in restored_messages
+    )
+    assert any(
+        m.get("role") == "tool" and m.get("tool_call_id") == "tc-done"
+        and m.get("content") == "Previously completed search result."
         for m in restored_messages
     )
     assert sum(e.type == "span_started" and e.span_id == root_span_id for e in events) == 1

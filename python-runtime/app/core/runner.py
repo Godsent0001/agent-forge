@@ -18,9 +18,10 @@ from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFac
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
-from app.core.lessons import format_lessons_block
+from app.core.lessons import format_lessons_block, reflect_on_signal
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
 from app.core.llm.pricing import get_context_window
@@ -30,6 +31,7 @@ from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.skills.types import SkillManifest
+from app.core.skills.registry import select_skill
 from app.core.spans import span
 from app.core.tools.yield_time import YieldTimeTool
 
@@ -83,6 +85,7 @@ class RunnerCore:
         root_span_id: str | None = None
         active_spans: dict[str, dict[str, Any]] = {}
         last_checkpoint_state: dict[str, Any] = {}
+        pending_reminder_ids: list[str] = []
         checkpoint_created_at = datetime.now(timezone.utc)
         if prior_checkpoint is not None:
             if prior_checkpoint.graph_fingerprint != graph_fingerprint:
@@ -101,7 +104,12 @@ class RunnerCore:
             if prior_checkpoint.budget_state:
                 budget.restore(prior_checkpoint.budget_state)
             resume_state = copy.deepcopy(prior_checkpoint.task_state) or None
+            pending_reminder_ids = list((resume_state or {}).get("pending_reminder_ids", []))
             last_checkpoint_state.update(copy.deepcopy(resume_state or {}))
+            # A resumed invocation is active again; terminal status from the previous
+            # interruption remains available in the result but must not label new writes.
+            last_checkpoint_state["checkpoint_status"] = "running"
+            last_checkpoint_state.pop("terminal_error", None)
             if root_span_id and not active_spans and not (
                 resume_state and isinstance(resume_state.get("final_output"), str)
             ):
@@ -135,7 +143,7 @@ class RunnerCore:
             checkpoint = ExecutionCheckpoint(
                 execution_id=req.execution_id,
                 graph_fingerprint=graph_fingerprint,
-                status="running",
+                status=str(state.get("checkpoint_status", "running")),
                 created_at=checkpoint_created_at,
                 updated_at=datetime.now(timezone.utc),
                 frames=[frame],
@@ -152,6 +160,8 @@ class RunnerCore:
             nonlocal root_span_id
             last_checkpoint_state.clear()
             last_checkpoint_state.update(copy.deepcopy(state))
+            # Include the delivery ledger even when the run completes without tools.
+            last_checkpoint_state["pending_reminder_ids"] = list(pending_reminder_ids)
             if state.get("root_span_id"):
                 root_span_id = str(state["root_span_id"])
             await write_checkpoint()
@@ -229,6 +239,7 @@ class RunnerCore:
                 clock=clock_fn,
                 checkpoint=save_checkpoint,
                 resume_state=resume_state,
+                pending_reminder_ids=pending_reminder_ids,
                 resume_span_id=root_span_id if prior_checkpoint is not None and root_span_id and not (resume_state or {}).get("root_span_closed") else None,
             )
 
@@ -266,6 +277,23 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
 
+            if root_spec.lessons_enabled and lessons:
+                recovery = _find_recovered_tool_error(last_checkpoint_state.get("messages", []))
+                if recovery:
+                    error_message, recovered_output = recovery
+                    try:
+                        await reflect_on_signal(
+                            agent_id=root_spec.id,
+                            execution_id=req.execution_id,
+                            error_message=error_message,
+                            recovered_output=recovered_output or final_output,
+                            store=lessons,
+                        )
+                    except Exception:
+                        logger.debug("Recovery lesson reflection failed", exc_info=True)
+
+            if pending_reminder_ids:
+                await intents.mark_fired(pending_reminder_ids, _clock_now(clock_fn))
             await checkpoint_store.delete(req.execution_id)
             return RunResult(
                 status="completed",
@@ -274,21 +302,36 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "budget_exceeded",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": str(exc),
+            })
+            await write_checkpoint()
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
                 totals=budget.totals,
             )
         except asyncio.CancelledError:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "cancelled",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": "Run was cancelled by user.",
+            })
+            await write_checkpoint()
             return RunResult(
                 status="cancelled",
                 error="Run was cancelled by user.",
                 totals=budget.totals,
             )
         except Exception as exc:
-            await checkpoint_store.delete(req.execution_id)
+            last_checkpoint_state.update({
+                "checkpoint_status": "error",
+                "pending_reminder_ids": list(pending_reminder_ids),
+                "terminal_error": str(exc),
+            })
+            await write_checkpoint()
             logger.exception("Run execution error")
             return RunResult(
                 status="error",
@@ -320,12 +363,14 @@ class RunnerCore:
         agent_revision_counts: dict[str, int],
         clock: Clock,
         skill_manifest: SkillManifest | None = None,
+        pending_reminder_ids: list[str] | None = None,
         checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         resume_state: dict[str, Any] | None = None,
         resume_span_id: str | None = None,
     ) -> str:
         cancel.raise_if_cancelled()
         budget.check_limits()
+        pending_reminder_ids = pending_reminder_ids if pending_reminder_ids is not None else []
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
@@ -336,6 +381,12 @@ class RunnerCore:
         agent_path = set(active_agent_ids)
         agent_path.add(agent_id)
         spec = graph.agents[agent_id]
+        if skill_manifest is None:
+            available_tools = {name for binding in spec.tools for name in (binding.name, binding.kind)}
+            try:
+                skill_manifest = select_skill(workspace.root, task, available_tools)
+            except (OSError, ValueError, TypeError):
+                logger.debug("Skill discovery skipped for agent %s", spec.id, exc_info=True)
 
         try:
             async with span(
@@ -356,6 +407,7 @@ class RunnerCore:
                     if depth == 0 and checkpoint:
                         payload = dict(state)
                         payload["root_span_id"] = agent_span_id
+                        payload["pending_reminder_ids"] = list(pending_reminder_ids)
                         await checkpoint(payload)
 
                 # 1. Memory recall
@@ -371,11 +423,13 @@ class RunnerCore:
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
+                memory_block = ContextCompiler.bound_block(memory_block, 3_200, "memory recall")
 
                 # 2. Recent problem runs
                 recent_runs_block = ""
                 if req.options.memory.episodic and run_history and depth == 0:
                     recent_runs_block = await build_recent_runs_block(run_history, spec.id)
+                recent_runs_block = ContextCompiler.bound_block(recent_runs_block, 1_200, "recent runs")
 
                 # 3. Due reminders
                 reminders_block = ""
@@ -383,13 +437,23 @@ class RunnerCore:
                     now_utc = _clock_now(clock)
                     due_intents = await intents.due_for_run(spec.id, now_utc)
                     if due_intents:
-                        reminders_block = "\n".join(f"- {i.text}" for i in due_intents)
-                        await intents.mark_fired([i.id for i in due_intents], now_utc)
+                        # A reminder is acknowledged only after its containing run
+                        # completes. If interrupted, it remains deliverable.
+                        # If messages are reconstructed after interruption, render due
+                        # reminders again. Existing transcript restoration takes precedence
+                        # when the previous prompt was already checkpointed.
+                        reminders_block = "\n".join(f"- {item.text}" for item in due_intents)
+                        already_pending = set(pending_reminder_ids)
+                        pending_reminder_ids.extend(
+                            item.id for item in due_intents if item.id not in already_pending
+                        )
 
                 # 4. Lessons
                 lessons_block = ""
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
+                lessons_block = ContextCompiler.bound_block(lessons_block, 1_800, "lessons")
+                reminders_block = ContextCompiler.bound_block(reminders_block, 1_000, "reminders")
 
                 # 5. Temporal Context
                 now_dt = _clock_now(clock)
@@ -400,15 +464,22 @@ class RunnerCore:
                     "remaining_budget_ms": int((req.options.budget.max_seconds - budget.elapsed_seconds) * 1000) if req.options.budget.max_seconds else None,
                 }
 
-                # 6. Build system prompt
+                # 6. Build runtime-derived self-model. This is not memory, lessons, or a skill.
+                self_model_block = _build_self_model(
+                    spec=spec, graph=graph, req=req, budget=budget,
+                    skill_manifest=skill_manifest, depth=depth,
+                )
+
+                # 7. Build system prompt
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=history_summary,
+                    history_summary_block=ContextCompiler.bound_block(history_summary, 6_000, "conversation summary"),
                     skill_manifest=skill_manifest,
+                    self_model_block=self_model_block,
                     temporal_context=temporal_context,
                 )
 
@@ -425,8 +496,21 @@ class RunnerCore:
                 iterations = int(resume_state.get("iterations", 0)) if depth == 0 and resume_state else 0
                 tool_call_history: list[str] = list(resume_state.get("tool_call_history", [])) if depth == 0 and resume_state else []
                 pending_ids = list(resume_state.get("pending_tool_call_ids", [])) if depth == 0 and resume_state else []
-                if pending_ids:
+                completed_tool_results = dict(resume_state.get("completed_tool_results", {})) if depth == 0 and resume_state else {}
+                if pending_ids or completed_tool_results:
+                    existing_result_ids = {
+                        str(m.get("tool_call_id")) for m in messages
+                        if m.get("role") == "tool" and m.get("tool_call_id")
+                    }
+                    # Completed calls are restored from their checkpointed results; only
+                    # calls still marked pending are uncertain and must not be replayed.
+                    for completed_id, completed_content in completed_tool_results.items():
+                        if str(completed_id) not in existing_result_ids:
+                            messages.append({"role": "tool", "tool_call_id": str(completed_id), "content": str(completed_content)})
+                            existing_result_ids.add(str(completed_id))
                     for pending_id in pending_ids:
+                        if str(pending_id) in existing_result_ids:
+                            continue
                         messages.append({
                             "role": "tool",
                             "tool_call_id": pending_id,
@@ -435,8 +519,14 @@ class RunnerCore:
                     if checkpoint:
                         await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
-                                          "pending_tool_call_ids": []})
+                                          "pending_tool_call_ids": [], "completed_tool_results": {}})
 
+                context_window = get_context_window(spec.model)
+                reserved_output_tokens = max(0, int(spec.params.max_tokens or 0))
+                usable_context_tokens = max(1_400, context_window - reserved_output_tokens - 1_000)
+                context_compiler = ContextCompiler(
+                    max_context_chars=min(48_000, max(4_000, usable_context_tokens * 3))
+                )
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
@@ -462,10 +552,21 @@ class RunnerCore:
                             )
                         return final_text
 
+                    # Compile a bounded prompt view without mutating the authoritative transcript.
+                    # The compiler replaces stale large tool outputs with artifact references.
+                    compiled_messages, context_stats = context_compiler.compile(messages, workspace)
+                    if context_stats.compacted_tool_results or context_stats.compacted_messages:
+                        logger.debug(
+                            "Compiled context for agent %s: %d -> %d chars (~%d tokens saved), %d tool results and %d messages compacted",
+                            spec.id, context_stats.original_chars, context_stats.compiled_chars,
+                            context_stats.estimated_tokens_saved, context_stats.compacted_tool_results,
+                            context_stats.compacted_messages,
+                        )
+
                     # LLM Call
                     turn = await self._execute_llm_turn(
                         spec=spec,
-                        messages=messages,
+                        messages=compiled_messages,
                         tools=native_tool_specs,
                         parent_span_id=agent_span_id,
                         emit=emit,
@@ -537,7 +638,20 @@ class RunnerCore:
                         max_tasks=max_tasks,
                     )
                     plan.refresh_ready()
-                    results_by_call: dict[str, str] = {}
+                    results_by_call: dict[str, str] = {
+                        tc.id: f"ERROR: execution task limit exceeded ({max_tasks})."
+                        for tc in rejected_calls
+                    }
+                    completed_tool_results: dict[str, str] = dict(results_by_call)
+                    pending_call_ids = [tc.id for tc in scheduled_calls]
+                    if depth == 0 and checkpoint:
+                        await persist_state({
+                            "messages": messages, "iterations": iterations,
+                            "tool_call_history": tool_call_history,
+                            "pending_tool_call_ids": pending_call_ids,
+                            "completed_tool_results": completed_tool_results,
+                        })
+
                     parallel_limit = (
                         max(1, int(getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS)))
                         if req.options.parallel_tools else 1
@@ -565,36 +679,66 @@ class RunnerCore:
                             except Exception as exc:
                                 return tc.id, f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
-                        batch_results = await asyncio.gather(
-                            *(execute_scheduled(task) for task in claimed),
-                            return_exceptions=True,
-                        )
-                        for task, result in zip(claimed, batch_results):
-                            if isinstance(result, BudgetExceededError):
-                                raise result
-                            if isinstance(result, asyncio.CancelledError):
-                                raise result
-                            if isinstance(result, Exception):
-                                call_id = next(tc.id for tc in scheduled_calls if task_keys[tc.id] == task.task_id)
-                                content = f"ERROR: tool crashed ({type(result).__name__}: {result})"
-                            else:
-                                call_id, content = result
-                            results_by_call[call_id] = content
-                            if content.startswith("ERROR:"):
-                                plan.fail(task.task_id, content, retryable=False)
-                            else:
-                                plan.complete(task.task_id)
+                        running = {
+                            asyncio.create_task(execute_scheduled(task)): task
+                            for task in claimed
+                        }
+                        while running:
+                            done, _ = await asyncio.wait(
+                                running, return_when=asyncio.FIRST_COMPLETED
+                            )
+                            for finished in done:
+                                task = running.pop(finished)
+                                try:
+                                    call_id, result_text = finished.result()
+                                except (BudgetExceededError, asyncio.CancelledError):
+                                    for unfinished in running:
+                                        unfinished.cancel()
+                                    await asyncio.gather(*running, return_exceptions=True)
+                                    raise
+                                except Exception as exc:
+                                    call_id = next(
+                                        tc.id for tc in scheduled_calls
+                                        if task_keys[tc.id] == task.task_id
+                                    )
+                                    result_text = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+
+                                results_by_call[call_id] = result_text
+                                completed_tool_results[call_id] = result_text
+                                if result_text.startswith("ERROR:"):
+                                    plan.fail(task.task_id, result_text, retryable=False)
+                                else:
+                                    plan.complete(task.task_id)
+
+                                # Persist each completion immediately. If a sibling tool
+                                # is interrupted, completed work is retained and only the
+                                # genuinely in-flight calls are marked uncertain.
+                                pending_call_ids = [
+                                    tc.id for tc in scheduled_calls
+                                    if tc.id not in results_by_call
+                                ]
+                                if depth == 0 and checkpoint:
+                                    await persist_state({
+                                        "messages": messages, "iterations": iterations,
+                                        "tool_call_history": tool_call_history,
+                                        "pending_tool_call_ids": pending_call_ids,
+                                        "completed_tool_results": completed_tool_results,
+                                    })
                         plan.refresh_ready()
 
-                    for tc in rejected_calls:
-                        results_by_call[tc.id] = f"ERROR: execution task limit exceeded ({max_tasks})."
+                    # Verify scheduler output coverage before returning control to the model.
+                    # A scheduler edge case must become an explicit tool error, never a missing result.
+                    for tc in scheduled_calls:
+                        if tc.id not in results_by_call:
+                            results_by_call[tc.id] = "ERROR: scheduler stopped before producing a result for this tool call."
                     for tc in tool_call_tuples:
                         messages.append({"role": "tool", "tool_call_id": tc.id,
                                          "content": results_by_call.get(tc.id, "ERROR: scheduler did not execute this task.")})
                     if depth == 0 and checkpoint:
                         await persist_state({"messages": messages, "iterations": iterations,
                                           "tool_call_history": tool_call_history,
-                                          "pending_tool_call_ids": []})
+                                          "pending_tool_call_ids": [],
+                                          "completed_tool_results": {}})
 
                     continue
 
@@ -755,13 +899,27 @@ class RunnerCore:
                     uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
 
                     end_time = _clock_now(clock)
-                    headline = res_text[:300].replace("\n", " ").strip()
+                    headline = res_text[:300].replace("\n", " ").strip() or "Child agent returned no summary."
+                    child_status = (
+                        "FAILED" if res_text.strip().startswith("ERROR:")
+                        else "NEEDS_REVIEW" if not res_text.strip()
+                        else "COMPLETED"
+                    )
                     envelope = ClaimCheckEnvelope(
                         task_id=task_id,
                         sender_id=child_link.agent_id,
                         recipient_id=spec.id,
-                        status="COMPLETED",
-                        summary=ClaimCheckSummary(headline=headline),
+                        status=child_status,
+                        summary=ClaimCheckSummary(
+                            headline=headline,
+                            flags_or_warnings=(
+                                ["Child output indicates an execution error."]
+                                if child_status == "FAILED"
+                                else ["Child output is empty; review required."]
+                                if child_status == "NEEDS_REVIEW"
+                                else []
+                            ),
+                        ),
                         result_artifact_uri=uri,
                         temporal_telemetry={
                             "invoked_at_iso": start_time.isoformat(),
@@ -820,9 +978,32 @@ class RunnerCore:
                 if timeout_s <= 0:
                     raise BudgetExceededError("Run deadline exhausted before tool execution.")
                 async with budget.tool_semaphore:
-                    async with asyncio.timeout(timeout_s):
-                        res: ToolResult = await tool_obj.run(args_inst, ctx)
+                    for attempt in range(2):
+                        try:
+                            async with asyncio.timeout(timeout_s):
+                                res: ToolResult = await tool_obj.run(args_inst, ctx)
+                            break
+                        except ToolError as retry_error:
+                            # Retry only when the tool explicitly guarantees this failure
+                            # is safe to retry; never infer idempotency from an error string.
+                            if not retry_error.retryable or attempt == 1:
+                                raise
+                            logger.warning(
+                                "Retrying explicitly retryable tool %s (attempt %d/2)",
+                                tc.name, attempt + 2,
+                            )
+                if not isinstance(res, ToolResult):
+                    return f"ERROR: tool '{tc.name}' returned an invalid result contract."
+                if not res.ok:
+                    return f"ERROR: tool '{tc.name}' reported failure: {res.content}"
+
                 content = res.content
+                if res.artifacts:
+                    artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
+                    content += " | Artifacts produced: " + " | ".join(artifact_lines)
+                if res.truncated:
+                    continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
+                    content += f" | NOTE: tool output is truncated.{continuation}"
 
                 saved_ref = None
                 if len(content) > 1000 and hasattr(workspace, "write_result"):
@@ -987,6 +1168,70 @@ class RunnerCore:
                 store=memory,
                 llm_complete_fn=llm_fn,
             )
+
+
+def _find_recovered_tool_error(messages: list[dict[str, Any]]) -> tuple[str, str] | None:
+    """Return one earlier tool error only when a later tool result succeeded."""
+    first_error: str | None = None
+    recovered_output = ""
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        content = str(message.get("content", ""))
+        if content.startswith("ERROR:") and first_error is None:
+            first_error = content[6:].strip()[:500]
+        elif first_error and content and not content.startswith("ERROR:"):
+            recovered_output = content[:500]
+            return first_error, recovered_output
+    return None
+
+
+def _build_self_model(
+    *,
+    spec: AgentSpec,
+    graph: AgentGraph,
+    req: RunRequest,
+    budget: BudgetTracker,
+    skill_manifest: SkillManifest | None,
+    depth: int,
+) -> str:
+    """Build a compact, current-run description from runtime configuration."""
+    selected_skill = None
+    if skill_manifest is not None:
+        selected_skill = {
+            "name": skill_manifest.name,
+            "required_binaries": list(skill_manifest.metadata.requires_bins),
+            "required_environment_variables": list(skill_manifest.metadata.requires_env),
+            "declared_tools": list(skill_manifest.metadata.tools),
+        }
+    max_seconds = req.options.budget.max_seconds
+    return json.dumps({
+        "agent": {"id": spec.id, "name": spec.name, "depth": depth},
+        "configured_tool_bindings": [
+            {"name": item.name, "kind": item.kind} for item in spec.tools
+        ],
+        "delegation_targets": [
+            {"agent_id": child.agent_id, "description": child.description or ""}
+            for child in spec.children if child.agent_id in graph.agents
+        ],
+        "memory_enabled": bool(spec.memory_enabled),
+        "lessons_enabled": bool(spec.lessons_enabled),
+        "selected_skill_and_declared_prerequisites": selected_skill,
+        "constraints": {
+            "max_depth": req.options.max_depth,
+            "remaining_depth": max(0, req.options.max_depth - depth),
+            "remaining_seconds": max(0.0, max_seconds - budget.elapsed_seconds) if max_seconds else None,
+            "max_tokens_per_model_call": spec.params.max_tokens,
+            "parallel_tools_enabled": bool(req.options.parallel_tools),
+            "max_parallel_tool_calls": getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS),
+            "approval_gate_present": True,
+        },
+        "accuracy_note": (
+            "Tool bindings and skill prerequisites describe configured state, not guaranteed "
+            "external availability. Do not claim a capability or permission is operational "
+            "unless the current execution verifies it."
+        ),
+    }, ensure_ascii=False, separators=(",", ":"))
 
 
 def _trim_messages(messages: list[dict[str, Any]]) -> None:
