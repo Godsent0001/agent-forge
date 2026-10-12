@@ -5,8 +5,10 @@ from pydantic import BaseModel, ConfigDict
 
 from app.contracts.graph import ToolBinding
 from app.contracts.naming import sanitize_tool_name
-from app.contracts.tools import Permission, Tool as V2Tool, ToolContext, ToolError, ToolResult
-from app.tools.base import Tool as LegacyTool, ToolExecutionError
+from app.contracts.tools import Permission, ToolContext, ToolError, ToolResult
+from app.contracts.tools import Tool as V2Tool
+from app.tools.base import Tool as LegacyTool
+from app.tools.base import ToolExecutionError
 
 
 class LegacyInput(BaseModel):

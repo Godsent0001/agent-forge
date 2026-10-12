@@ -3,10 +3,12 @@ from pydantic import BaseModel
 
 from app.contracts.graph import ToolBinding
 from app.contracts.naming import dedupe_names, sanitize_tool_name
-from app.contracts.tools import Tool as V2Tool, ToolContext, ToolError, ToolResult
+from app.contracts.tools import Tool as V2Tool
+from app.contracts.tools import ToolContext, ToolError, ToolResult
 from app.tools import registry
 from app.tools.adapter import LegacyInput, LegacyToolAdapter
-from app.tools.base import Tool as LegacyTool, ToolExecutionError
+from app.tools.base import Tool as LegacyTool
+from app.tools.base import ToolExecutionError
 
 
 class _LegacyFails(LegacyTool):

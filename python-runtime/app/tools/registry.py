@@ -15,7 +15,6 @@ from __future__ import annotations
 from app.contracts.graph import ToolBinding
 from app.contracts.tools import Tool as V2Tool
 from app.tools.adapter import LegacyToolAdapter
-
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
     CacheEngineTool,

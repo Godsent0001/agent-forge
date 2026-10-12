@@ -12,9 +12,9 @@ from app.contracts.events import EventDraft, RunEvent
 from app.contracts.run import RunRequest, RunResult, Totals
 from app.db import SessionLocal
 from app.services.core_adapters import NullApprovals, Workspace
-from app.tools.registry import DefaultToolFactory
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
+from app.tools.registry import DefaultToolFactory
 
 
 def _truncate_value(value):
