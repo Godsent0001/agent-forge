@@ -31,6 +31,13 @@ export type ChatMessage =
       timestamp: string;
       /** The run that produced this reply, so its trace/log can be reopened later. */
       executionId?: string;
+      executionStatus?: "completed" | "error" | "cancelled" | "budget_exceeded" | "interrupted";
+      usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        costUsd: number | null;
+        durationSeconds: number | null;
+      };
     }
   | {
       id: string;

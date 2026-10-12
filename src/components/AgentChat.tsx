@@ -8,6 +8,7 @@ import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { LogoMark } from "./ui/LogoMark";
 import { isSimulatedText } from "../utils/simulated";
+import { useExecutionStream } from "../hooks/useExecutionStream";
 
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
@@ -30,6 +31,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [createAgentError, setCreateAgentError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const processedExecutionRef = useRef<string | null>(null);
+  const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
 
@@ -45,6 +48,76 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     if (text) void sendTask(text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTask, agent?.id, isProcessing]);
+
+  useEffect(() => {
+    if (!activeExecutionId || !agent) return;
+    const ended = activeExecutionEvents.some(
+      (event) => event.execution_id === activeExecutionId && event.type === "execution_ended",
+    );
+    if (!ended || processedExecutionRef.current === activeExecutionId) return;
+
+    processedExecutionRef.current = activeExecutionId;
+    const executionId = activeExecutionId;
+    const agentId = agent.id;
+    const agentName = agent.name;
+    void (async () => {
+      try {
+        const [completedExecution] = await Promise.all([api.executions.get(executionId)]);
+        for (const toolMessage of executionToolMessages(activeExecutionEvents)) {
+          addChatMessage(agentId, toolMessage);
+        }
+
+        const allowedStatuses = new Set(["completed", "error", "cancelled", "budget_exceeded", "interrupted"]);
+        const status = allowedStatuses.has(completedExecution.status)
+          ? completedExecution.status as "completed" | "error" | "cancelled" | "budget_exceeded" | "interrupted"
+          : "error";
+        const totals = completedExecution.totals ?? {};
+        const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+        const cost = typeof totals.cost_usd === "number" && Number.isFinite(totals.cost_usd)
+          ? totals.cost_usd
+          : null;
+        const endTime = completedExecution.ended_at ? Date.parse(completedExecution.ended_at) : Number.NaN;
+        const startTime = completedExecution.started_at ? Date.parse(completedExecution.started_at) : Number.NaN;
+        const durationSeconds = Number.isFinite(startTime) && Number.isFinite(endTime)
+          ? Math.max(0, (endTime - startTime) / 1000)
+          : null;
+        const fallback = status === "cancelled"
+          ? "Stopped."
+          : status === "budget_exceeded"
+            ? "Stopped: budget reached."
+            : status === "interrupted"
+              ? "This run was interrupted."
+              : completedExecution.error || "The run failed. Open the activity panel for details.";
+        const agentMsg: ChatMessage = {
+          id: Date.now().toString(),
+          sender: "agent",
+          agentName,
+          text: completedExecution.final_output || (status === "completed" ? "Task processed with no explicit final output." : fallback),
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          executionId,
+          executionStatus: status,
+          usage: {
+            inputTokens: numeric(totals.input_tokens),
+            outputTokens: numeric(totals.output_tokens),
+            costUsd: cost,
+            durationSeconds,
+          },
+        };
+        addChatMessage(agentId, agentMsg);
+        if (status === "cancelled") setChatNotice("Run stopped.");
+        else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
+        else if (status === "error" || status === "interrupted") {
+          setChatNotice("Run did not complete. See the run log for details.");
+        }
+      } catch (error) {
+        setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
+      } finally {
+        setIsProcessing(false);
+        setIsCancelling(false);
+        setActiveExecutionId(null);
+      }
+    })();
+  }, [activeExecutionId, activeExecutionEvents, agent, addChatMessage]);
 
   const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
   const simulatedReply = !!lastAgentMessage && isSimulatedText(lastAgentMessage.text);
@@ -159,53 +232,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         }));
 
       const execution = await api.executions.run(project.id, agent.id, userText, history);
+      processedExecutionRef.current = null;
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
-
-      let completedExecution = await api.executions.get(execution.id);
-      for (let i = 0; i < 300; i++) {
-        await new Promise((r) => setTimeout(r, 800));
-        completedExecution = await api.executions.get(execution.id);
-        if (["completed", "error", "cancelled", "budget_exceeded", "interrupted"].includes(completedExecution.status)) {
-          break;
-        }
-      }
-
-      const executionEvents = await api.executions.getEvents(execution.id);
-      const toolMessages = executionToolMessages(executionEvents);
-      for (const toolMessage of toolMessages) {
-        addChatMessage(agent.id, toolMessage);
-      }
-
-      if (completedExecution.status === "cancelled") {
-        setChatNotice("Run stopped before it finished.");
-        return;
-      }
-
-      if (completedExecution.status !== "completed") {
-        throw new Error(
-          completedExecution.error ||
-            (completedExecution.status === "budget_exceeded"
-              ? "The run hit its budget limit before finishing."
-              : "The run did not complete. Open the activity panel to see which step failed."),
-        );
-      }
-
-      const agentMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: "agent",
-        agentName: agent.name,
-        text:
-          completedExecution.final_output ||
-          completedExecution.error ||
-          "Task processed with no explicit final output.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        executionId: execution.id,
-      };
-      addChatMessage(agent.id, agentMsg);
+      // The stream owns completion now; do not poll the execution endpoint.
     } catch (e) {
-      setChatError(e instanceof Error ? e.message : "Failed to get agent response");
-    } finally {
+      setChatError(e instanceof Error ? e.message : "Failed to start execution");
       setIsProcessing(false);
       setIsCancelling(false);
       setActiveExecutionId(null);
@@ -357,7 +389,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                 className={`max-w-3xl rounded-2xl px-4 py-3 shadow-studio border ${
                   msg.sender === "user"
                     ? "bg-accent-600 text-white border-accent-500/80 rounded-br-md"
-                    : "bg-studio-900 text-studio-100 border-studio-750 rounded-bl-md"
+                    : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
+                      ? "bg-red-950/50 text-red-100 border-red-800/80 rounded-bl-md"
+                      : msg.executionStatus === "budget_exceeded"
+                        ? "bg-amber-950/50 text-amber-100 border-amber-800/80 rounded-bl-md"
+                        : msg.executionStatus === "cancelled"
+                          ? "bg-studio-850 text-studio-400 border-studio-700 rounded-bl-md"
+                          : "bg-studio-900 text-studio-100 border-studio-750 rounded-bl-md"
                 }`}
               >
                 {msg.sender === "user" ? (
@@ -368,6 +406,16 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               </div>
             )}
 
+            {msg.sender === "agent" && msg.executionStatus && msg.executionStatus !== "completed" && (
+              <p className={`mt-1 ml-1 text-2xs font-mono ${msg.executionStatus === "error" || msg.executionStatus === "interrupted" ? "text-red-300" : msg.executionStatus === "budget_exceeded" ? "text-amber-300" : "text-studio-500"}`}>
+                {msg.executionStatus === "error" ? "Run failed" : msg.executionStatus === "interrupted" ? "Run interrupted" : msg.executionStatus === "budget_exceeded" ? "Budget reached" : "Stopped"}
+              </p>
+            )}
+            {msg.sender === "agent" && msg.usage && (
+              <p className="mt-1 ml-1 text-2xs font-mono text-studio-500">
+                {msg.usage.inputTokens.toLocaleString()} in · {msg.usage.outputTokens.toLocaleString()} out · {msg.usage.costUsd === null ? "n/a" : "$" + msg.usage.costUsd.toFixed(3)} · {msg.usage.durationSeconds === null ? "n/a" : msg.usage.durationSeconds.toFixed(1) + " s"}
+              </p>
+            )}
             {msg.sender === "agent" && msg.executionId && (
               <button
                 type="button"

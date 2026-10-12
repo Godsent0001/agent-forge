@@ -52,6 +52,7 @@ export function useExecutionStream(executionId: string | null) {
     if (!executionId) return;
 
     let cancelled = false;
+    let runEnded = false;
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = 500;
@@ -61,12 +62,21 @@ export function useExecutionStream(executionId: string | null) {
       return current.length ? current[current.length - 1].seq : 0;
     };
     const addEvents = (incoming: ExecutionEvent[]) => {
-      if (!incoming.length) return;
+      if (!incoming.length || runEnded) return;
       const unique = new Map<number, ExecutionEvent>();
       for (const event of [...eventsRef.current, ...incoming]) unique.set(event.seq, event);
       const ordered = [...unique.values()].sort((a, b) => a.seq - b.seq);
       eventsRef.current = ordered;
       setEvents(ordered);
+
+      if (ordered.some((event) => event.type === "execution_ended")) {
+        runEnded = true;
+        stopPolling();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        const socket = wsRef.current;
+        if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+      }
     };
     const pollOnce = async () => {
       if (cancelled) return;
@@ -78,7 +88,7 @@ export function useExecutionStream(executionId: string | null) {
       }
     };
     const startPolling = () => {
-      if (pollInterval || cancelled) return;
+      if (pollInterval || cancelled || runEnded) return;
       void pollOnce();
       pollInterval = setInterval(() => void pollOnce(), 1000);
     };
@@ -88,8 +98,9 @@ export function useExecutionStream(executionId: string | null) {
       pollInterval = null;
     };
     const scheduleReconnect = () => {
+      if (cancelled || runEnded) return;
       startPolling();
-      if (cancelled || reconnectTimer) return;
+      if (reconnectTimer) return;
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         void connect();
