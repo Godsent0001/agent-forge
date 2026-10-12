@@ -91,6 +91,19 @@ async def test_approval_denial_ends_tool_as_error_without_breaking_trace():
 
 
 @pytest.mark.asyncio
+async def test_ceo_research_scenario_preserves_parent_and_depth():
+    result, events, _ = await _run_scenario("ceo_research")
+    assert result.status == "completed"
+    root = next(e for e in events if e.type == "span_started" and e.kind == "agent" and e.name == "CEO Agent")
+    research_tool = next(e for e in events if e.type == "span_started" and e.kind == "tool_call" and e.name == "research_agent")
+    researcher = next(e for e in events if e.type == "span_started" and e.kind == "agent" and e.name == "Research Agent")
+    assert research_tool.parent_span_id == root.span_id
+    assert researcher.parent_span_id == research_tool.span_id
+    assert researcher.data["depth"] == 1
+    assert check_events(events, platform_events=False, complete=True) == []
+
+
+@pytest.mark.asyncio
 async def test_cancellation_closes_every_open_span():
     request, graph = _context("long_running")
     drafts: list[EventDraft] = []

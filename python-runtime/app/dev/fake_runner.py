@@ -116,7 +116,8 @@ class FakeRunner:
                             raise ValueError("A delegated agent must be nested inside a tool_call span")
                         name = str(op.get("name") or "Sub-agent")
                         agent_id = str(op.get("agent_id") or name)
-                        depth = 1 + sum(1 for item in stack if item["kind"] == "agent")
+                        parent_agent = next(item for item in reversed(stack) if item["kind"] == "agent")
+                        depth = parent_agent["depth"] + 1
                     span_id = str(uuid4())
                     parent_id = parent["id"] if parent else None
                     await emit(EventDraft(
@@ -258,7 +259,7 @@ class FakeRunner:
             if not root_started:
                 raise ValueError("Scenario did not start a root agent")
             return RunResult(status="completed",
-                             final_output=root_output or f"FakeRunner completed: {req.task}"[:2000],
+                             final_output=(root_output or f"FakeRunner completed: {req.task}")[:2000],
                              totals=totals)
         except asyncio.CancelledError:
             await close_open("cancelled")

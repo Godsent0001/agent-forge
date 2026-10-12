@@ -32,6 +32,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [createAgentError, setCreateAgentError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedExecutionRef = useRef<string | null>(null);
+  const activeExecutionAgentRef = useRef<{ id: string; name: string } | null>(null);
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
@@ -50,7 +51,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   }, [pendingTask, agent?.id, isProcessing]);
 
   useEffect(() => {
-    if (!activeExecutionId || !agent) return;
+    const targetAgent = activeExecutionAgentRef.current;
+    if (!activeExecutionId || !targetAgent) return;
     const ended = activeExecutionEvents.some(
       (event) => event.execution_id === activeExecutionId && event.type === "execution_ended",
     );
@@ -58,8 +60,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
     processedExecutionRef.current = activeExecutionId;
     const executionId = activeExecutionId;
-    const agentId = agent.id;
-    const agentName = agent.name;
+    const agentId = targetAgent.id;
+    const agentName = targetAgent.name;
     void (async () => {
       try {
         const [completedExecution] = await Promise.all([api.executions.get(executionId)]);
@@ -114,10 +116,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       } finally {
         setIsProcessing(false);
         setIsCancelling(false);
+        activeExecutionAgentRef.current = null;
         setActiveExecutionId(null);
       }
     })();
-  }, [activeExecutionId, activeExecutionEvents, agent, addChatMessage]);
+  }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
 
   const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
   const simulatedReply = !!lastAgentMessage && isSimulatedText(lastAgentMessage.text);
@@ -233,6 +236,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       const execution = await api.executions.run(project.id, agent.id, userText, history);
       processedExecutionRef.current = null;
+      activeExecutionAgentRef.current = { id: agent.id, name: agent.name };
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
       // The stream owns completion now; do not poll the execution endpoint.
@@ -240,6 +244,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setChatError(e instanceof Error ? e.message : "Failed to start execution");
       setIsProcessing(false);
       setIsCancelling(false);
+      activeExecutionAgentRef.current = null;
       setActiveExecutionId(null);
     }
   };
