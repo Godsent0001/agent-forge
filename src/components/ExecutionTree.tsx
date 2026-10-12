@@ -192,6 +192,15 @@ function TraceNode({
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsed.has(node.id);
   const isSelected = selectedId === node.id;
+  const usage = (node.data.usage ?? {}) as Record<string, unknown>;
+  const inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
+  const outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
+  const tokenLabel = node.kind === "llm_call" && (inputTokens > 0 || outputTokens > 0)
+    ? `${(inputTokens + outputTokens).toLocaleString()} tok`
+    : null;
+  const costLabel = node.kind === "llm_call" && "cost_usd" in node.data
+    ? formatCost(typeof node.data.cost_usd === "number" ? node.data.cost_usd : null)
+    : null;
 
   const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -243,6 +252,16 @@ function TraceNode({
         </span>
         {node.orphan && <span className="text-[9px] font-mono uppercase text-amber-400">orphan</span>}
         <SpanDot status={node.status} />
+        {tokenLabel && (
+          <span className="shrink-0 rounded border border-studio-700/80 px-1 text-[9px] font-mono tabular-nums text-studio-400" title="Input and output tokens combined">
+            {tokenLabel}
+          </span>
+        )}
+        {costLabel !== null && (
+          <span className="shrink-0 rounded border border-studio-700/80 px-1 text-[9px] font-mono tabular-nums text-studio-400" title="LLM call cost">
+            {costLabel}
+          </span>
+        )}
         <span className="w-14 shrink-0 text-right text-2xs font-mono tabular-nums text-studio-500">
           {node.status === "running" ? "…" : formatDuration(node.durationMs)}
         </span>
