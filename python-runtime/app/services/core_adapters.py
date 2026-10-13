@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +11,7 @@ from app.contracts.naming import sanitize_tool_name
 from app.contracts.tools import ArtifactRef, ToolContext, ToolError, ToolResult
 from app.contracts.tools import Tool as V2Tool
 from app.tools.registry import build_tool
+from app.infra.workspace import RunWorkspace as SafeRunWorkspace
 
 
 class LegacyToolInput(BaseModel):
@@ -76,30 +76,24 @@ class LegacyToolAdapter(V2Tool):
 
 class Workspace:
     def __init__(self, execution_id: str):
-        self.root = Path(tempfile.mkdtemp(prefix=f"agentforge-{execution_id}-"))
+        self._workspace = SafeRunWorkspace(execution_id)
+        self.root = self._workspace.root
 
     def resolve(self, rel: str) -> Path:
-        candidate = (self.root / rel).resolve()
-        if self.root not in candidate.parents and candidate != self.root:
-            raise ToolError(f"Path escapes run workspace: {rel}")
-        return candidate
+        return self._workspace.resolve(rel)
 
     def new_path(self, name: str) -> Path:
-        return self.resolve(name)
+        return self._workspace.new_path(name)
 
     def relative(self, p: Path) -> str:
-        return str(p.resolve().relative_to(self.root))
+        return self._workspace.relative(p)
 
     def write_result(self, tool_call_id: str, content: str) -> ArtifactRef:
-        result_dir = self.root / ".results"
-        result_dir.mkdir(parents=True, exist_ok=True)
-        path = result_dir / f"{tool_call_id}.txt"
-        path.write_text(content, encoding="utf-8")
-        return ArtifactRef(path=self.relative(path), mime="text/plain")
+        return self._workspace.write_result(tool_call_id, content)
 
     def cleanup(self) -> None:
-        import shutil
-        shutil.rmtree(self.root, ignore_errors=True)
+        # Run artifacts must remain available to the UI after execution.
+        return None
 
 
 class LegacyToolFactory:
