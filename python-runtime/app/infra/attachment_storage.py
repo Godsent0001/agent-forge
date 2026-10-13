@@ -8,7 +8,6 @@ import os
 import re
 import shutil
 import stat
-import subprocess
 import unicodedata
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote

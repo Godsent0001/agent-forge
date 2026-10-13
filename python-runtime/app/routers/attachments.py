@@ -17,7 +17,6 @@ from app.infra.attachment_storage import (
     MAX_ATTACHMENT_BYTES,
     MAX_PROJECT_UPLOAD_BYTES,
     AttachmentStorageError,
-    cleanup_stale_upload_parts,
     content_disposition,
     new_storage_key,
     promote_staged_file,
@@ -26,7 +25,6 @@ from app.infra.attachment_storage import (
     safe_original_name,
     scan_attachment,
     stream_to_staging,
-    upload_dirs,
     validate_attachment,
 )
 
@@ -112,7 +110,6 @@ async def upload_project_attachment(project_id: str, request: Request, db: Sessi
 
             staging: Path | None = None
             promoted = False
-            final_path: Path | None = None
             try:
                 try:
                     staging, size_bytes, digest = await stream_to_staging(
@@ -138,7 +135,7 @@ async def upload_project_attachment(project_id: str, request: Request, db: Sessi
                     # preserve the file in quarantine, never make it downloadable or runnable.
                     status, clean, scanned_at = "quarantined", False, None
 
-                final_path = promote_staged_file(staging, storage_key, clean=clean)
+                promote_staged_file(staging, storage_key, clean=clean)
                 promoted = True
                 row = models.ProjectAttachment(
                     project_id=project_id,

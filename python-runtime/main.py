@@ -29,7 +29,6 @@ from app.infra.file_security import file_response_headers
 from app.infra.paths import data_dir
 from app.routers import (
     agents,
-    attachments as attachments_router,
     executions,
     executions_v2,
     projects,
@@ -37,6 +36,7 @@ from app.routers import (
     system,
     tools,
 )
+from app.routers import attachments as attachments_router
 from app.routers import catalog as catalog_router
 from app.routers import conversations as conversations_router
 from app.routers import memory as memory_router

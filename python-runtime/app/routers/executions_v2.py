@@ -4,7 +4,14 @@ import shutil
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -14,13 +21,13 @@ from app import models
 from app.contracts.run import RunOptions, RunRequest
 from app.db import SessionLocal
 from app.deps import get_db
+from app.infra.approvals import resolve_approval
 from app.infra.attachment_storage import (
     MAX_RUN_ATTACHMENT_BYTES,
     MAX_RUN_ATTACHMENTS,
     AttachmentStorageError,
     copy_clean_attachment_to_workspace,
 )
-from app.infra.approvals import resolve_approval
 from app.infra.file_security import file_response_headers
 from app.infra.workspace import RunWorkspace
 from app.services.executions import manager
