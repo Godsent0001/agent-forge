@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import type { ChatMessage } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
+import { ApprovalDialog } from "./run/ApprovalDialog";
 import { executionToolMessages } from "../utils/executionToolMessages";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
@@ -457,6 +458,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      <ApprovalDialog executionId={activeExecutionId} events={activeExecutionEvents} />
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
