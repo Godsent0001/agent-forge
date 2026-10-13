@@ -13,7 +13,9 @@ An artifact can be a document, image, video project, source repository, dataset,
 - `app/contracts/verification.py`: normalized verification report/check contracts.
 - `app/core/verification.py`: type-based verifier registry and fail-closed result normalization.
 - `app/core/durable_scheduler.py`: SQLite-backed task-plan persistence, atomic task claims, retry state, cancellation of pending tasks, and explicit interrupted-task reconciliation.
-- `tests/core/test_artifact_store.py` and `tests/core/test_verification.py`: core persistence and verification tests.
+- `app/core/execution_artifacts.py`: workspace-safe artifact persistence and verification dispatch for execution outputs.
+- `app/core/runner.py`: persists tool-result artifacts and final output, emits artifact/verification events, and records task-plan claims/transitions durably with result artifact references.
+- `tests/core/test_execution_artifact_lifecycle.py`: execution-lifecycle integration coverage.
 
 The store is framework-independent and does not modify the existing SQLAlchemy application models or execution API. Its root is supplied by the caller. Registry data and blobs live below `.agentforge/artifacts/` inside that root.
 
@@ -30,12 +32,12 @@ The store is framework-independent and does not modify the existing SQLAlchemy a
 
 ## Deliberate limitations
 
-- The artifact and task-plan stores are local SQLite/filesystem implementations, not distributed services. A task plan is persisted, but this module does not execute tasks or replace the application's execution lifecycle.
+- The artifact and task-plan stores are local SQLite/filesystem implementations, not distributed services. RunnerCore executes the tasks and records state transitions; the durable scheduler itself remains a persistence/state-machine primitive.
 - It stores opaque bytes. Video timeline editing, image layers, repository diffs, document structure, and cybersecurity evidence need specialized adapters.
 - This first version does not implement artifact deletion, retention policies, cross-project dependencies, or HTTP endpoints.
 - A local filesystem and SQLite database are not a substitute for backup/replication in a multi-host deployment.
 - The store's actor field is audit metadata, not authentication. The application adapter must authorize callers before invoking writes.
-- Verification reports are not yet persisted. The platform adapter must decide how to attach them to an execution and its events.
+- Verification reports are emitted as RunnerCore events. They are not yet stored as standalone versioned artifacts, and no modality-specific verifier is registered by default; unverified artifacts report `skipped`.
 
 ## Integration boundary
 
@@ -53,6 +55,6 @@ Do not switch the current execution API from `ExecutionEngine` to `RunnerCore` i
 1. Run the complete Python suite and resolve any regressions.
 2. Review storage quotas, metadata limits, project authorization, and multi-process concurrency.
 3. Add tests for restart/reopen behavior and concurrent version updates. The new tests cover these invariants, but they still need to run in CI.
-4. Integrate durable task plans with RunnerCore only after defining ownership of task execution, cancellation, and persisted events with the application team.
-5. Define the application-owned policy for verifier results and persisted audit events.
+4. Add restart/recovery integration tests covering a process interruption during a real RunnerCore tool batch.
+5. Define the application-owned policy for verifier results and persisted audit events; the current RunnerCore emits events but does not change the legacy execution API.
 6. Add modality-specific adapters only when their concrete tools and validation rules are available.
