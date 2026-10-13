@@ -79,3 +79,5 @@ def test_project_and_asset_identifiers_are_validated(context):
         }), context)
     with pytest.raises(ToolError):
         _normalize_payload("visual_asset_manager", json.dumps({"action": "get", "name": "../secret"}), context)
+    with pytest.raises(ToolError):
+        _normalize_payload("voice_generator", json.dumps({"dialogue": "hello", "voice": "../outside"}), context)
