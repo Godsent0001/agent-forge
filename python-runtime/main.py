@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
+from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.routers import agents, executions, executions_v2, projects, settings, tools
 from app.routers import catalog as catalog_router
 from app.services.executions import manager
@@ -46,11 +47,15 @@ app.include_router(settings.router)
 
 app.mount("/files", StaticFiles(directory=str(OUTPUT_DIR)), name="files")
 
+app.add_middleware(TokenAuthMiddleware)
+
+# Add CORS outside authentication so browser preflights are answered correctly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "null"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    allow_credentials=False,
 )
 
 
@@ -62,6 +67,8 @@ def health() -> dict:
 
 def main() -> None:
     import sys
+
+    require_runtime_token()
   
     port = 0
     if "PORT" in os.environ:
