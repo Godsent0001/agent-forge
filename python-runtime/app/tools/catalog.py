@@ -260,8 +260,8 @@ def get_catalog_entry(kind: str) -> CatalogEntry | None:
     return next((e for e in CATALOG if e.kind == kind), None)
 
 
-def catalog_by_shelf() -> dict[str, list[CatalogEntry]]:
+def catalog_by_shelf(entries: list[CatalogEntry] | None = None) -> dict[str, list[CatalogEntry]]:
     grouped: dict[str, list[CatalogEntry]] = {shelf: [] for shelf in SHELVES}
-    for entry in CATALOG:
+    for entry in CATALOG if entries is None else entries:
         grouped.setdefault(entry.shelf, []).append(entry)
     return grouped
