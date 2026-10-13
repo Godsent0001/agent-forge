@@ -17,7 +17,7 @@ from app.contracts.tools import (
     ToolResult,
 )
 from app.contracts.tools import Tool as V2Tool
-from app.infra.workspace import data_dir
+from app.infra.workspace import RunWorkspace as SafeRunWorkspace, data_dir
 from app.tools.base import Tool as LegacyTool
 from app.tools.base import ToolExecutionError
 
@@ -173,6 +173,52 @@ class LegacyToolAdapter(V2Tool):
         self.name = sanitize_tool_name(binding.name or binding.kind or legacy.name)
         self.default_description = binding.description or legacy.description
         self.permissions = set(_PERMISSION_MAP.get(binding.kind, set()))
+
+    async def execute(self, input: str, *, context: Any) -> str:
+        """Safe compatibility facade for the legacy agent loop until S-04 removes it."""
+        workspace = getattr(context, "workspace", None)
+        if workspace is None:
+            execution_id = getattr(context, "execution_id", None) or "legacy"
+            workspace = SafeRunWorkspace(execution_id)
+            setattr(context, "workspace", workspace)
+
+        # These tools require the approval UI. The frozen legacy runner has no
+        # compatible approval route, so it must not provide a bypass around /v2.
+        if self.kind in {"python", "http_request"}:
+            raise ToolExecutionError(
+                f"{self.kind} is disabled in the legacy execution engine because it cannot "
+                "present approval prompts; run this task through /v2/executions."
+            )
+
+        mutation_actions = {
+            "scene_template_manager": ("get", {"save"}),
+            "render_queue": ("list", {"enqueue", "update_status"}),
+            "project_manager": ("scaffold", {"scaffold"}),
+            "asset_cache_store": ("list", {"put"}),
+            "production_config": ("get", {"set"}),
+            "cache_engine": ("check", {"store"}),
+        }
+        if self.kind in mutation_actions:
+            try:
+                payload = json.loads(input)
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            if isinstance(payload, dict):
+                default_action, blocked_actions = mutation_actions[self.kind]
+                action = payload.get("action", default_action)
+                if action in blocked_actions:
+                    raise ToolExecutionError(
+                        f"{self.kind}.{action} changes shared persistent state and requires approval; "
+                        "that approval flow is available only through /v2/executions."
+                    )
+
+        try:
+            normalized = _normalize_payload(self.kind, input, context)
+            content = await self._legacy.execute(normalized, context=context)
+            return _redact_host_paths(str(content), context)
+        except Exception as exc:
+            # Tool errors and OS exceptions often include host paths. Do not return those to the model.
+            raise ToolExecutionError(_redact_host_paths(str(exc), context)) from exc
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
         try:
