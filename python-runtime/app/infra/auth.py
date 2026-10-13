@@ -12,7 +12,7 @@ import json
 import os
 from urllib.parse import parse_qs
 
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 def expected_token() -> str | None:
