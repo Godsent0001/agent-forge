@@ -164,10 +164,11 @@ def get_execution_file(execution_id: str, relpath: str):
         raise HTTPException(status_code=404, detail="Workspace file not found") from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Workspace file not found")
-    return FileResponse(
-        path=path,
-        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
-    )
+    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    # Never render active document/script formats from the local sidecar origin.
+    if path.suffix.lower() in {".html", ".htm", ".svg", ".js", ".mjs", ".xml", ".xhtml", ".xsl"}:
+        headers["Content-Disposition"] = "attachment"
+    return FileResponse(path=path, headers=headers)
 
 @router.post("/{execution_id}/cancel")
 async def cancel_execution(execution_id: str):
