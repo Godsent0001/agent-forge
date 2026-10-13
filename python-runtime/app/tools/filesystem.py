@@ -62,6 +62,6 @@ class FileSystemTool(Tool):
             path = self._resolve(rel_path, root)
             if not path.is_dir():
                 raise ToolExecutionError("Directory not found in workspace")
-            return "\\n".join(sorted(p.name for p in path.iterdir()))
+            return "\n".join(sorted(p.name for p in path.iterdir()))
 
         raise ToolExecutionError("Input must start with 'read:', 'write:', or 'list:'")
