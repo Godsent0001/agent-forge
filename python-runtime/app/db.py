@@ -10,11 +10,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from alembic import command
+from app.infra.paths import data_dir
 
-DB_PATH = Path(os.environ.get(
-    "AGENTFORGE_DB_PATH",
-    Path(__file__).resolve().parent.parent / "agentforge.db",
-))
+DB_PATH = Path(os.environ.get("AGENTFORGE_DB_PATH", data_dir() / "db" / "agentforge.db")).expanduser().resolve()
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 engine = create_engine(

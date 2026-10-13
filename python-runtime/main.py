@@ -2,10 +2,22 @@
 AgentForge Python runtime entry point.
 """
 
+import runpy
+import sys
+
+# The frozen executable reuses this entry point to run one bounded Python snippet.
+# Handle the flag before importing the application, FastAPI, or the database.
+if len(sys.argv) >= 3 and sys.argv[1] == "--run-snippet":
+    runpy.run_path(sys.argv[2], run_name="__main__")
+    raise SystemExit(0)
+
+import asyncio
 import logging
 import os
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Thread
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -13,9 +25,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.db import init_db
+from app.infra.paths import data_dir
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.infra.file_security import file_response_headers
-from app.routers import agents, executions, executions_v2, projects, settings, tools
+from app.routers import agents, executions, executions_v2, projects, settings, tools, system
 from app.routers import catalog as catalog_router
 from app.services.executions import manager
 
@@ -25,7 +38,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agentforge")
 
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+OUTPUT_DIR = data_dir() / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
@@ -45,6 +58,7 @@ app.include_router(executions.router)
 app.include_router(executions_v2.router)
 app.include_router(catalog_router.router)
 app.include_router(settings.router)
+app.include_router(system.router)
 
 @app.get("/files/{relpath:path}", tags=["legacy-files"])
 def get_legacy_file(relpath: str):
@@ -83,37 +97,61 @@ def health() -> dict:
     return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "fake")}
 
 
+def _watch_parent_exit() -> None:
+    if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
+        return
+
+    def watch() -> None:
+        try:
+            sys.stdin.buffer.read()
+        finally:
+            # The Electron owner closed its pipe. Never leave a sidecar orphaned.
+            os._exit(0)
+
+    Thread(target=watch, name="parent-watchdog", daemon=True).start()
+
+
+def _requested_port() -> int:
+    raw = os.environ.get("PORT", "0")
+    try:
+        port = int(raw)
+    except ValueError:
+        return 0
+    return port if 0 <= port <= 65535 else 0
+
+
 def main() -> None:
-    import sys
-
     require_runtime_token()
-  
-    port = 0
-    if "PORT" in os.environ:
-        try:
-            port = int(os.environ["PORT"])
-        except ValueError:
-            port = 0
-    elif len(sys.argv) > 1:
-        try:
-            port = int(sys.argv[1])
-        except ValueError:
-            port = 0
+    _watch_parent_exit()
 
-    if port == 0:
-    # Default development port
-      port = 8000
+    # Reserve the loopback port before passing it to uvicorn. Electron starts with
+    # PORT=0 so competing app instances cannot collide on a fixed port.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("127.0.0.1", _requested_port()))
+        sock.listen()
+        port = int(sock.getsockname()[1])
+        os.environ["AGENTFORGE_PORT"] = str(port)
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", access_log=False)
+        server = uvicorn.Server(config)
 
-    # The outbound HTTP guard checks against this exact runtime port.
-    os.environ["AGENTFORGE_PORT"] = str(port)
+        async def serve() -> None:
+            task = asyncio.create_task(server.serve(sockets=[sock]))
+            while not server.started and not task.done():
+                await asyncio.sleep(0.01)
+            if server.started:
+                print(f"AGENTFORGE_READY:{port}", flush=True)
+                logger.info("AgentForge runtime is ready on loopback.")
+            try:
+                await task
+            finally:
+                sock.close()
 
-    # Announce ready port for parent Electron process
-    print(f"AGENTFORGE_READY:{port}", flush=True)
-    logger.info(f"AGENTFORGE_READY:{port}")
-
-    # Query-string tokens are used only for WebSocket/file URLs. Disable access logs so
-    # these URLs are never copied into stdout or Electron's forwarded runtime log.
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info", access_log=False)
+        asyncio.run(serve())
+    except BaseException:
+        sock.close()
+        raise
 
 
 if __name__ == "__main__":

@@ -11,15 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from app.contracts.tools import ArtifactRef
+from app.infra.paths import data_dir
 from app.tools.base import ToolExecutionError
 
 
-def data_dir() -> Path:
-    configured = os.environ.get("AGENTFORGE_DATA_DIR")
-    if configured:
-        return Path(configured).expanduser().resolve()
-    # Until the shared data-dir task lands, keep dev data under python-runtime.
-    return (Path(__file__).resolve().parents[2] / ".data").resolve()
 
 
 def safe_id(value: str) -> str:
