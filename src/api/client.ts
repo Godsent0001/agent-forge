@@ -173,36 +173,50 @@ export const api = {
      * Which providers have a stored key. Only a masked hint (last 4 characters) is returned,
      * so the full key never has to live in React state.
      */
+    /** Status only. The renderer never reads decrypted provider key material. */
     getKeyStatus: async (): Promise<Record<string, { saved: boolean; hint: string }>> => {
       const status: Record<string, { saved: boolean; hint: string }> = {};
+      if (typeof window !== "undefined" && window.electronAPI) {
+        for (const provider of providersNeedingKeys()) status[provider.keyId] = await keychain.status(provider.keyId);
+        return status;
+      }
+      let runtime: Record<string, boolean> = {};
+      try { runtime = await api.settings.runtimeKeyStatus(); } catch { /* runtime may not be running */ }
       for (const provider of providersNeedingKeys()) {
-        const value = await keychain.get(provider.keyId);
-        status[provider.keyId] = { saved: !!value, hint: value ? `••••${value.slice(-4)}` : "" };
+        const hint = await keychain.status(provider.keyId);
+        status[provider.keyId] = { saved: runtime[provider.keyId] === true || hint.saved, hint: hint.hint };
       }
       return status;
     },
-    /** Saves the given keys (by key slot) to the keychain, then pushes all stored keys to the runtime. */
+    /** Electron persists keys in main and sends them to the sidecar from main—not from React. */
     setKeys: async (keys: Record<string, string | undefined>) => {
-      for (const [slot, value] of Object.entries(keys)) {
-        if (value) await keychain.save(slot, value);
+      if (typeof window !== "undefined" && window.electronAPI) {
+        for (const [slot, value] of Object.entries(keys)) {
+          if (!value) continue;
+          const result = await keychain.save(slot, value.trim());
+          if (!result.ok && result.reason === "encryption-unavailable") throw new Error("ENCRYPTION_UNAVAILABLE");
+          if (!result.ok) throw new Error("KEY_STORAGE_FAILED");
+          if (result.applied === false) throw new Error("KEY_SAVED_NOT_APPLIED");
+        }
+        return;
       }
-      await api.settings.syncKeysToBackend();
+      const values = Object.fromEntries(Object.entries(keys).filter(([, value]) => Boolean(value)).map(([slot, value]) => [slot, value!.trim()]));
+      if (Object.keys(values).length === 0) return;
+      await request("/settings/keys", { method: "POST", body: JSON.stringify(values) });
+      for (const [slot, value] of Object.entries(values)) keychain.rememberDevKey(slot, value);
     },
     removeKey: async (slot: string) => {
-      await keychain.remove(slot);
-      // An explicit empty string clears the variable in the runtime process.
-      await request("/settings/keys", { method: "POST", body: JSON.stringify({ [slot]: "" }) });
-    },
-    /** Pushes every stored key to the runtime (called at startup, since the runtime keeps keys in memory only). */
-    syncKeysToBackend: async () => {
-      const stored: Record<string, string> = {};
-      for (const provider of providersNeedingKeys()) {
-        const value = await keychain.get(provider.keyId);
-        if (value) stored[provider.keyId] = value;
+      const result = await keychain.remove(slot);
+      if (!result.ok) throw new Error("KEY_STORAGE_FAILED");
+      if (typeof window !== "undefined" && window.electronAPI) {
+        if (result.applied === false) throw new Error("KEY_REMOVED_NOT_APPLIED");
+      } else {
+        await request("/settings/keys", { method: "POST", body: JSON.stringify({ [slot]: "" }) });
+        keychain.rememberDevKey(slot, "");
       }
-      if (Object.keys(stored).length === 0) return { status: "ok" };
-      return request("/settings/keys", { method: "POST", body: JSON.stringify(stored) });
     },
+    /** Only the Electron main process can read saved keys when restoring runtime state. */
+    syncKeysToBackend: () => keychain.syncToRuntime(),
     /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
   },

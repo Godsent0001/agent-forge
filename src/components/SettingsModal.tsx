@@ -41,9 +41,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       await api.settings.setKeys(Object.fromEntries(pending.map(([slot, value]) => [slot, value.trim()])));
       setDrafts({});
       await refresh();
-      setStatus({ tone: "ok", text: "Keys saved and applied." });
-    } catch {
-      setStatus({ tone: "error", text: "Could not save keys. Check that the runtime is running and try again." });
+      setStatus({ tone: "ok", text: "Keys saved securely and applied to the runtime." });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      if (message === "ENCRYPTION_UNAVAILABLE") {
+        setStatus({ tone: "error", text: "Secure key storage is unavailable. Keys were not saved. Configure a system keyring or explicitly opt into plaintext storage with AGENTFORGE_ALLOW_PLAINTEXT_KEYS=1." });
+      } else if (message === "KEY_SAVED_NOT_APPLIED") {
+        setStatus({ tone: "error", text: "Key was saved securely, but the runtime could not apply it. It will be retried at startup." });
+        setSaved(await api.settings.getKeyStatus());
+      } else {
+        setStatus({ tone: "error", text: "Could not save or apply keys. Check the local runtime and try again." });
+      }
     } finally {
       setIsBusy(false);
     }
@@ -56,8 +64,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       await api.settings.removeKey(slot);
       await refresh();
       setStatus({ tone: "ok", text: `${label} key removed.` });
-    } catch {
-      setStatus({ tone: "error", text: `Could not remove the ${label} key.` });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      setStatus({ tone: "error", text: message === "KEY_REMOVED_NOT_APPLIED"
+        ? `${label} key was removed from local storage, but the runtime has not received the change yet.`
+        : `Could not remove the ${label} key.` });
     } finally {
       setIsBusy(false);
     }
