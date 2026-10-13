@@ -29,6 +29,7 @@ from app.infra.file_security import file_response_headers
 from app.infra.paths import data_dir
 from app.routers import (
     agents,
+    attachments as attachments_router,
     executions,
     executions_v2,
     projects,
@@ -52,6 +53,8 @@ logger = logging.getLogger("agentforge")
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database...")
     init_db()
+    from app.infra.attachment_storage import cleanup_stale_upload_parts
+    cleanup_stale_upload_parts()
     interrupted = manager.mark_running_interrupted()
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
@@ -59,6 +62,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
+app.include_router(attachments_router.router)
 app.include_router(agents.router)
 app.include_router(tools.router)
 app.include_router(executions.router)

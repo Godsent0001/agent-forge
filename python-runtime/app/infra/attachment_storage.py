@@ -337,3 +337,37 @@ def content_disposition(filename: str) -> str:
     safe = safe_original_name(filename)
     fallback = re.sub(r"[^A-Za-z0-9._-]", "_", safe) or "attachment"
     return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(safe, safe="")}'
+
+
+def copy_clean_attachment_to_workspace(attachment, workspace) -> str:
+    """Verify blob integrity and copy it to a new, run-private workspace-relative path."""
+    source = resolve_blob(attachment.storage_key, clean=True)
+    if source.stat().st_size != attachment.size_bytes:
+        raise AttachmentStorageError("Stored attachment size changed after scanning")
+    extension = PurePosixPath(attachment.original_name.replace("\\\\", "/")).suffix.lower()
+    if extension not in ALLOWED_MIME_BY_EXTENSION:
+        raise AttachmentStorageError("Stored attachment has an unsupported extension")
+    destination = workspace.new_path(f"attachments/{uuid4().hex}{extension}")
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        with source.open("rb") as incoming, destination.open("xb") as outgoing:
+            while True:
+                chunk = incoming.read(CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                digest.update(chunk)
+                outgoing.write(chunk)
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+        if total != attachment.size_bytes or digest.hexdigest() != attachment.sha256:
+            raise AttachmentStorageError("Stored attachment failed integrity verification")
+        return workspace.relative(destination)
+    except BaseException:
+        try:
+            if destination.is_file() and not destination.is_symlink():
+                destination.unlink()
+        except OSError:
+            pass
+        raise

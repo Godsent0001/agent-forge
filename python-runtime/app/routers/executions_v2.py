@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 from typing import Literal
+import shutil
+from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app import models
 from app.contracts.run import RunOptions, RunRequest
 from app.db import SessionLocal
+from app.deps import get_db
+from app.infra.attachment_storage import (
+    MAX_RUN_ATTACHMENT_BYTES,
+    MAX_RUN_ATTACHMENTS,
+    AttachmentStorageError,
+    copy_clean_attachment_to_workspace,
+)
 from app.infra.approvals import resolve_approval
 from app.infra.file_security import file_response_headers
 from app.infra.workspace import RunWorkspace
@@ -26,6 +36,7 @@ class CreateExecutionRequest(BaseModel):
     task: str
     history: list[dict] = Field(default_factory=list)
     options: RunOptions = Field(default_factory=RunOptions)
+    attachment_ids: list[str] = Field(default_factory=list, max_length=MAX_RUN_ATTACHMENTS)
 
 
 class ResolveApprovalRequest(BaseModel):
@@ -45,20 +56,69 @@ def _execution_detail(row: models.Execution) -> dict:
 
 
 @router.post("")
-async def create_execution(payload: CreateExecutionRequest):
+async def create_execution(payload: CreateExecutionRequest, db: Session = Depends(get_db)):
     execution_id = str(uuid4())
+    workspace: RunWorkspace | None = None
     try:
+        attachment_refs = []
+        if payload.attachment_ids:
+            if len(set(payload.attachment_ids)) != len(payload.attachment_ids):
+                raise HTTPException(status_code=422, detail="Duplicate attachment IDs are not allowed")
+            project = db.get(models.Project, payload.project_id)
+            if project is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+            rows = (
+                db.query(models.ProjectAttachment)
+                .filter(
+                    models.ProjectAttachment.project_id == payload.project_id,
+                    models.ProjectAttachment.id.in_(payload.attachment_ids),
+                )
+                .all()
+            )
+            if len(rows) != len(payload.attachment_ids):
+                # Unknown IDs and IDs from another project are deliberately indistinguishable.
+                raise HTTPException(status_code=404, detail="Attachment not found in this project")
+            if any(row.status != "clean" for row in rows):
+                raise HTTPException(status_code=409, detail="Only clean, scanned attachments can be used in a run")
+            if sum(row.size_bytes for row in rows) > MAX_RUN_ATTACHMENT_BYTES:
+                raise HTTPException(status_code=413, detail="Run attachments exceed the 100 MiB combined limit")
+
+            by_id = {row.id: row for row in rows}
+            workspace = RunWorkspace(execution_id)
+            for attachment_id in payload.attachment_ids:
+                row = by_id[attachment_id]
+                try:
+                    relative_path = copy_clean_attachment_to_workspace(row, workspace)
+                except (AttachmentStorageError, OSError) as exc:
+                    raise HTTPException(status_code=409, detail="Attachment failed integrity verification") from exc
+                attachment_refs.append({
+                    "path": relative_path,
+                    "mime": row.detected_mime,
+                    "name": row.original_name,
+                })
+
         req = RunRequest(
             execution_id=execution_id,
             project_id=payload.project_id,
             root_agent_id=payload.root_agent_id,
             task=payload.task,
             history=payload.history,
+            attachments=attachment_refs,
             options=payload.options,
         )
         return manager.start(req)
+    except HTTPException:
+        if workspace is not None:
+            shutil.rmtree(workspace.root, ignore_errors=True)
+        raise
     except ValueError as exc:
+        if workspace is not None:
+            shutil.rmtree(workspace.root, ignore_errors=True)
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        if workspace is not None:
+            shutil.rmtree(workspace.root, ignore_errors=True)
+        raise
 
 
 @router.get("")
