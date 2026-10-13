@@ -34,8 +34,14 @@ function ensurePortInitialized(): Promise<void> {
           throw new Error("Could not connect to Python backend: " + (err as Error).message);
         }
       } else {
-        // Standalone browser development / AI Studio web environment
-        currentApiBase = typeof window !== "undefined" && window.location.origin ? window.location.origin : "http://127.0.0.1:3000";
+        // Electron supplies a dynamic port. Browser-only local dev must name its API base
+        // explicitly (or use the default development sidecar port); hosted same-origin
+        // deployments can continue to use their own origin.
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const isViteDevOrigin = origin === "http://localhost:5173" || origin === "http://127.0.0.1:5173";
+        currentApiBase = import.meta.env.VITE_API_BASE || (
+          isViteDevOrigin ? "http://127.0.0.1:8000" : origin || "http://127.0.0.1:8000"
+        );
       }
     })();
   }
