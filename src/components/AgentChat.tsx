@@ -39,7 +39,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const setChatMessages = useStore((s) => s.setChatMessages);
   const agentCount = useStore((s) => s.agents.length);
   const createAgent = useStore((s) => s.createAgent);
-  const clearChat = useStore((s) => s.clearChat);
   const pendingTask = useStore((s) => s.pendingTask);
   const consumePendingTask = useStore((s) => s.consumePendingTask);
 
