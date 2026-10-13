@@ -1,7 +1,15 @@
 import { keychain } from "./keychain";
 import { providersNeedingKeys } from "../config/providers";
 import type { ChatMessage as RunChatMessage } from "../contracts";
-import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../types";
+import type {
+  Agent,
+  CatalogShelf,
+  CatalogToolEntry,
+  ConversationMessageRecord,
+  ConversationSummary,
+  Project,
+  Tool,
+} from "../types";
 
 let currentApiBase = "http://127.0.0.1:8000";
 let portInitPromise: Promise<void> | null = null;
@@ -145,6 +153,37 @@ export const api = {
     create: (payload: Partial<Tool> & { project_id: string; name: string; kind: string }) =>
       request<Tool>("/tools", { method: "POST", body: JSON.stringify(payload) }),
     remove: (id: string) => request<{ deleted: string }>(`/tools/${id}`, { method: "DELETE" }),
+  },
+  conversations: {
+    list: (projectId: string, agentId?: string, limit = 50) => {
+      const params = new URLSearchParams({ project_id: projectId, limit: String(limit) });
+      if (agentId) params.set("agent_id", agentId);
+      return request<ConversationSummary[]>(`/v2/conversations?${params.toString()}`);
+    },
+    create: (projectId: string, agentId: string, title = "New conversation") =>
+      request<ConversationSummary>("/v2/conversations", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, agent_id: agentId, title }),
+      }),
+    remove: (conversationId: string) =>
+      request<{ deleted: boolean }>(`/v2/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" }),
+    messages: (conversationId: string) =>
+      request<ConversationMessageRecord[]>(
+        `/v2/conversations/${encodeURIComponent(conversationId)}/messages`,
+      ),
+    appendMessage: (
+      conversationId: string,
+      payload: { role: "user" | "assistant"; content: string; execution_id?: string },
+    ) =>
+      request<ConversationMessageRecord>(
+        `/v2/conversations/${encodeURIComponent(conversationId)}/messages`,
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    feedback: (messageId: string, value: -1 | 1, note?: string) =>
+      request<{ ok: boolean; value: -1 | 1 }>(
+        `/v2/messages/${encodeURIComponent(messageId)}/feedback`,
+        { method: "PUT", body: JSON.stringify({ value, note }) },
+      ),
   },
   executions: {
     run: (project_id: string, root_agent_id: string, task: string, history: RunChatMessage[] = []) =>

@@ -17,6 +17,25 @@ export interface Tool {
   config: Record<string, unknown>;
 }
 
+export interface ConversationSummary {
+  id: string;
+  project_id: string;
+  agent_id: string;
+  title: string;
+  created_at: string;
+}
+
+export interface ConversationMessageRecord {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  execution_id: string | null;
+  created_at: string;
+  feedback_value: -1 | 1 | null;
+  feedback_note: string | null;
+}
+
 export type ChatMessage =
   | {
       id: string;
@@ -32,6 +51,10 @@ export type ChatMessage =
       timestamp: string;
       /** The run that produced this reply, so its trace/log can be reopened later. */
       executionId?: string;
+      /** Persisted conversation message id, used for feedback actions. */
+      messageRecordId?: string;
+      feedbackValue?: -1 | 1 | null;
+      feedbackNote?: string | null;
       executionStatus?: "completed" | "error" | "cancelled" | "budget_exceeded" | "interrupted";
       usage?: {
         inputTokens: number;
