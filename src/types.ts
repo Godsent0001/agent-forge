@@ -106,6 +106,7 @@ export interface CatalogToolEntry {
   description: string;
   status: CatalogStatus;
   shelf?: string;
+  pack?: string | null;
 }
 
 export interface CatalogShelf {
