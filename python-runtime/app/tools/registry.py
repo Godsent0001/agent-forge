@@ -13,6 +13,7 @@ descriptions shown in the picker UI).
 from __future__ import annotations
 
 from app.contracts.graph import ToolBinding
+from app.infra.workspace import data_dir
 from app.contracts.tools import Tool as V2Tool
 from app.tools.adapter import LegacyToolAdapter
 from app.tools.asset_cache import (
@@ -177,5 +178,28 @@ class DefaultToolFactory:
         native = NATIVE_TOOLS.get(binding.kind)
         if native is not None:
             return native()
-        legacy = build_tool(binding.kind, binding.config or {})
+
+        # Never let a persisted Tool.config choose arbitrary host directories.
+        # Legacy execution still uses build_tool() unchanged; v2 uses fixed data roots.
+        root = data_dir()
+        safe_roots = {
+            "file_system": {"root_dir": str(root / "files")},
+            "voice_generator": {"voices_dir": str(root / "assets" / "voices")},
+            "character_asset_manager": {"characters_dir": str(root / "assets" / "characters")},
+            "scene_template_manager": {"templates_dir": str(root / "assets" / "scene_templates")},
+            "visual_asset_manager": {"assets_dir": str(root / "assets" / "visuals")},
+            "render_queue": {"queue_path": str(root / "queues" / "render_queue.json")},
+            "cache_engine": {"cache_dir": str(root / "cache")},
+            "project_manager": {"projects_root": str(root / "projects")},
+            "asset_cache_store": {"store_dir": str(root / "assets" / "shared")},
+            "production_config": {"config_path": str(root / "production_config.json")},
+        }
+        config = dict(binding.config or {})
+        for key in (
+            "root_dir", "voices_dir", "characters_dir", "templates_dir", "assets_dir",
+            "queue_path", "cache_dir", "projects_root", "store_dir", "config_path",
+        ):
+            config.pop(key, None)
+        config.update(safe_roots.get(binding.kind, {}))
+        legacy = build_tool(binding.kind, config)
         return LegacyToolAdapter(legacy, binding)
