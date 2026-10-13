@@ -487,7 +487,7 @@ jobs:
 - [x] The documented public/internal attachment boundary agrees with current C-1/C-8 shapes without pretending the upload API exists.
 - [ ] Both owners have reviewed and accepted the contract.
 
-**Scope note:** this card's M2 work is the reviewed contract and security boundary; it does not imply upload routes, attachment DB records, malware scanning, or upload UI are implemented. The implementation checkboxes above remain a gate for a later upload task.
+**Scope note:** this card's M2 work is the documented, engineering-reconciled contract and security boundary; second-owner review remains a gate before implementation. It does not imply upload routes, attachment DB records, malware scanning, or upload UI are implemented. The implementation checkboxes above remain a gate for a later upload task.
 
 ---
 
