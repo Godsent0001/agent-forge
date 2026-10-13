@@ -105,3 +105,35 @@ def test_unknown_artifact_update_is_reported(tmp_path):
             b"x",
             ArtifactUpdate(expected_version=1, change_summary="not found"),
         )
+
+
+def test_registry_and_blob_survive_store_reopen(tmp_path):
+    root = tmp_path / "workspace"
+    first_store = SQLiteArtifactStore(root)
+    created = first_store.create(spec(), b"durable bytes")
+    reopened = SQLiteArtifactStore(root)
+    assert reopened.get(created.artifact_id).sha256 == created.sha256
+    assert reopened.read(created.artifact_id).content == b"durable bytes"
+
+
+def test_concurrent_writers_cannot_overwrite_the_same_version(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    store = SQLiteArtifactStore(tmp_path)
+    record = store.create(spec(), b"base")
+
+    def update(payload):
+        try:
+            return store.update(
+                record.artifact_id,
+                payload,
+                ArtifactUpdate(expected_version=1, change_summary="Concurrent edit"),
+            ).version
+        except ArtifactVersionConflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(update, [b"writer one", b"writer two"]))
+
+    assert sorted(str(outcome) for outcome in outcomes) == ["2", "conflict"]
+    assert len(store.history(record.artifact_id)) == 2
