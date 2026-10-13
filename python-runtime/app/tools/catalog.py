@@ -32,6 +32,7 @@ class CatalogEntry:
     shelf: str
     description: str
     status: str  # "real" | "stub"
+    pack: str | None = "video"
 
 
 SHELVES: dict[str, str] = {
