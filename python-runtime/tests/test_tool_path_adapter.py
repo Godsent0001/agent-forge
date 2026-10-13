@@ -140,3 +140,22 @@ def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, kind, pay
 def test_path_taking_tool_outputs_reject_traversal(context, kind, key):
     with pytest.raises(ToolError):
         _normalize_payload(kind, json.dumps({key: "../../outside.bin"}), context)
+
+
+@pytest.mark.parametrize(("kind", "key"), [
+    ("character_asset_manager", "character_id"),
+    ("character_rig", "character_id"),
+    ("project_manager", "episode_id"),
+    ("render_worker", "job_id"),
+    ("scene_template_manager", "template_id"),
+    ("voice_generator", "voice"),
+])
+def test_identifiers_are_rejected_before_becoming_paths(context, kind, key):
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps({key: "../escape"}), context)
+
+
+@pytest.mark.parametrize("name", ["../secret.svg", "nested/secret.svg", "nested\\\\secret.svg", "bad\\x00name.svg"])
+def test_visual_asset_names_must_be_safe_filenames(context, name):
+    with pytest.raises(ToolError):
+        _normalize_payload("visual_asset_manager", json.dumps({"action": "info", "name": name}), context)
