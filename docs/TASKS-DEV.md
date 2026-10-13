@@ -340,10 +340,10 @@ jobs:
 **Files:** new `app/infra/workspace.py`; edit `app/tools/{audio,character,composition,graphics,qc,rendering,scene,asset_cache,filesystem,catalog}.py`, `app/routers/catalog.py`, `src/components/{ArtifactCard,ArtifactViewer,ToolCatalogModal}.tsx`
 
 **Steps**
-- [ ] 1. Implement `RunWorkspace` (C-3) in `infra/workspace.py`. `root = <data_dir>/runs/<execution_id>/` (until D-17: `python-runtime/.data/runs/...`). `resolve(rel)` rejects empty strings, absolute paths, drive letters and any `..` segment, then checks `(root / rel).resolve().is_relative_to(root.resolve())` (this also blocks symlink escapes). `new_path(name)` sanitizes the name, makes it unique (`name`, `name_2`...) and creates parent folders. Add `safe_id(value)` that only accepts `^[A-Za-z0-9_-]{1,64}$`. All failures raise `ToolError`.
-- [ ] 2. Add a second, read-only root for reusable project files (voices, characters, fonts, templates): `workspace.asset(rel)` resolves under `<data_dir>/assets` with the same rules.
-- [ ] 3. Tool helpers: `out_path(ctx, params, key, default_name)` for outputs and `in_path(ctx, params, key)` for inputs. Both go through the workspace. Tools return **relative** paths in their JSON so the model passes them on unchanged.
-- [ ] 4. Migrate every tool that takes a path or id (replace raw `Path(params[...])`):
+- [x] 1. Implement `RunWorkspace` (C-3) in `infra/workspace.py`. `root = <data_dir>/runs/<execution_id>/` (until D-17: `python-runtime/.data/runs/...`). `resolve(rel)` rejects empty strings, absolute paths, drive letters and any `..` segment, then checks `(root / rel).resolve().is_relative_to(root.resolve())` (this also blocks symlink escapes). `new_path(name)` sanitizes the name, makes it unique (`name`, `name_2`...) and creates parent folders. Add `safe_id(value)` that only accepts `^[A-Za-z0-9_-]{1,64}$`. All failures raise `ToolError`.
+- [x] 2. Add a second, read-only root for reusable project files (voices, characters, fonts, templates): `workspace.asset(rel)` resolves under `<data_dir>/assets` with the same rules.
+- [x] 3. Tool helpers: `out_path(ctx, params, key, default_name)` for outputs and `in_path(ctx, params, key)` for inputs. Both go through the workspace. Tools return **relative** paths in their JSON so the model passes them on unchanged.
+- [x] 4. Migrate every tool that takes a path or id (replace raw `Path(params[...])`):
   - `audio.py`: voice_generator (`output_path`), audio_processing (`audio_path`, `output_path`), audio_alignment (`audio_path`), audio_mixer (`voice_path`, `music_path`, `output_path`)
   - `character.py`: character_rig (`output_image_path`, `output_video_path`, `audio_path`), character_asset_manager (`character_id` via `safe_id`, assets root)
   - `composition.py`: composition_engine (`layers[].image_path`, `output_path`), effects_engine (`input_path`, `output_path`)
@@ -353,16 +353,16 @@ jobs:
   - `scene.py`: scene_template_manager (`template_id` via `safe_id`, templates under assets)
   - `asset_cache.py`: project_manager (`episode_id` via `safe_id`), asset_cache_store (`src_path` must be in the workspace, `category` and `name` via `safe_id`), production_config (fixed path under the data dir)
   - `filesystem.py`: root becomes `<workspace>/files`
-- [ ] 5. Legacy fallback: the old engine passes no workspace. Add `workspace_from(context)` that returns `context.workspace` if present, else a default `./output` workspace (3 lines). Remove it in S-04.
-- [ ] 6. File serving: new route `GET /v2/executions/{id}/files/{relpath:path}` (C-8) that returns `FileResponse` after `workspace.resolve`. `ArtifactCard` builds URLs from the execution id, the relative path and the API base (plus `?token=` once D-10 lands).
-- [ ] 7. Video pack switch: add `pack: str` to `CatalogEntry` (`"video"` for all 45). `/catalog/shelves?pack=video` filters. Settings gets "Enable video pack" (default off, saved in localStorage). `ToolCatalogModal` shows no video shelves unless it is on. Fix catalog text that is wrong today: `character_rig` is no longer a stub, `audio_mixer` has no ducking yet, `caption_engine` is SRT only.
-- [ ] 8. Tests, parametrized over every path-taking tool: `../../x`, `/etc/x`, `C:\x`, and a symlink inside the workspace pointing outside must all raise `ToolError` and write nothing outside the root.
+- [x] 5. Legacy fallback: the old engine passes no workspace. Add `workspace_from(context)` that returns `context.workspace` if present, else a default `./output` workspace (3 lines). Remove it in S-04.
+- [x] 6. File serving: new route `GET /v2/executions/{id}/files/{relpath:path}` (C-8) that returns `FileResponse` after `workspace.resolve`. `ArtifactCard` builds URLs from the execution id, the relative path and the API base (plus `?token=` once D-10 lands).
+- [x] 7. Video pack switch: add `pack: str` to `CatalogEntry` (`"video"` for all 45). `/catalog/shelves?pack=video` filters. Settings gets "Enable video pack" (default off, saved in localStorage). `ToolCatalogModal` shows no video shelves unless it is on. Fix catalog text that is wrong today: `character_rig` is no longer a stub, `audio_mixer` has no ducking yet, `caption_engine` is SRT only.
+- [x] 8. Tests, parametrized over every path-taking tool: `../../x`, `/etc/x`, `C:\x`, and a symlink inside the workspace pointing outside must all raise `ToolError` and write nothing outside the root.
 
 **Done when**
-- [ ] The tests above pass for every tool in step 4.
-- [ ] `grep -rn "Path(params" python-runtime/app/tools` finds nothing outside the helpers.
-- [ ] An image produced by a tool shows up in chat through the new file route.
-- [ ] With the video pack off, the catalog modal shows no video shelves.
+- [x] The tests above pass for every tool in step 4.
+- [x] `grep -rn "Path(params" python-runtime/app/tools` finds nothing outside the helpers.
+- [x] An image produced by a tool shows up in chat through the new file route.
+- [x] With the video pack off, the catalog modal shows no video shelves.
 
 **Watch out:** ffmpeg and PIL get absolute paths *after* resolution, which is fine. Never accept an absolute path from the model.
 
@@ -377,17 +377,17 @@ jobs:
 **Files:** `electron/main.js`, `electron/preload.cjs`, `src/electron.d.ts`, `src/api/client.ts`, `python-runtime/main.py`, new `app/infra/auth.py`
 
 **Steps**
-- [ ] 1. `main.js`: at startup `const token = crypto.randomBytes(32).toString("hex")`. Pass it to the sidecar as env `AGENTFORGE_TOKEN`. Add `ipcMain.handle("get-api-token", () => token)`, expose `getApiToken` in `preload.cjs` and `electron.d.ts`.
-- [ ] 2. `infra/auth.py`: `require_token(request)` reads `Authorization: Bearer ...` and compares with `secrets.compare_digest`. The `?token=` query parameter is accepted **only** on the WebSocket and the file route. If `AGENTFORGE_TOKEN` is not set, refuse to start unless `AGENTFORGE_DEV=1` (then the token is `dev`).
-- [ ] 3. `main.py`: add `dependencies=[Depends(require_token)]` to every router; `/health` stays open. For the WebSocket, check `token` before `accept()` and reject otherwise. Replace the unauthenticated `StaticFiles` mount at `/files` with a token-protected route (legacy artifacts only, removed in S-04).
-- [ ] 4. CORS: replace `allow_origins=["*"]` with `["http://localhost:5173", "null"]` (`null` is the Origin of `file://` pages in the packaged app) and `allow_headers=["Authorization", "Content-Type"]`.
-- [ ] 5. `client.ts`: fetch the token once via `window.electronAPI.getApiToken()` (browser-only dev: `import.meta.env.VITE_DEV_TOKEN`) and add the header to every request. WebSocket URLs get `&token=`.
-- [ ] 6. README dev flow: `AGENTFORGE_DEV=1 uv run python main.py` plus `VITE_DEV_TOKEN=dev` in `.env.local`.
-- [ ] 7. Tests: no token gives 401, wrong token 401, correct token 200, WebSocket without token is rejected, `/health` is open, and a CORS preflight from `https://example.com` returns no allow-origin header.
+- [x] 1. `main.js`: at startup `const token = crypto.randomBytes(32).toString("hex")`. Pass it to the sidecar as env `AGENTFORGE_TOKEN`. Add `ipcMain.handle("get-api-token", () => token)`, expose `getApiToken` in `preload.cjs` and `electron.d.ts`.
+- [x] 2. `infra/auth.py`: `require_token(request)` reads `Authorization: Bearer ...` and compares with `secrets.compare_digest`. The `?token=` query parameter is accepted **only** on the WebSocket and the file route. If `AGENTFORGE_TOKEN` is not set, refuse to start unless `AGENTFORGE_DEV=1` (then the token is `dev`).
+- [x] 3. `main.py`: add `dependencies=[Depends(require_token)]` to every router; `/health` stays open. For the WebSocket, check `token` before `accept()` and reject otherwise. Replace the unauthenticated `StaticFiles` mount at `/files` with a token-protected route (legacy artifacts only, removed in S-04).
+- [x] 4. CORS: replace `allow_origins=["*"]` with `["http://localhost:5173", "null"]` (`null` is the Origin of `file://` pages in the packaged app) and `allow_headers=["Authorization", "Content-Type"]`.
+- [x] 5. `client.ts`: fetch the token once via `window.electronAPI.getApiToken()` (browser-only dev: `import.meta.env.VITE_DEV_TOKEN`) and add the header to every request. WebSocket URLs get `&token=`.
+- [x] 6. README dev flow: `AGENTFORGE_DEV=1 uv run python main.py` plus `VITE_DEV_TOKEN=dev` in `.env.local`.
+- [x] 7. Tests: no token gives 401, wrong token 401, correct token 200, WebSocket without token is rejected, `/health` is open, and a CORS preflight from `https://example.com` returns no allow-origin header.
 
 **Done when**
-- [ ] From the DevTools console of any other website, `fetch("http://127.0.0.1:8000/v2/executions")` fails.
-- [ ] The app works normally and all tests pass.
+- [x] From the DevTools console of any other website, `fetch("http://127.0.0.1:8000/v2/executions")` fails.
+- [x] The app works normally and all tests pass.
 
 **Watch out:** `<img>` and `<audio>` cannot send headers, which is why the file route accepts `?token=`. Never log URLs that contain the token.
 
@@ -425,18 +425,18 @@ jobs:
 **Files:** new `app/infra/approvals.py`, `app/routers/executions_v2.py`, new `src/components/run/ApprovalDialog.tsx`, new `src/components/ProjectSettings.tsx`
 
 **Steps**
-- [ ] 1. `ApprovalGate` implements the protocol in C-5. `check(...)` looks up the policy for the tool kind in `project.settings["tool_policy"]` (`allow` / `ask` / `deny`). Defaults: `python` ask, `http_request` ask, `web_search` allow, `file_system` allow (workspace only), everything else allow. `deny` returns `False` at once. `ask` (or `force=True`) creates an `approval_id`, emits `approval_requested`, waits on an `asyncio.Future` stored in `PENDING[approval_id]` (timeout from Q6, default 5 minutes), then emits `approval_resolved`. A timeout counts as deny. "allow_run" remembers `(execution_id, tool)`.
-- [ ] 2. If the run is cancelled while waiting, resolve the future with deny and clean up.
-- [ ] 3. Route `POST /v2/executions/{id}/approvals/{approval_id}` with `{decision}` sets the future's result. 404 if unknown or expired.
-- [ ] 4. `ApprovalDialog`: opens for any `approval_requested` event without a matching `approval_resolved`. Shows tool name, permissions, pretty-printed args and the reason. Buttons: Allow once, Allow for this run, Deny. It replaces the banner from D-06.
-- [ ] 5. `ProjectSettings` (TopBar project menu): parallel tools toggle (this finally wires up `updateProjectSettings`), budget fields (max cost USD, max LLM calls, max seconds) and a tool policy table (Ask / Allow / Deny per tool kind), saved in `Project.settings`. New run requests use these as defaults for `RunOptions`.
-- [ ] 6. Tests with the FakeRunner `approval_python` scenario: approve continues the run, deny ends that tool call with an error saying it was denied, timeout counts as deny.
+- [x] 1. `ApprovalGate` implements the protocol in C-5. `check(...)` looks up the policy for the tool kind in `project.settings["tool_policy"]` (`allow` / `ask` / `deny`). Defaults: `python` ask, `http_request` ask, `web_search` allow, `file_system` allow (workspace only). Shared persistent-state mutators (scene templates, render queue, project scaffolds, shared-asset cache, production config and cache writes) default to ask unless the project explicitly changes the policy. `deny` returns `False` at once. `ask` (or `force=True`) creates an `approval_id`, emits `approval_requested`, waits on an `asyncio.Future` stored in `PENDING[approval_id]` (timeout from Q6, default 5 minutes), then emits `approval_resolved`. A timeout counts as deny. "allow_run" remembers `(execution_id, tool)`.
+- [x] 2. If the run is cancelled while waiting, resolve the future with deny and clean up.
+- [x] 3. Route `POST /v2/executions/{id}/approvals/{approval_id}` with `{decision}` sets the future's result. 404 if unknown or expired.
+- [x] 4. `ApprovalDialog`: opens for any `approval_requested` event without a matching `approval_resolved`. Shows tool name, permissions, pretty-printed args and the reason. Buttons: Allow once, Allow for this run, Deny. It replaces the banner from D-06.
+- [x] 5. `ProjectSettings` (TopBar project menu): parallel tools toggle (this finally wires up `updateProjectSettings`), budget fields (max cost USD, max LLM calls, max seconds) and a tool policy table (Ask / Allow / Deny per tool kind), saved in `Project.settings`. New run requests use these as defaults for `RunOptions`.
+- [x] 6. Tests with the FakeRunner `approval_python` scenario: approve continues the run, deny ends that tool call with an error saying it was denied, timeout counts as deny.
 
 **Done when**
-- [ ] A `python` call pauses until you decide.
-- [ ] Deny returns a tool error to the model and the run continues.
-- [ ] Cancelling while the dialog is open ends cleanly.
-- [ ] The project settings panel changes the next run's behavior.
+- [x] A `python` call pauses until you decide.
+- [x] Deny returns a tool error to the model and the run continues.
+- [x] Cancelling while the dialog is open ends cleanly.
+- [x] The project settings panel changes the next run's behavior.
 
 **Watch out:** the gate waits only on futures. Never block the event loop.
 
@@ -449,12 +449,12 @@ jobs:
 **Files:** `app/tools/python_exec.py`, `app/tools/http_request.py`, new `app/infra/ssrf.py`
 
 **Steps**
-- [ ] 1. Python tool: strip Markdown fences (` ```python ... ``` `) from the input; cap stdout and stderr at 10,000 characters each (append `…[truncated]`).
-- [ ] 2. Windows: build the subprocess env with `SYSTEMROOT`, `TEMP`, `TMP` and a minimal `PATH` (Python will not start without `SYSTEMROOT`), skip `preexec_fn`, use `creationflags=subprocess.CREATE_NO_WINDOW`. macOS: wrap each `resource.setrlimit` call in try/except (`RLIMIT_AS` is unreliable there), keep `RLIMIT_CPU`.
-- [ ] 3. Frozen builds: if `getattr(sys, "frozen", False)`, run `[sys.executable, "--run-snippet", script_path]` (the flag is implemented in D-19). Fix the docstring: say what is limited (CPU, memory, wall clock, environment) and what is **not** (file reads, network). Permission `{"subprocess"}`, default policy `ask` (D-12).
-- [ ] 4. `infra/ssrf.py`: `assert_public_url(url)`. Allow only `http`/`https`. Resolve the host with `socket.getaddrinfo` and reject any address that is loopback, private, link-local, multicast, reserved or unspecified (`ipaddress` module), and the app's own port.
-- [ ] 5. `http_request.py`: `follow_redirects=False`; follow up to 5 redirects manually and run `assert_public_url` on every hop. Use `client.stream` and stop reading at 1 MB (return `truncated: true`). A-11's `web_fetch` reuses this helper.
-- [ ] 6. Tests: refused: `http://127.0.0.1:8000/health`, `http://localhost`, `http://169.254.169.254/`, `http://10.0.0.1/`, `http://[::1]/`, and a redirect from a local test server to `127.0.0.1`. Allowed: a public URL (mock transport). Python: fences stripped, output capped, timeout works, the environment contains no API keys.
+- [x] 1. Python tool: strip Markdown fences (` ```python ... ``` `) from the input; cap stdout and stderr at 10,000 characters each (append `…[truncated]`).
+- [x] 2. Windows: build the subprocess env with `SYSTEMROOT`, `TEMP`, `TMP` and a minimal `PATH` (Python will not start without `SYSTEMROOT`), skip `preexec_fn`, use `creationflags=subprocess.CREATE_NO_WINDOW`. macOS: wrap each `resource.setrlimit` call in try/except (`RLIMIT_AS` is unreliable there), keep `RLIMIT_CPU`.
+- [x] 3. Frozen builds: if `getattr(sys, "frozen", False)`, run `[sys.executable, "--run-snippet", script_path]` (the flag is implemented in D-19). Fix the docstring: say what is limited (CPU, memory, wall clock, environment) and what is **not** (file reads, network). Permission `{"subprocess"}`, default policy `ask` (D-12).
+- [x] 4. `infra/ssrf.py`: `assert_public_url(url)`. Allow only `http`/`https`. Resolve the host with `socket.getaddrinfo` and reject any address that is loopback, private, link-local, multicast, reserved or unspecified (`ipaddress` module), and the app's own port.
+- [x] 5. `http_request.py`: `follow_redirects=False`; follow up to 5 redirects manually and run `assert_public_url` on every hop. Use `client.stream` and stop reading at 1 MB (return `truncated: true`). A-11's `web_fetch` reuses this helper.
+- [x] 6. Tests: refused: `http://127.0.0.1:8000/health`, `http://localhost`, `http://169.254.169.254/`, `http://10.0.0.1/`, `http://[::1]/`, and a redirect from a local test server to `127.0.0.1`. Allowed: a public URL (mock transport). Python: fences stripped, output capped, timeout works, the environment contains no API keys.
 
 **Done when:** all tests pass and `http_request` to the app's own API is refused.
 
