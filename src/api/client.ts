@@ -94,6 +94,25 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function requestAttachmentBlob(path: string): Promise<Blob> {
+  await ensurePortInitialized();
+  const token = await getApiToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", "Bearer " + token);
+  const response = await fetch(`${currentApiBase}${path}`, { headers });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(body) as { detail?: unknown };
+      if (typeof parsed.detail === "string") throw new Error(parsed.detail);
+    } catch (error) {
+      if (error instanceof Error && error.message !== body) throw error;
+    }
+    throw new Error(`GET ${path} failed: ${response.status} ${body}`);
+  }
+  return response.blob();
+}
+
 export interface ExecutionResult {
   id: string;
   project_id?: string;
@@ -164,6 +183,49 @@ export const api = {
       request<Project>("/projects", { method: "POST", body: JSON.stringify({ name, parallel_execution }) }),
     update: (id: string, patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) =>
       request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  },
+  attachments: {
+    list: (projectId: string, limit = 100) =>
+      request<{ items: import("../types").ProjectAttachment[]; next_cursor: string | null }>(
+        `/v2/projects/${encodeURIComponent(projectId)}/attachments?limit=${limit}`,
+      ),
+    upload: async (projectId: string, file: File) => {
+      await ensurePortInitialized();
+      const token = await getApiToken();
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const headers = new Headers();
+      if (token) headers.set("Authorization", "Bearer " + token);
+      const response = await fetch(
+        `${currentApiBase}/v2/projects/${encodeURIComponent(projectId)}/attachments`,
+        { method: "POST", headers, body: form },
+      );
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(body) as { detail?: unknown };
+          if (typeof parsed.detail === "string") throw new Error(parsed.detail);
+        } catch (error) {
+          if (error instanceof Error && error.message !== body) throw error;
+        }
+        throw new Error(`Upload failed: ${response.status} ${body}`);
+      }
+      return response.json() as Promise<import("../types").ProjectAttachment>;
+    },
+    scan: (projectId: string, attachmentId: string) =>
+      request<import("../types").ProjectAttachment & { scan_result: string }>(
+        `/v2/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}/scan`,
+        { method: "POST" },
+      ),
+    remove: (projectId: string, attachmentId: string) =>
+      request<{ deleted: boolean }>(
+        `/v2/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}`,
+        { method: "DELETE" },
+      ),
+    download: (projectId: string, attachmentId: string) =>
+      requestAttachmentBlob(
+        `/v2/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
+      ),
   },
   agents: {
     list: (project_id: string) => request<Agent[]>(`/agents?project_id=${project_id}`),
@@ -256,10 +318,16 @@ export const api = {
       ),
   },
   executions: {
-    run: (project_id: string, root_agent_id: string, task: string, history: RunChatMessage[] = []) =>
+    run: (
+      project_id: string,
+      root_agent_id: string,
+      task: string,
+      history: RunChatMessage[] = [],
+      attachment_ids: string[] = [],
+    ) =>
       request<{ id: string; status: "running" }>("/v2/executions", {
         method: "POST",
-        body: JSON.stringify({ project_id, root_agent_id, task, history }),
+        body: JSON.stringify({ project_id, root_agent_id, task, history, attachment_ids }),
       }),
     get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
     getEvents: (id: string, after_seq = 0) =>

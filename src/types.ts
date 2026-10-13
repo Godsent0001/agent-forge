@@ -17,6 +17,19 @@ export interface Tool {
   config: Record<string, unknown>;
 }
 
+export type AttachmentStatus = "quarantined" | "clean" | "rejected";
+
+export interface ProjectAttachment {
+  id: string;
+  project_id: string;
+  name: string;
+  mime: string;
+  size_bytes: number;
+  status: AttachmentStatus;
+  created_at: string;
+  scanned_at: string | null;
+}
+
 export interface ConversationSummary {
   id: string;
   project_id: string;

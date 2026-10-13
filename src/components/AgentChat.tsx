@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ProjectAttachmentsPanel } from "./ProjectAttachmentsPanel";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import type { ChatMessage, ConversationMessageRecord, ConversationSummary } from "../types";
@@ -43,6 +44,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const consumePendingTask = useStore((s) => s.consumePendingTask);
 
   const [promptInput, setPromptInput] = useState("");
+  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -91,6 +93,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setConversations([]);
     setActiveConversationId(null);
     setChatMessages(agent.id, []);
+    setSelectedAttachmentIds([]);
 
     void (async () => {
       try {
@@ -411,7 +414,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       };
       addChatMessage(agent.id, userMsg);
 
-      const execution = await api.executions.run(project.id, agent.id, userText, history);
+      const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
+      setSelectedAttachmentIds([]);
       processedExecutionRef.current = null;
       activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
       setActiveExecutionId(execution.id);
@@ -690,6 +694,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
+        <div className="max-w-4xl mx-auto mb-2">
+          <ProjectAttachmentsPanel
+            projectId={project.id}
+            selectedIds={selectedAttachmentIds}
+            onSelectedIdsChange={setSelectedAttachmentIds}
+            disabled={isProcessing || conversationLoading}
+          />
+        </div>
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-950 border border-studio-700 rounded-xl p-2.5 shadow-studio focus-within:border-accent-500/70 transition-colors">
           <textarea
             value={promptInput}
