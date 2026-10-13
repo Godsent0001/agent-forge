@@ -18,7 +18,37 @@ vi.mock("./api/client", () => ({
 
 vi.mock("./store/useStore", () => ({
   useStore: (selector: (state: unknown) => unknown) =>
-    selector({ fetchProjects, loadProject }),
+    selector({
+      fetchProjects,
+      loadProject,
+      project: null,
+      projects: [],
+      agents: [],
+      tools: [],
+      selectedAgentId: null,
+      chatMessages: {},
+      pendingTask: null,
+      selectAgent: vi.fn(),
+      queueTask: vi.fn(),
+      consumePendingTask: vi.fn(() => null),
+      addChatMessage: vi.fn(),
+      setChatMessages: vi.fn(),
+      clearChat: vi.fn(),
+      switchProject: vi.fn(),
+      createProject: vi.fn(),
+      updateProjectSettings: vi.fn(),
+      createAgent: vi.fn(),
+      updateAgent: vi.fn(),
+      deleteAgent: vi.fn(),
+      createTool: vi.fn(),
+      deleteTool: vi.fn(),
+      attachToolToAgent: vi.fn(),
+      detachToolFromAgent: vi.fn(),
+      attachChildToAgent: vi.fn(),
+      detachChildFromAgent: vi.fn(),
+      attachToolToSelected: vi.fn(),
+      attachChildToSelected: vi.fn(),
+    }),
 }));
 
 vi.mock("./components/TopBar", () => ({
