@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from app.infra.approvals import ApprovalGateImpl, PENDING, resolve_approval
+from app.infra.approvals import PENDING, ApprovalGateImpl, resolve_approval
 
 
 @pytest.mark.asyncio
