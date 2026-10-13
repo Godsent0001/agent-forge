@@ -90,7 +90,9 @@ def main() -> None:
     print(f"AGENTFORGE_READY:{port}", flush=True)
     logger.info(f"AGENTFORGE_READY:{port}")
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    # Query-string tokens are used only for WebSocket/file URLs. Disable access logs so
+    # these URLs are never copied into stdout or Electron's forwarded runtime log.
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info", access_log=False)
 
 
 if __name__ == "__main__":
