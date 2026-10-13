@@ -21,7 +21,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     const settings = project?.settings ?? {};
     const budget = (settings.budget && typeof settings.budget === "object" ? settings.budget : {}) as Record<string, unknown>;
     const configuredPolicy = (settings.tool_policy && typeof settings.tool_policy === "object" ? settings.tool_policy : {}) as Record<string, unknown>;
-    setParallelTools(settings.parallel_tools === true);
+    setParallelTools(project?.parallel_execution === true);
     setMaxCostUsd(typeof budget.max_cost_usd === "number" ? String(budget.max_cost_usd) : budget.max_cost_usd === null ? "" : "0.50");
     setMaxLlmCalls(typeof budget.max_llm_calls === "number" ? String(budget.max_llm_calls) : "30");
     setMaxSeconds(typeof budget.max_seconds === "number" ? String(budget.max_seconds) : "300");
@@ -48,7 +48,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     try {
       const previous = project.settings ?? {};
       const previousBudget = previous.budget && typeof previous.budget === "object" ? previous.budget as Record<string, unknown> : {};
-      await updateProjectSettings({ settings: {
+      await updateProjectSettings({ parallel_execution: parallelTools, settings: {
         ...previous,
         parallel_tools: parallelTools,
         budget: { ...previousBudget, max_cost_usd: cost, max_llm_calls: calls, max_seconds: seconds },
