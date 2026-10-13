@@ -11,7 +11,7 @@ An artifact can be a document, image, video project, source repository, dataset,
 - `app/contracts/artifacts.py`: typed records, version records, payloads, updates, change records, and the `ArtifactStore` protocol.
 - `app/core/artifact_store.py`: SQLite registry with immutable SHA-256-addressed content blobs.
 - `app/contracts/verification.py`: normalized verification report/check contracts.
-- `app/core/verification.py`: type-based verifier registry and fail-closed result normalization.
+- `app/core/verification.py`: type-based verifier registry and fail-closed result normalization.\n- `app/core/durable_scheduler.py`: SQLite-backed task-plan persistence, atomic task claims, retry state, cancellation of pending tasks, and explicit interrupted-task reconciliation.
 - `tests/core/test_artifact_store.py` and `tests/core/test_verification.py`: core persistence and verification tests.
 
 The store is framework-independent and does not modify the existing SQLAlchemy application models or execution API. Its root is supplied by the caller. Registry data and blobs live below `.agentforge/artifacts/` inside that root.
@@ -29,7 +29,7 @@ The store is framework-independent and does not modify the existing SQLAlchemy a
 
 ## Deliberate limitations
 
-- The store is a local SQLite/filesystem implementation, not a distributed object store.
+- The artifact and task-plan stores are local SQLite/filesystem implementations, not distributed services. A task plan is persisted, but this module does not execute tasks or replace the application's execution lifecycle.
 - It stores opaque bytes. Video timeline editing, image layers, repository diffs, document structure, and cybersecurity evidence need specialized adapters.
 - This first version does not implement artifact deletion, retention policies, cross-project dependencies, or HTTP endpoints.
 - A local filesystem and SQLite database are not a substitute for backup/replication in a multi-host deployment.
@@ -51,6 +51,6 @@ Do not switch the current execution API from `ExecutionEngine` to `RunnerCore` i
 
 1. Run the complete Python suite and resolve any regressions.
 2. Review storage quotas, metadata limits, project authorization, and multi-process concurrency.
-3. Add tests for restart/reopen behavior and concurrent version updates.
+3. Add tests for restart/reopen behavior and concurrent version updates. The new tests cover these invariants, but they still need to run in CI.\n4. Integrate durable task plans with RunnerCore only after defining ownership of task execution, cancellation, and persisted events with the application team.
 4. Define the application-owned policy for verifier results and persisted audit events.
 5. Add modality-specific adapters only when their concrete tools and validation rules are available.
