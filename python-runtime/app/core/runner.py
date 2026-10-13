@@ -18,6 +18,7 @@ from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFac
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.execution_artifacts import ExecutionArtifactLifecycle
 from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
@@ -77,6 +78,7 @@ class RunnerCore:
         clock_fn: Clock = clock or (lambda: datetime.now(timezone.utc))
 
         checkpoint_store = SQLiteCheckpointStore(Path(workspace.root) / ".agentforge" / "checkpoints.sqlite3")
+        artifact_lifecycle = ExecutionArtifactLifecycle(workspace.root, req.project_id)
         graph_fingerprint = _fingerprint(graph.model_dump(mode="json"))
         request_fingerprint = _fingerprint(req.model_dump(mode="json", exclude={"execution_id"}))
         prior_checkpoint = await checkpoint_store.load(req.execution_id)
@@ -276,6 +278,30 @@ class RunnerCore:
                     "root_span_id": root_span_id, "root_span_closed": True,
                     "pending_tool_call_ids": [],
                 })
+
+            # Make the final answer a durable, versioned artifact before reporting success.
+            final_record, final_verification = await artifact_lifecycle.persist(
+                name=f"execution-{req.execution_id}-final.txt",
+                artifact_type="execution_output",
+                content=final_output.encode("utf-8"),
+                media_type="text/plain; charset=utf-8",
+                metadata={"execution_id": req.execution_id, "root_agent_id": req.root_agent_id},
+            )
+            await tracked_emit(EventDraft(
+                type="artifact_persisted",
+                data={
+                    "artifact_id": final_record.artifact_id,
+                    "artifact_version": final_record.version,
+                    "artifact_type": final_record.artifact_type,
+                    "name": final_record.name,
+                    "sha256": final_record.sha256,
+                    "size_bytes": final_record.size_bytes,
+                },
+            ))
+            await tracked_emit(EventDraft(
+                type="artifact_verification",
+                data=final_verification.model_dump(mode="json"),
+            ))
 
             if root_spec.lessons_enabled and lessons:
                 recovery = _find_recovered_tool_error(last_checkpoint_state.get("messages", []))
@@ -999,7 +1025,48 @@ class RunnerCore:
 
                 content = res.content
                 if res.artifacts:
-                    artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
+                    artifact_lines = []
+                    for artifact in res.artifacts[:8]:
+                        try:
+                            artifact_record, verification_report = await ExecutionArtifactLifecycle(
+                                workspace.root, req.project_id
+                            ).persist_workspace_file(
+                                workspace,
+                                path=artifact.path,
+                                media_type=artifact.mime,
+                                description=artifact.description,
+                                metadata={
+                                    "execution_id": req.execution_id,
+                                    "tool_call_id": tc.id,
+                                    "tool_name": tc.name,
+                                    "agent_id": spec.id,
+                                },
+                            )
+                            artifact_lines.append(
+                                f"{artifact.path} (artifact_id={artifact_record.artifact_id}, "
+                                f"version={artifact_record.version}, sha256={artifact_record.sha256})"
+                            )
+                            await emit(EventDraft(
+                                type="artifact_persisted",
+                                parent_span_id=tool_span_id,
+                                data={
+                                    "artifact_id": artifact_record.artifact_id,
+                                    "artifact_version": artifact_record.version,
+                                    "artifact_type": artifact_record.artifact_type,
+                                    "name": artifact_record.name,
+                                    "sha256": artifact_record.sha256,
+                                    "size_bytes": artifact_record.size_bytes,
+                                    "tool_call_id": tc.id,
+                                },
+                            ))
+                            await emit(EventDraft(
+                                type="artifact_verification",
+                                parent_span_id=tool_span_id,
+                                data=verification_report.model_dump(mode="json"),
+                            ))
+                        except Exception as artifact_error:
+                            logger.exception("Could not persist tool artifact %s", artifact.path)
+                            return f"ERROR: tool artifact could not be persisted ({type(artifact_error).__name__})."
                     content += " | Artifacts produced: " + " | ".join(artifact_lines)
                 if res.truncated:
                     continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
