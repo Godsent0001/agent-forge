@@ -5,6 +5,7 @@ DNS rebinding between validation and connection is a known limitation.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urljoin
@@ -15,7 +16,17 @@ from app.tools.base import Tool, ToolExecutionError
 RequestFn = Callable[[str, str, str | None], Awaitable[str]]
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_REDIRECTS = 5
-APP_PORT = 8000
+DEFAULT_APP_PORT = 8000
+
+
+def _app_port() -> int:
+    """Resolve the runtime's actual bound port, including local custom-port launches."""
+    raw = os.environ.get("AGENTFORGE_PORT") or os.environ.get("PORT")
+    try:
+        value = int(raw) if raw else DEFAULT_APP_PORT
+    except ValueError:
+        value = DEFAULT_APP_PORT
+    return value if 1 <= value <= 65535 else DEFAULT_APP_PORT
 
 
 async def _real_request_backend(method: str, url: str, body: str | None) -> str:
@@ -26,7 +37,7 @@ async def _real_request_backend(method: str, url: str, body: str | None) -> str:
     current_body = body
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, trust_env=False) as client:
         for redirect_count in range(MAX_REDIRECTS + 1):
-            assert_public_url(current_url, app_port=APP_PORT)
+            assert_public_url(current_url, app_port=_app_port())
             headers = (
                 {"Content-Type": "application/json"}
                 if current_body and current_body.strip().startswith(("{", "["))
