@@ -751,8 +751,39 @@ class RunnerCore:
                                     plan.fail(task.task_id, result_text, retryable=False)
                                     task_plan_store.fail(plan_id, task.task_id, result_text, retryable=False)
                                 else:
-                                    plan.complete(task.task_id)
-                                    task_plan_store.complete(plan_id, task.task_id)
+                                    result_record, result_verification = await ExecutionArtifactLifecycle(
+                                        workspace.root, req.project_id
+                                    ).persist(
+                                        name=f"tool-result-{call_id}.txt",
+                                        artifact_type="tool_result",
+                                        content=result_text.encode("utf-8"),
+                                        media_type="text/plain; charset=utf-8",
+                                        metadata={
+                                            "execution_id": req.execution_id,
+                                            "tool_call_id": call_id,
+                                            "tool_name": next(tc.name for tc in scheduled_calls if tc.id == call_id),
+                                            "agent_id": spec.id,
+                                        },
+                                    )
+                                    result_ref = f"artifact://{result_record.artifact_id}/versions/{result_record.version}"
+                                    await emit(EventDraft(
+                                        type="artifact_persisted",
+                                        data={
+                                            "artifact_id": result_record.artifact_id,
+                                            "artifact_version": result_record.version,
+                                            "artifact_type": result_record.artifact_type,
+                                            "name": result_record.name,
+                                            "sha256": result_record.sha256,
+                                            "size_bytes": result_record.size_bytes,
+                                            "tool_call_id": call_id,
+                                        },
+                                    ))
+                                    await emit(EventDraft(
+                                        type="artifact_verification",
+                                        data=result_verification.model_dump(mode="json"),
+                                    ))
+                                    plan.complete(task.task_id, result_ref=result_ref)
+                                    task_plan_store.complete(plan_id, task.task_id, result_ref=result_ref)
 
                                 # Persist each completion immediately. If a sibling tool
                                 # is interrupted, completed work is retained and only the
@@ -940,7 +971,38 @@ class RunnerCore:
                         )
 
                     artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
-                    uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
+                    child_record, child_verification = await ExecutionArtifactLifecycle(
+                        workspace.root, req.project_id
+                    ).persist(
+                        name=f"{task_id}.txt",
+                        artifact_type="agent_result",
+                        content=res_text.encode("utf-8"),
+                        media_type="text/plain; charset=utf-8",
+                        metadata={
+                            "execution_id": req.execution_id,
+                            "task_id": task_id,
+                            "sender_agent_id": child_link.agent_id,
+                            "recipient_agent_id": spec.id,
+                        },
+                    )
+                    await emit(EventDraft(
+                        type="artifact_persisted",
+                        parent_span_id=tool_span_id,
+                        data={
+                            "artifact_id": child_record.artifact_id,
+                            "artifact_version": child_record.version,
+                            "artifact_type": child_record.artifact_type,
+                            "name": child_record.name,
+                            "sha256": child_record.sha256,
+                            "size_bytes": child_record.size_bytes,
+                        },
+                    ))
+                    await emit(EventDraft(
+                        type="artifact_verification",
+                        parent_span_id=tool_span_id,
+                        data=child_verification.model_dump(mode="json"),
+                    ))
+                    uri = f"artifact://{child_record.artifact_id}/versions/{child_record.version}"
 
                     end_time = _clock_now(clock)
                     headline = res_text[:300].replace("\n", " ").strip() or "Child agent returned no summary."
