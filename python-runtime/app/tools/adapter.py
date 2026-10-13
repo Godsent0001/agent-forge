@@ -40,7 +40,7 @@ _OUTPUT_DEFAULTS = {
     "audio_mixer": {"output_path": "mixed.wav"},
     "character_rig": {"output_image_path": "character_rig.png", "output_video_path": "character_rig.mp4"},
     "composition_engine": {"output_path": "composited_frame.png"},
-    "effects_engine": {"output_path": "effected_frame.png"},
+    "effects_engine": {"output_path": "effect_output.mp4"},
     "evidence_graphics": {"output_path": "evidence_card.png"},
     "data_visualization": {"output_path": "chart.png"},
     "headline_card": {"output_path": "headline_card.png"},
@@ -49,6 +49,7 @@ _OUTPUT_DEFAULTS = {
     "typography_engine": {"output_path": "typography.png"},
     "preview_renderer": {"output_path": "preview.mp4"},
     "final_renderer": {"output_path": "final.mp4"},
+    "render_worker": {"output_path": "render.mp4"},
 }
 _OUTPUT_PATH_KEYS = {"output_path", "output_image_path", "output_video_path"}
 _ID_KEYS = {"character_id", "episode_id", "job_id", "template_id"}
@@ -104,6 +105,18 @@ def _normalize_payload(kind: str, raw: str, ctx: ToolContext) -> str:
             if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
                 raise ToolError(f"Invalid {key}: use 1-64 letters, digits, underscore or hyphen")
 
+    if kind == "asset_cache_store":
+        for key in ("category", "name"):
+            value = payload.get(key)
+            if value not in (None, "") and (
+                not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value)
+            ):
+                raise ToolError(f"Invalid {key}: use 1-64 letters, digits, underscore or hyphen")
+    if kind == "visual_asset_manager" and payload.get("name") not in (None, ""):
+        name = payload["name"]
+        if not isinstance(name, str) or name in {".", ".."} or "/" in name or "\\" in name or "\\x00" in name:
+            raise ToolError("Visual asset name must be a filename, not a path")
+
     for key in _INPUT_PATH_KEYS:
         if key in payload and payload[key] not in (None, ""):
             payload[key] = _path_value(payload[key], ctx)
@@ -141,11 +154,6 @@ class LegacyToolAdapter(V2Tool):
             content = await self._legacy.execute(normalized_input, context=ctx)
         except ToolExecutionError as exc:
             raise ToolError(str(exc)) from exc
-        except ToolError:
-            raise
-        except Exception as exc:
-            # Preserve unexpected errors for the core to report with its run trace.
-            raise
         root = getattr(getattr(ctx, "workspace", None), "root", None)
         if root:
             root_text = str(Path(root).resolve())
