@@ -70,6 +70,11 @@ export function ApprovalDialog({
             <p className="mt-0.5 text-2xs font-mono text-studio-400">Tool kind: {toolKind}</p>
           </div>
           <p id="approval-reason" className="text-sm leading-relaxed text-studio-300">{reason}</p>
+          {toolKind === "python" && (
+            <p role="note" className="rounded border border-amber-700/70 bg-amber-950/30 p-3 text-xs leading-relaxed text-amber-200">
+              Python runs under your user account. CPU, time, memory and captured output are bounded, but file reads and network access are not fully sandboxed. Only approve code you trust.
+            </p>
+          )}
           <div>
             <p className="mb-1.5 text-2xs font-mono uppercase tracking-wider text-studio-500">Requested permissions</p>
             <div className="flex flex-wrap gap-1.5">
