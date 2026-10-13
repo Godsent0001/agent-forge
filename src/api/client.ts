@@ -102,7 +102,7 @@ export const api = {
     list: () => request<Project[]>("/projects"),
     create: (name: string, parallel_execution = false) =>
       request<Project>("/projects", { method: "POST", body: JSON.stringify({ name, parallel_execution }) }),
-    update: (id: string, patch: { name?: string; parallel_execution?: boolean }) =>
+    update: (id: string, patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) =>
       request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   },
   agents: {
