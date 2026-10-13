@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import fs from "fs";
+import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let pythonProcess = null;
 let backendPort = null;
+const apiToken = crypto.randomBytes(32).toString("hex");
 let portResolver = null;
 
 // Initialize port promise
@@ -129,7 +131,7 @@ if (isDev) {
   try {
     pythonProcess = spawn(executable, args, {
       cwd,
-      env: { ...process.env },
+      env: { ...process.env, AGENTFORGE_TOKEN: apiToken, AGENTFORGE_DATA_DIR: path.join(app.getPath("userData"), "data") },
       shell: false,
     });
 
@@ -214,6 +216,8 @@ async function createWindow() {
 }
 
 // IPC handlers
+ipcMain.handle("get-api-token", () => apiToken);
+
 ipcMain.handle("get-backend-port", async () => {
   if (backendPort !== null) {
     return backendPort;
