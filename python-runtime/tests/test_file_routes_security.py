@@ -16,8 +16,8 @@ def client(monkeypatch, tmp_path):
     return TestClient(main.app)
 
 
-def test_legacy_file_route_requires_token(client):
-    ((tmp_path / "user-data" / "output") / "safe.txt").write_text("content", encoding="utf-8")
+def test_legacy_file_route_requires_token(client, tmp_path):
+    (tmp_path / "user-data" / "output" / "safe.txt").write_text("content", encoding="utf-8")
     assert client.get("/files/safe.txt").status_code == 401
     assert client.get("/files/safe.txt?token=wrong").status_code == 401
     response = client.get("/files/safe.txt?token=file-route-test-token")
@@ -25,8 +25,8 @@ def test_legacy_file_route_requires_token(client):
     assert response.text == "content"
 
 
-def test_legacy_active_content_is_forced_to_download(client):
-    ((tmp_path / "user-data" / "output") / "preview.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+def test_legacy_active_content_is_forced_to_download(client, tmp_path):
+    (tmp_path / "user-data" / "output" / "preview.html").write_text("<script>alert(1)</script>", encoding="utf-8")
     response = client.get("/files/preview.html?token=file-route-test-token")
     assert response.status_code == 200
     assert response.headers["content-disposition"].startswith("attachment")
@@ -37,6 +37,6 @@ def test_legacy_active_content_is_forced_to_download(client):
 def test_legacy_file_route_rejects_symlink_escape(client, tmp_path):
     outside = tmp_path / "secret.txt"
     outside.write_text("do-not-serve", encoding="utf-8")
-    ((tmp_path / "user-data" / "output") / "escape.txt").symlink_to(outside)
+    (tmp_path / "user-data" / "output" / "escape.txt").symlink_to(outside)
     response = client.get("/files/escape.txt?token=file-route-test-token")
     assert response.status_code == 404
