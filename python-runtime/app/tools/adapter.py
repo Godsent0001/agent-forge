@@ -172,6 +172,8 @@ class LegacyToolAdapter(V2Tool):
         self.kind = binding.kind
         self.name = sanitize_tool_name(binding.name or binding.kind or legacy.name)
         self.default_description = binding.description or legacy.description
+        # The legacy loop reads .description; the v2 Runner reads default_description.
+        self.description = self.default_description
         self.permissions = set(_PERMISSION_MAP.get(binding.kind, set()))
 
     async def execute(self, input: str, *, context: Any) -> str:

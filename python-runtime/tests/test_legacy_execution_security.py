@@ -61,6 +61,7 @@ async def test_legacy_engine_denies_shared_state_mutations(kind, payload, tmp_pa
 async def test_legacy_engine_path_arguments_are_confined_to_per_run_workspace(tmp_path):
     tool = _tool("audio_processing")
     context = _context(tmp_path)
+    assert tool.description
     with pytest.raises(ToolExecutionError, match="Parent-directory traversal|Unsafe workspace path"):
         await tool.execute(json.dumps({"audio_path": "../../escape.wav"}), context=context)
     assert not (tmp_path / "escape.wav").exists()
