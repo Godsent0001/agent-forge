@@ -92,7 +92,8 @@ def workspace_from(context: Any) -> RunWorkspace:
     workspace = getattr(context, "workspace", None)
     if workspace is not None and all(hasattr(workspace, name) for name in ("resolve", "new_path", "relative")):
         return workspace
-    fallback = Path("./output").resolve()
+    # Legacy tools still write beneath the same per-user data root as v2 runs.
+    fallback = data_dir() / "output"
     fallback.mkdir(parents=True, exist_ok=True)
     return RunWorkspace("legacy", root=fallback)
 

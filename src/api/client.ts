@@ -13,7 +13,7 @@ import type {
   Tool,
 } from "../types";
 
-let currentApiBase = "http://127.0.0.1:8000";
+let currentApiBase = "";
 let portInitPromise: Promise<void> | null = null;
 let apiTokenPromise: Promise<string> | null = null;
 
@@ -32,32 +32,36 @@ export function getApiToken(): Promise<string> {
 function ensurePortInitialized(): Promise<void> {
   if (!portInitPromise) {
     portInitPromise = (async () => {
-      if (window.electronAPI) {
-        try {
+      try {
+        if (typeof window !== "undefined" && window.electronAPI) {
           const port = await window.electronAPI.getBackendPort();
-          if (port) {
-            currentApiBase = `http://127.0.0.1:${port}`;
-          }
-        } catch (err) {
-          console.error("Failed to acquire Python backend port from Electron:", err);
-          portInitPromise = null;
-          throw new Error("Could not connect to Python backend: " + (err as Error).message);
+          if (!port) throw new Error("The local runtime did not provide a listening port");
+          currentApiBase = `http://127.0.0.1:${port}`;
+          return;
         }
-      } else {
-        // Electron supplies a dynamic port. Browser-only local dev must name its API base
-        // explicitly (or use the default development sidecar port); hosted same-origin
-        // deployments can continue to use their own origin.
+
+        // Browser-only development must name its runtime explicitly rather than
+        // silently assuming a fixed port. Electron always supplies a dynamic port.
         const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const configuredBase = import.meta.env.VITE_API_BASE?.trim();
         const isViteDevOrigin = origin === "http://localhost:5173" || origin === "http://127.0.0.1:5173";
-        currentApiBase = import.meta.env.VITE_API_BASE || (
-          isViteDevOrigin ? "http://127.0.0.1:8000" : origin || "http://127.0.0.1:8000"
-        );
+        if (configuredBase) {
+          currentApiBase = configuredBase.replace(/\/+$/, "");
+        } else if (isViteDevOrigin) {
+          throw new Error("Set VITE_API_BASE in .env.local for browser-only development (for example, http://127.0.0.1:8000).");
+        } else if (origin) {
+          currentApiBase = origin;
+        } else {
+          throw new Error("The AgentForge API base URL is not configured.");
+        }
+      } catch (error) {
+        portInitPromise = null;
+        throw error;
       }
     })();
   }
   return portInitPromise;
 }
-
 export function setApiBase(base: string) {
   currentApiBase = base;
 }

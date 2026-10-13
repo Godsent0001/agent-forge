@@ -48,9 +48,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agentforge")
 
-OUTPUT_DIR = data_dir() / "output"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database...")
@@ -84,7 +81,7 @@ def get_legacy_file(relpath: str):
     from app.tools.base import ToolExecutionError
 
     try:
-        path = RunWorkspace("legacy-files", root=OUTPUT_DIR).resolve(relpath)
+        path = RunWorkspace("legacy-files", root=data_dir() / "output").resolve(relpath)
     except (ToolExecutionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="File not found") from exc
     if not path.is_file():

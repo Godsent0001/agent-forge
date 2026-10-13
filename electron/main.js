@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { spawn, spawnSync } from "child_process";
 import fs from "fs";
 import crypto from "crypto";
@@ -300,6 +300,7 @@ function stopPythonBackend() {
       if (process.platform === "win32" && child.pid) {
         const treeKill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
         treeKill.once("exit", finish);
+        treeKill.once("error", finish);
       } else {
         try { child.kill("SIGKILL"); } catch {}
         finish();
@@ -334,10 +335,24 @@ async function createWindow() {
     } catch {}
     return { action: "deny" };
   });
+  const packagedDocumentPath = path.resolve(__dirname, "../dist/index.html");
+  const packagedDocumentUrl = pathToFileURL(packagedDocumentPath);
   mainWindow.webContents.on("will-navigate", (event, url) => {
     const allowed = isDev
       ? (() => { try { return new URL(url).origin === allowedDevOrigin; } catch { return false; } })()
-      : url.startsWith("file://");
+      : (() => {
+          try {
+            const target = new URL(url);
+            const expected = new URL(packagedDocumentUrl.href);
+            target.search = "";
+            target.hash = "";
+            expected.search = "";
+            expected.hash = "";
+            return target.protocol === "file:" && target.href === expected.href;
+          } catch {
+            return false;
+          }
+        })();
     if (!allowed) event.preventDefault();
   });
 
