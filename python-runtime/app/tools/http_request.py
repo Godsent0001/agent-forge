@@ -106,7 +106,7 @@ class HttpRequestTool(Tool):
         method, rest = parts
         url, _, body = rest.partition("::")
         try:
-            assert_public_url(url, app_port=APP_PORT)
+            assert_public_url(url, app_port=_app_port())
             return await self._request_fn(method, url, body or None)
         except UnsafeURL as exc:
             raise ToolExecutionError(str(exc)) from exc
