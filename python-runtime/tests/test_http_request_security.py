@@ -8,7 +8,12 @@ import pytest
 
 from app.infra.ssrf import UnsafeURL, assert_public_url
 from app.tools.base import ToolExecutionError
-from app.tools.http_request import MAX_RESPONSE_BYTES, HttpRequestTool, _app_port, _real_request_backend
+from app.tools.http_request import (
+    MAX_RESPONSE_BYTES,
+    HttpRequestTool,
+    _app_port,
+    _real_request_backend,
+)
 
 
 @pytest.mark.parametrize("url", [
