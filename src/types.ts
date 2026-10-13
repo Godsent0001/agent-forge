@@ -49,6 +49,8 @@ export type ChatMessage =
       toolStatus: "ok" | "error" | "cancelled";
       text: string;
       timestamp: string;
+      /** The run that produced this tool result, so artifacts resolve within that workspace. */
+      executionId?: string;
     };
 
 export interface Agent {
