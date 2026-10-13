@@ -196,3 +196,76 @@ class ExecutionEventRow(Base):
 
 
 Index("ix_memory_entries_agent_created", MemoryEntry.agent_id, MemoryEntry.created_at)
+
+
+
+class Conversation(Base):
+    """A persisted chat thread scoped to one project agent."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), default="New conversation", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+    messages: Mapped[list["ConversationMessage"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ConversationMessage.created_at",
+    )
+
+
+class ConversationMessage(Base):
+    """Persisted user/assistant turn; tool cards remain part of the execution trace."""
+
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    feedback: Mapped["MessageFeedback | None"] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+
+
+class MessageFeedback(Base):
+    """One optional rating per assistant message."""
+
+    __tablename__ = "message_feedback"
+
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    value: Mapped[int] = mapped_column(nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+    message: Mapped[ConversationMessage] = relationship(back_populates="feedback")
+
+
+Index(
+    "ix_conversations_project_agent_created",
+    Conversation.project_id,
+    Conversation.agent_id,
+    Conversation.created_at,
+)
+Index(
+    "ix_conversation_messages_conversation_created",
+    ConversationMessage.conversation_id,
+    ConversationMessage.created_at,
+)
