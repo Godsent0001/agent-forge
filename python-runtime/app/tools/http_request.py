@@ -49,7 +49,7 @@ async def _real_request_backend(method: str, url: str, body: str | None) -> str:
                 if resp.status_code in {301, 302, 303, 307, 308}:
                     location = resp.headers.get("location")
                     if not location:
-                        return f"Status: {resp.status_code}\\nRedirect response had no Location header."
+                        return f"Status: {resp.status_code}\nRedirect response had no Location header."
                     if redirect_count >= MAX_REDIRECTS:
                         raise ToolExecutionError("HTTP request exceeded 5 redirects")
                     next_url = urljoin(current_url, location)
@@ -78,14 +78,14 @@ async def _real_request_backend(method: str, url: str, body: str | None) -> str:
                         break
 
                 text = b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
-                header_lines = "\\n".join(
+                header_lines = "\n".join(
                     f"{key}: {value}" for key, value in resp.headers.items()
                     if key.lower() not in {"set-cookie", "authorization", "proxy-authorization"}
                 )
-                suffix = "\\n…[truncated]" if truncated else ""
+                suffix = "\n…[truncated]" if truncated else ""
                 return (
-                    f"Status: {resp.status_code}\\nHeaders:\\n{header_lines}"
-                    f"\\nBody:\\n{text}{suffix}\\ntruncated: {str(truncated).lower()}"
+                    f"Status: {resp.status_code}\nHeaders:\n{header_lines}"
+                    f"\nBody:\n{text}{suffix}\ntruncated: {str(truncated).lower()}"
                 )
 
     raise ToolExecutionError("HTTP redirect handling failed")
