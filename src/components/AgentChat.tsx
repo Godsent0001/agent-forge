@@ -411,7 +411,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                 {msg.sender === "user" ? (
                   <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p>
                 ) : (
-                  <ArtifactViewer content={msg.text} />
+                  <ArtifactViewer content={msg.text} executionId={msg.sender === "agent" ? msg.executionId : undefined} />
                 )}
               </div>
             )}
