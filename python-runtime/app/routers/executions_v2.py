@@ -131,7 +131,7 @@ def get_events(execution_id: str, after_seq: int = Query(default=0, ge=0)):
         db.close()
 
 @router.post("/{execution_id}/approvals/{approval_id}")
-def resolve_execution_approval(execution_id: str, approval_id: str, payload: ResolveApprovalRequest):
+async def resolve_execution_approval(execution_id: str, approval_id: str, payload: ResolveApprovalRequest):
     db = SessionLocal()
     try:
         if db.get(models.Execution, execution_id) is None:
