@@ -19,6 +19,7 @@ from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolConte
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
+from app.core.durable_scheduler import SQLiteTaskPlanStore
 from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
@@ -79,6 +80,15 @@ class RunnerCore:
 
         checkpoint_store = SQLiteCheckpointStore(Path(workspace.root) / ".agentforge" / "checkpoints.sqlite3")
         artifact_lifecycle = ExecutionArtifactLifecycle(workspace.root, req.project_id)
+        task_plan_store = SQLiteTaskPlanStore(Path(workspace.root) / ".agentforge" / "task_plans.sqlite3")
+        # Reconcile orphaned in-flight plans after interruption; uncertain side effects
+        # fail closed and are not replayed automatically.
+        for prior_plan_id in task_plan_store.list_ids(limit=500):
+            if prior_plan_id.startswith(f"{req.execution_id}:"):
+                try:
+                    task_plan_store.recover_interrupted(prior_plan_id, retry_running=False)
+                except Exception:
+                    logger.warning("Could not reconcile interrupted task plan %s", prior_plan_id, exc_info=True)
         graph_fingerprint = _fingerprint(graph.model_dump(mode="json"))
         request_fingerprint = _fingerprint(req.model_dump(mode="json", exclude={"execution_id"}))
         prior_checkpoint = await checkpoint_store.load(req.execution_id)
@@ -663,7 +673,10 @@ class RunnerCore:
                         },
                         max_tasks=max_tasks,
                     )
+                    plan_id = f"{req.execution_id}:{agent_span_id}:{iterations}:{uuid.uuid4().hex}"
+                    task_plan_store.create(plan_id, plan.model_copy(deep=True))
                     plan.refresh_ready()
+                    task_plan_store.refresh_ready(plan_id)
                     results_by_call: dict[str, str] = {
                         tc.id: f"ERROR: execution task limit exceeded ({max_tasks})."
                         for tc in rejected_calls
@@ -684,7 +697,10 @@ class RunnerCore:
                     )
 
                     while not plan.terminal:
+                        durable_claimed = task_plan_store.claim_ready(plan_id, parallel_limit)
                         claimed = plan.claim_ready(parallel_limit)
+                        if len(durable_claimed) != len(claimed):
+                            raise RuntimeError("Durable scheduler state diverged from the active task plan.")
                         if not claimed:
                             break
 
@@ -733,8 +749,10 @@ class RunnerCore:
                                 completed_tool_results[call_id] = result_text
                                 if result_text.startswith("ERROR:"):
                                     plan.fail(task.task_id, result_text, retryable=False)
+                                    task_plan_store.fail(plan_id, task.task_id, result_text, retryable=False)
                                 else:
                                     plan.complete(task.task_id)
+                                    task_plan_store.complete(plan_id, task.task_id)
 
                                 # Persist each completion immediately. If a sibling tool
                                 # is interrupted, completed work is retained and only the
