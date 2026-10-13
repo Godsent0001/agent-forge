@@ -2,6 +2,7 @@ export interface Project {
   id: string;
   name: string;
   parallel_execution: boolean;
+  settings?: Record<string, unknown>;
   created_at: string;
 }
 
