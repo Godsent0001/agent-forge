@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from datetime import datetime, timezone
 from uuid import uuid4
-import math
 
 from sqlalchemy import update
 
