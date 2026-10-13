@@ -155,7 +155,7 @@ def test_identifiers_are_rejected_before_becoming_paths(context, kind, key):
         _normalize_payload(kind, json.dumps({key: "../escape"}), context)
 
 
-@pytest.mark.parametrize("name", ["../secret.svg", "nested/secret.svg", "nested\\\\secret.svg", "bad\\x00name.svg"])
+@pytest.mark.parametrize("name", ["../secret.svg", "nested/secret.svg", "nested\\\\secret.svg", "bad" + chr(0) + "name.svg"])
 def test_visual_asset_names_must_be_safe_filenames(context, name):
     with pytest.raises(ToolError):
         _normalize_payload("visual_asset_manager", json.dumps({"action": "info", "name": name}), context)
