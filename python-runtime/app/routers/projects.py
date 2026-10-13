@@ -38,6 +38,8 @@ def update_project(project_id: str, payload: schemas.ProjectUpdate, db: Session 
         project.name = payload.name
     if payload.parallel_execution is not None:
         project.parallel_execution = payload.parallel_execution
+    if payload.settings is not None:
+        project.settings = payload.settings
     db.commit()
     db.refresh(project)
     return project
