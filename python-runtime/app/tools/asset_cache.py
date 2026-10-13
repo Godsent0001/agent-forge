@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -21,8 +22,8 @@ class CacheEngineTool(Tool):
     name = "cache_engine"
     description = "Hash tool inputs and skip regeneration when nothing changed."
 
-    def __init__(self, cache_dir: str = "./cache"):
-        self._root = Path(cache_dir)
+    def __init__(self, cache_dir: str | None = None):
+        self._root = Path(cache_dir).expanduser().resolve() if cache_dir else data_dir() / "cache"
         self._root.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -73,8 +74,8 @@ class ProjectManagerTool(Tool):
 
     SUBDIRS = ["audio", "animation", "graphics", "assets", "previews", "renders"]
 
-    def __init__(self, projects_root: str = "./projects"):
-        self._root = Path(projects_root)
+    def __init__(self, projects_root: str | None = None):
+        self._root = Path(projects_root).expanduser().resolve() if projects_root else data_dir() / "projects"
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
@@ -107,8 +108,8 @@ class AssetCacheStoreTool(Tool):
     name = "asset_cache_store"
     description = "Store and look up reusable franchise-wide assets (rigs, fonts, music, SFX)."
 
-    def __init__(self, store_dir: str = "./assets/shared"):
-        self._root = Path(store_dir)
+    def __init__(self, store_dir: str | None = None):
+        self._root = Path(store_dir).expanduser().resolve() if store_dir else data_dir() / "assets" / "shared"
         self._root.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -146,8 +147,8 @@ class ProductionConfigTool(Tool):
         "characters": {"default_animation_intensity": 0.65},
     }
 
-    def __init__(self, config_path: str = "./production_config.json"):
-        self._path = Path(config_path)
+    def __init__(self, config_path: str | None = None):
+        self._path = Path(config_path).expanduser().resolve() if config_path else data_dir() / "production_config.json
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)

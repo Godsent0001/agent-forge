@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DATA_SUBDIRECTORIES = ("db", "runs", "assets", "queues", "logs", "output", "uploads")
+DATA_SUBDIRECTORIES = ("db", "runs", "assets", "queues", "logs", "output", "uploads", "cache", "projects")
 
 
 def data_dir() -> Path:

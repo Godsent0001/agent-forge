@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -33,15 +34,15 @@ class VoiceGeneratorTool(Tool):
     name = "voice_generator"
     description = "Convert character dialogue into speech using Piper TTS."
 
-    def __init__(self, voices_dir: str = "./assets/voices"):
-        self._voices_dir = Path(voices_dir)
+    def __init__(self, voices_dir: str | None = None):
+        self._voices_dir = Path(voices_dir).expanduser().resolve() if voices_dir else data_dir() / "assets" / "voices"
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
         text = params.get("dialogue") or params.get("text")
         voice = params.get("voice", "default")
         speed = params.get("speed", 1.0)
-        output_path = params.get("output_path", "./output/voice.wav")
+        output_path = params.get("output_path") or str(data_dir() / "output" / "voice.wav")
 
         if not text:
             raise ToolExecutionError("voice_generator requires a 'dialogue' or 'text' field")
@@ -89,7 +90,7 @@ class AudioProcessingTool(Tool):
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
         in_path = params.get("audio_path")
-        out_path = params.get("output_path", "./output/processed_voice.wav")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "processed_voice.wav")
         if not in_path or not Path(in_path).exists():
             raise ToolExecutionError(f"audio_processing: input file not found: {in_path}")
 
@@ -157,7 +158,7 @@ class AudioMixerTool(Tool):
         params = parse_json_input(input)
         voice = params.get("voice_path")
         music = params.get("music_path")
-        out_path = params.get("output_path", "./output/mixed.wav")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "mixed.wav")
         duck_db = params.get("music_duck_db", -18)
 
         if not voice or not Path(voice).exists():

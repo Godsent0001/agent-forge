@@ -13,6 +13,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.rendering import _run_ffmpeg_from_image_and_audio
 from app.tools.shared import (
@@ -199,8 +200,8 @@ class CharacterAssetManagerTool(Tool):
 
     EXPECTED_SUBDIRS = ["model", "rig", "expressions", "gestures", "textures", "voices"]
 
-    def __init__(self, characters_dir: str = "./assets/characters"):
-        self._root = Path(characters_dir)
+    def __init__(self, characters_dir: str | None = None):
+        self._root = Path(characters_dir).expanduser().resolve() if characters_dir else data_dir() / "assets" / "characters"
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
@@ -231,8 +232,8 @@ class CharacterRigTool(Tool):
         expression = params.get("expression") or params.get("emotion") or "neutral"
         gesture = params.get("gesture", "default stance")
         pose = params.get("pose", "standing")
-        output_image_path = params.get("output_image_path", "./output/character_rig.png")
-        output_video_path = params.get("output_video_path", "./output/character_rig.mp4")
+        output_image_path = params.get("output_image_path") or str(data_dir() / "output" / "character_rig.png")
+        output_video_path = params.get("output_video_path") or str(data_dir() / "output" / "character_rig.mp4")
         audio_path = params.get("audio_path")
 
         Path(output_image_path).parent.mkdir(parents=True, exist_ok=True)
