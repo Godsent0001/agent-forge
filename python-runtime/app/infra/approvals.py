@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
