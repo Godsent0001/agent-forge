@@ -53,7 +53,7 @@ async def _real_request_backend(method: str, url: str, body: str | None) -> str:
                     if redirect_count >= MAX_REDIRECTS:
                         raise ToolExecutionError("HTTP request exceeded 5 redirects")
                     next_url = urljoin(current_url, location)
-                    assert_public_url(next_url, app_port=APP_PORT)
+                    assert_public_url(next_url, app_port=_app_port())
                     if resp.status_code == 303 or (
                         resp.status_code in {301, 302} and current_method == "POST"
                     ):
