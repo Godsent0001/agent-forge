@@ -97,6 +97,17 @@ def test_persistent_shared_state_mutators_request_write_permission():
         assert "fs_write" in _PERMISSION_MAP[kind]
 
 
+def _replace_unsafe_path_values(value, unsafe_path):
+    if isinstance(value, dict):
+        return {key: _replace_unsafe_path_values(child, unsafe_path) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_replace_unsafe_path_values(child, unsafe_path) for child in value]
+    if isinstance(value, str) and value.startswith("../outside"):
+        return unsafe_path
+    return value
+
+
+@pytest.mark.parametrize("unsafe_path", ["../../x", "/etc/x", "C:" + chr(92) + "x", "link/escape"])
 @pytest.mark.parametrize(("kind", "payload"), [
     ("voice_generator", {"output_path": "../outside.wav"}),
     ("audio_processing", {"audio_path": "../outside.wav"}),
@@ -114,11 +125,17 @@ def test_persistent_shared_state_mutators_request_write_permission():
     ("render_worker", {"image_path": "../outside.png"}),
     ("asset_cache_store", {"src_path": "../outside.wav", "category": "audio", "name": "source"}),
 ])
-def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, kind, payload):
+def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, tmp_path, kind, payload, unsafe_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (context.workspace.root / "link").symlink_to(outside, target_is_directory=True)
+    unsafe_payload = _replace_unsafe_path_values(payload, unsafe_path)
     with pytest.raises(ToolError):
-        _normalize_payload(kind, json.dumps(payload), context)
+        _normalize_payload(kind, json.dumps(unsafe_payload), context)
+    assert list(outside.iterdir()) == []
 
 
+@pytest.mark.parametrize("unsafe_path", ["../../x", "/etc/x", "C:" + chr(92) + "x", "link/escape"])
 @pytest.mark.parametrize(("kind", "key"), [
     ("voice_generator", "output_path"),
     ("audio_processing", "output_path"),
@@ -137,9 +154,13 @@ def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, kind, pay
     ("final_renderer", "output_path"),
     ("render_worker", "output_path"),
 ])
-def test_path_taking_tool_outputs_reject_traversal(context, kind, key):
+def test_path_taking_tool_outputs_reject_traversal(context, tmp_path, kind, key, unsafe_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (context.workspace.root / "link").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ToolError):
-        _normalize_payload(kind, json.dumps({key: "../../outside.bin"}), context)
+        _normalize_payload(kind, json.dumps({key: unsafe_path}), context)
+    assert list(outside.iterdir()) == []
 
 
 @pytest.mark.parametrize(("kind", "key"), [
