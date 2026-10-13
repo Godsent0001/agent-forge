@@ -120,6 +120,39 @@ export interface SystemCheck {
   fix: string | null;
 }
 
+export interface UsageTotals {
+  runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  llm_calls: number;
+  tool_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+}
+
+export interface UsageBucket {
+  date?: string | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  model?: string | null;
+  runs: number;
+  llm_calls: number;
+  tool_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+}
+
+export interface UsageReport {
+  project_id: string;
+  days: number;
+  totals: UsageTotals;
+  by_day: UsageBucket[];
+  by_agent: UsageBucket[];
+  by_model: UsageBucket[];
+}
+
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
@@ -301,5 +334,9 @@ export const api = {
   },
   system: {
     check: () => request<SystemCheck[]>("/v2/system/check"),
+  },
+  usage: {
+    get: (projectId: string, days = 7) =>
+      request<UsageReport>(`/v2/usage?project_id=${encodeURIComponent(projectId)}&days=${days}`),
   },
 };

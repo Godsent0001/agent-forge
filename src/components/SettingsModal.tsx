@@ -5,12 +5,15 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { SystemCheckPanel } from "./SystemCheckPanel";
+import { UsagePanel } from "./UsagePanel";
+import { useStore } from "../store/useStore";
 
 type KeyStatus = Record<string, { saved: boolean; hint: string }>;
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
   const providers = providersNeedingKeys();
+  const project = useStore((state) => state.project);
 
   const [saved, setSaved] = useState<KeyStatus>({});
   const [runtime, setRuntime] = useState<Record<string, boolean> | null>(null);
@@ -18,7 +21,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [showKeys, setShowKeys] = useState(false);
   const [status, setStatus] = useState<{ tone: "info" | "ok" | "error"; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState<"keys" | "system">("keys");
+  const [activeSection, setActiveSection] = useState<"keys" | "system" | "usage">("keys");
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -111,6 +114,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-studio-800 bg-studio-950 px-4">
           <button type="button" role="tab" aria-selected={activeSection === "keys"} onClick={() => setActiveSection("keys")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "keys" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Provider keys</button>
           <button type="button" role="tab" aria-selected={activeSection === "system"} onClick={() => setActiveSection("system")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "system" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>System check</button>
+          <button type="button" role="tab" aria-selected={activeSection === "usage"} onClick={() => setActiveSection("usage")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "usage" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Usage</button>
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto p-5 py-4 text-xs">
           {activeSection === "keys" ? (
@@ -165,9 +169,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           })}
           <p className="text-2xs text-studio-500">Local models (Ollama) need no key.</p>
           </div>
-          ) : <SystemCheckPanel />}
+          ) : activeSection === "system" ? <SystemCheckPanel /> : <UsagePanel projectId={project?.id} />}
         </div>
 
+        {activeSection === "keys" ? (
         <div className="space-y-3 border-t border-studio-800 p-5 pt-3">
           {status && (
             <p
@@ -197,6 +202,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </div>
+        ) : (
+          <div className="flex justify-end border-t border-studio-800 p-5 pt-3">
+            <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
+          </div>
+        )}
       </div>
     </div>
   );
