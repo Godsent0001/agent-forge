@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.contracts.tools import ArtifactRef
 from app.tools.base import ToolExecutionError
 
 
@@ -32,9 +33,9 @@ def _relative_parts(rel: str | os.PathLike[str]) -> Path:
     if not raw or not raw.strip():
         raise ToolExecutionError("A relative path is required")
     # Reject Windows absolute paths and drive letters even when running on POSIX.
-    if raw.startswith(("/", "\\\\")) or re.match(r"^[A-Za-z]:", raw):
+    if raw.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", raw):
         raise ToolExecutionError("Absolute paths are not allowed")
-    normalized = raw.replace("\\\\", "/")
+    normalized = raw.replace("\\", "/")
     parts = normalized.split("/")
     if any(part == ".." for part in parts):
         raise ToolExecutionError("Parent-directory traversal is not allowed")
@@ -86,11 +87,17 @@ class RunWorkspace:
         resolved = _within(self.root, Path(path))
         return resolved.relative_to(self.root.resolve()).as_posix()
 
+    def write_result(self, tool_call_id: str, content: str) -> ArtifactRef:
+        result_path = self.resolve(".results/" + safe_id(tool_call_id) + ".txt")
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(content, encoding="utf-8")
+        return ArtifactRef(path=self.relative(result_path), mime="text/plain")
+
 
 def workspace_from(context: Any) -> RunWorkspace:
     """Use the run workspace, with a temporary legacy fallback until S-04."""
     workspace = getattr(context, "workspace", None)
-    if isinstance(workspace, RunWorkspace):
+    if workspace is not None and all(hasattr(workspace, name) for name in ("resolve", "new_path", "relative")):
         return workspace
     fallback = Path("./output").resolve()
     fallback.mkdir(parents=True, exist_ok=True)
