@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,10 +10,8 @@ from pydantic import BaseModel, ConfigDict
 
 from app.contracts.graph import ToolBinding
 from app.contracts.naming import sanitize_tool_name
-from app.contracts.tools import Permission, ToolContext, ToolError, ToolResult
-from app.contracts.tools import Tool as V2Tool
-from app.tools.base import Tool as LegacyTool
-from app.tools.base import ToolExecutionError
+from app.contracts.tools import Permission, Tool as V2Tool, ToolContext, ToolError, ToolResult
+from app.tools.base import Tool as LegacyTool, ToolExecutionError
 
 
 class LegacyInput(BaseModel):
