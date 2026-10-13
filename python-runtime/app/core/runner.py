@@ -407,6 +407,8 @@ class RunnerCore:
         cancel.raise_if_cancelled()
         budget.check_limits()
         pending_reminder_ids = pending_reminder_ids if pending_reminder_ids is not None else []
+        # Each agent invocation shares the same durable plan database for this workspace.
+        task_plan_store = SQLiteTaskPlanStore(Path(workspace.root) / ".agentforge" / "task_plans.sqlite3")
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
