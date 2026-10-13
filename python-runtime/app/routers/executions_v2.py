@@ -13,8 +13,8 @@ from app.contracts.run import RunOptions, RunRequest
 from app.db import SessionLocal
 from app.infra.approvals import resolve_approval
 from app.infra.workspace import RunWorkspace
-from app.tools.base import ToolExecutionError
 from app.services.executions import manager
+from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
 
