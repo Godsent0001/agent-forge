@@ -12,5 +12,5 @@ def test_video_source_rejects_loopback_url_before_network_lookup():
 
 
 def test_video_source_rejects_local_hostname_before_network_lookup():
-    with pytest.raises(ToolExecutionError, match="local"):
+    with pytest.raises(ToolExecutionError, match="[Ll]ocal"):
         _yt_dlp_search("http://localhost/", 5)
