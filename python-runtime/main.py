@@ -39,6 +39,7 @@ from app.routers import (
 from app.routers import catalog as catalog_router
 from app.routers import conversations as conversations_router
 from app.routers import memory as memory_router
+from app.routers import usage as usage_router
 from app.services.executions import manager
 
 logging.basicConfig(
@@ -68,6 +69,7 @@ app.include_router(executions_v2.router)
 app.include_router(catalog_router.router)
 app.include_router(conversations_router.router)
 app.include_router(memory_router.router)
+app.include_router(usage_router.router)
 app.include_router(settings.router)
 app.include_router(system.router)
 
