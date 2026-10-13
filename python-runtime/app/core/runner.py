@@ -18,6 +18,8 @@ from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFac
 from app.contracts.tools import ArtifactRef, Permission, RunWorkspace, ToolContext, ToolError, ToolResult
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
+from app.core.execution_artifacts import ExecutionArtifactLifecycle
+from app.core.durable_scheduler import SQLiteTaskPlanStore
 from app.core.context import ContextCompiler
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.claim_check import ClaimCheckEnvelope, ClaimCheckSummary, TaskDirective
@@ -34,6 +36,7 @@ from app.core.skills.types import SkillManifest
 from app.core.skills.registry import select_skill
 from app.core.spans import span
 from app.core.tools.yield_time import YieldTimeTool
+from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
 
 logger = logging.getLogger(__name__)
 DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4
@@ -64,6 +67,8 @@ class RunnerCore:
         clock: Clock | None = None,
     ) -> RunResult:
         budget = BudgetTracker(req.options.budget, max_parallel_tools=getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS))
+        # Shared built-ins are available by explicit tool binding; all existing kinds delegate unchanged.
+        tools = WorkspaceCapabilityToolFactory(tools)
         root_spec = graph.agents.get(graph.root_id)
         if not root_spec:
             return RunResult(
@@ -77,6 +82,16 @@ class RunnerCore:
         clock_fn: Clock = clock or (lambda: datetime.now(timezone.utc))
 
         checkpoint_store = SQLiteCheckpointStore(Path(workspace.root) / ".agentforge" / "checkpoints.sqlite3")
+        artifact_lifecycle = ExecutionArtifactLifecycle(workspace.root, req.project_id)
+        task_plan_store = SQLiteTaskPlanStore(Path(workspace.root) / ".agentforge" / "task_plans.sqlite3")
+        # Reconcile orphaned in-flight plans after interruption; uncertain side effects
+        # fail closed and are not replayed automatically.
+        for prior_plan_id in task_plan_store.list_ids(limit=500):
+            if prior_plan_id.startswith(f"{req.execution_id}:"):
+                try:
+                    task_plan_store.recover_interrupted(prior_plan_id, retry_running=False)
+                except Exception:
+                    logger.warning("Could not reconcile interrupted task plan %s", prior_plan_id, exc_info=True)
         graph_fingerprint = _fingerprint(graph.model_dump(mode="json"))
         request_fingerprint = _fingerprint(req.model_dump(mode="json", exclude={"execution_id"}))
         prior_checkpoint = await checkpoint_store.load(req.execution_id)
@@ -277,6 +292,30 @@ class RunnerCore:
                     "pending_tool_call_ids": [],
                 })
 
+            # Make the final answer a durable, versioned artifact before reporting success.
+            final_record, final_verification = await artifact_lifecycle.persist(
+                name=f"execution-{req.execution_id}-final.txt",
+                artifact_type="execution_output",
+                content=final_output.encode("utf-8"),
+                media_type="text/plain; charset=utf-8",
+                metadata={"execution_id": req.execution_id, "root_agent_id": req.root_agent_id},
+            )
+            await tracked_emit(EventDraft(
+                type="artifact_persisted",
+                data={
+                    "artifact_id": final_record.artifact_id,
+                    "artifact_version": final_record.version,
+                    "artifact_type": final_record.artifact_type,
+                    "name": final_record.name,
+                    "sha256": final_record.sha256,
+                    "size_bytes": final_record.size_bytes,
+                },
+            ))
+            await tracked_emit(EventDraft(
+                type="artifact_verification",
+                data=final_verification.model_dump(mode="json"),
+            ))
+
             if root_spec.lessons_enabled and lessons:
                 recovery = _find_recovered_tool_error(last_checkpoint_state.get("messages", []))
                 if recovery:
@@ -371,6 +410,8 @@ class RunnerCore:
         cancel.raise_if_cancelled()
         budget.check_limits()
         pending_reminder_ids = pending_reminder_ids if pending_reminder_ids is not None else []
+        # Each agent invocation shares the same durable plan database for this workspace.
+        task_plan_store = SQLiteTaskPlanStore(Path(workspace.root) / ".agentforge" / "task_plans.sqlite3")
 
         if agent_id in active_agent_ids:
             raise RuntimeError(f"Cycle detected in agent graph for agent '{agent_id}'")
@@ -637,7 +678,10 @@ class RunnerCore:
                         },
                         max_tasks=max_tasks,
                     )
+                    plan_id = f"{req.execution_id}:{agent_span_id}:{iterations}:{uuid.uuid4().hex}"
+                    task_plan_store.create(plan_id, plan.model_copy(deep=True))
                     plan.refresh_ready()
+                    task_plan_store.refresh_ready(plan_id)
                     results_by_call: dict[str, str] = {
                         tc.id: f"ERROR: execution task limit exceeded ({max_tasks})."
                         for tc in rejected_calls
@@ -658,7 +702,10 @@ class RunnerCore:
                     )
 
                     while not plan.terminal:
+                        durable_claimed = task_plan_store.claim_ready(plan_id, parallel_limit)
                         claimed = plan.claim_ready(parallel_limit)
+                        if len(durable_claimed) != len(claimed):
+                            raise RuntimeError("Durable scheduler state diverged from the active task plan.")
                         if not claimed:
                             break
 
@@ -707,8 +754,41 @@ class RunnerCore:
                                 completed_tool_results[call_id] = result_text
                                 if result_text.startswith("ERROR:"):
                                     plan.fail(task.task_id, result_text, retryable=False)
+                                    task_plan_store.fail(plan_id, task.task_id, result_text, retryable=False)
                                 else:
-                                    plan.complete(task.task_id)
+                                    result_record, result_verification = await ExecutionArtifactLifecycle(
+                                        workspace.root, req.project_id
+                                    ).persist(
+                                        name=f"tool-result-{call_id}.txt",
+                                        artifact_type="tool_result",
+                                        content=result_text.encode("utf-8"),
+                                        media_type="text/plain; charset=utf-8",
+                                        metadata={
+                                            "execution_id": req.execution_id,
+                                            "tool_call_id": call_id,
+                                            "tool_name": next(tc.name for tc in scheduled_calls if tc.id == call_id),
+                                            "agent_id": spec.id,
+                                        },
+                                    )
+                                    result_ref = f"artifact://{result_record.artifact_id}/versions/{result_record.version}"
+                                    await emit(EventDraft(
+                                        type="artifact_persisted",
+                                        data={
+                                            "artifact_id": result_record.artifact_id,
+                                            "artifact_version": result_record.version,
+                                            "artifact_type": result_record.artifact_type,
+                                            "name": result_record.name,
+                                            "sha256": result_record.sha256,
+                                            "size_bytes": result_record.size_bytes,
+                                            "tool_call_id": call_id,
+                                        },
+                                    ))
+                                    await emit(EventDraft(
+                                        type="artifact_verification",
+                                        data=result_verification.model_dump(mode="json"),
+                                    ))
+                                    plan.complete(task.task_id, result_ref=result_ref)
+                                    task_plan_store.complete(plan_id, task.task_id, result_ref=result_ref)
 
                                 # Persist each completion immediately. If a sibling tool
                                 # is interrupted, completed work is retained and only the
@@ -896,7 +976,38 @@ class RunnerCore:
                         )
 
                     artifact_ref = workspace.write_result(task_id, res_text) if hasattr(workspace, "write_result") else None
-                    uri = f"store://{artifact_ref.path}" if artifact_ref else f"store://.results/{task_id}.txt"
+                    child_record, child_verification = await ExecutionArtifactLifecycle(
+                        workspace.root, req.project_id
+                    ).persist(
+                        name=f"{task_id}.txt",
+                        artifact_type="agent_result",
+                        content=res_text.encode("utf-8"),
+                        media_type="text/plain; charset=utf-8",
+                        metadata={
+                            "execution_id": req.execution_id,
+                            "task_id": task_id,
+                            "sender_agent_id": child_link.agent_id,
+                            "recipient_agent_id": spec.id,
+                        },
+                    )
+                    await emit(EventDraft(
+                        type="artifact_persisted",
+                        parent_span_id=tool_span_id,
+                        data={
+                            "artifact_id": child_record.artifact_id,
+                            "artifact_version": child_record.version,
+                            "artifact_type": child_record.artifact_type,
+                            "name": child_record.name,
+                            "sha256": child_record.sha256,
+                            "size_bytes": child_record.size_bytes,
+                        },
+                    ))
+                    await emit(EventDraft(
+                        type="artifact_verification",
+                        parent_span_id=tool_span_id,
+                        data=child_verification.model_dump(mode="json"),
+                    ))
+                    uri = f"artifact://{child_record.artifact_id}/versions/{child_record.version}"
 
                     end_time = _clock_now(clock)
                     headline = res_text[:300].replace("\n", " ").strip() or "Child agent returned no summary."
@@ -999,7 +1110,48 @@ class RunnerCore:
 
                 content = res.content
                 if res.artifacts:
-                    artifact_lines = [f"- {artifact.path}" for artifact in res.artifacts[:8]]
+                    artifact_lines = []
+                    for artifact in res.artifacts[:8]:
+                        try:
+                            artifact_record, verification_report = await ExecutionArtifactLifecycle(
+                                workspace.root, req.project_id
+                            ).persist_workspace_file(
+                                workspace,
+                                path=artifact.path,
+                                media_type=artifact.mime,
+                                description=artifact.description,
+                                metadata={
+                                    "execution_id": req.execution_id,
+                                    "tool_call_id": tc.id,
+                                    "tool_name": tc.name,
+                                    "agent_id": spec.id,
+                                },
+                            )
+                            artifact_lines.append(
+                                f"{artifact.path} (artifact_id={artifact_record.artifact_id}, "
+                                f"version={artifact_record.version}, sha256={artifact_record.sha256})"
+                            )
+                            await emit(EventDraft(
+                                type="artifact_persisted",
+                                parent_span_id=tool_span_id,
+                                data={
+                                    "artifact_id": artifact_record.artifact_id,
+                                    "artifact_version": artifact_record.version,
+                                    "artifact_type": artifact_record.artifact_type,
+                                    "name": artifact_record.name,
+                                    "sha256": artifact_record.sha256,
+                                    "size_bytes": artifact_record.size_bytes,
+                                    "tool_call_id": tc.id,
+                                },
+                            ))
+                            await emit(EventDraft(
+                                type="artifact_verification",
+                                parent_span_id=tool_span_id,
+                                data=verification_report.model_dump(mode="json"),
+                            ))
+                        except Exception as artifact_error:
+                            logger.exception("Could not persist tool artifact %s", artifact.path)
+                            return f"ERROR: tool artifact could not be persisted ({type(artifact_error).__name__})."
                     content += " | Artifacts produced: " + " | ".join(artifact_lines)
                 if res.truncated:
                     continuation = f" Next offset: {res.next_offset}." if res.next_offset is not None else ""
