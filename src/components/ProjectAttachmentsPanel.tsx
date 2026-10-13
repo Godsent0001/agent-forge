@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "../api/client";
 import type { ProjectAttachment } from "../types";
 import { Icon } from "./ui/Icon";
@@ -28,7 +28,7 @@ export function ProjectAttachmentsPanel({
 }: {
   projectId: string;
   selectedIds: string[];
-  onSelectedIdsChange: React.Dispatch<React.SetStateAction<string[]>>;
+  onSelectedIdsChange: Dispatch<SetStateAction<string[]>>;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
