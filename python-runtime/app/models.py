@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -299,3 +300,28 @@ class LessonEntry(Base):
 
 Index("ix_memory_entries_agent_status_created", MemoryEntry.agent_id, MemoryEntry.status, MemoryEntry.created_at)
 Index("ix_lessons_agent_status_created", LessonEntry.agent_id, LessonEntry.status, LessonEntry.created_at)
+
+
+class ProjectAttachment(Base):
+    """Opaque project attachment metadata; uploaded bytes are stored outside served roots."""
+
+    __tablename__ = "attachments"
+    __table_args__ = (
+        Index("ix_attachments_project_created", "project_id", "created_at"),
+        UniqueConstraint("storage_key", name="uq_attachments_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    storage_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    declared_mime: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_mime: Mapped[str] = mapped_column(String(128), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="quarantined")
+    scanner_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
