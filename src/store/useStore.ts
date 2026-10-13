@@ -12,6 +12,7 @@ interface StoreState {
   selectedAgentId: string | null;
   chatMessages: Record<string, ChatMessage[]>;
   addChatMessage: (agentId: string, msg: ChatMessage) => void;
+  setChatMessages: (agentId: string, messages: ChatMessage[]) => void;
   clearChat: (agentId: string) => void;
   /** A task waiting to be sent through the chat pipeline (e.g. from the Run workflow dialog). */
   pendingTask: { agentId: string; text: string } | null;
@@ -76,6 +77,15 @@ export const useStore = create<StoreState>()(
       chatMessages: {
         ...state.chatMessages,
         [agentId]: [...(state.chatMessages[agentId] || []), msg],
+      },
+    }));
+  },
+
+  setChatMessages: (agentId, messages) => {
+    set((state) => ({
+      chatMessages: {
+        ...state.chatMessages,
+        [agentId]: messages.slice(-MAX_PERSISTED_MESSAGES_PER_AGENT),
       },
     }));
   },

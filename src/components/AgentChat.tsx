@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, ConversationMessageRecord, ConversationSummary } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
 import { ApprovalDialog } from "./run/ApprovalDialog";
 import { executionToolMessages } from "../utils/executionToolMessages";
@@ -12,12 +12,31 @@ import { isSimulatedText } from "../utils/simulated";
 import { buildRunHistory } from "../utils/chatHistory";
 import { useExecutionStream } from "../hooks/useExecutionStream";
 
+function fromStoredMessage(record: ConversationMessageRecord, agentName: string): ChatMessage {
+  const timestamp = new Date(record.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (record.role === "user") {
+    return { id: record.id, sender: "user", text: record.content, timestamp };
+  }
+  return {
+    id: record.id,
+    sender: "agent",
+    agentName,
+    text: record.content,
+    timestamp,
+    executionId: record.execution_id ?? undefined,
+    messageRecordId: record.id,
+    feedbackValue: record.feedback_value,
+    feedbackNote: record.feedback_note,
+  };
+}
+
 export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string) => void }) {
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
+  const setChatMessages = useStore((s) => s.setChatMessages);
   const agentCount = useStore((s) => s.agents.length);
   const createAgent = useStore((s) => s.createAgent);
   const clearChat = useStore((s) => s.clearChat);
@@ -27,6 +46,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [promptInput, setPromptInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
@@ -34,10 +57,79 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [createAgentError, setCreateAgentError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedExecutionRef = useRef<string | null>(null);
-  const activeExecutionAgentRef = useRef<{ id: string; name: string } | null>(null);
+  const conversationLoadRef = useRef(0);
+  const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
+
+  // Conversations are loaded from SQLite when the selected project/agent changes.
+  // The Zustand copy is only a bounded rendering cache; the API remains authoritative.
+  useEffect(() => {
+    if (!agent || !project) {
+      setConversations([]);
+      setActiveConversationId(null);
+      setConversationLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setConversationLoading(true);
+    setConversationError(null);
+    setConversations([]);
+    setActiveConversationId(null);
+    setChatMessages(agent.id, []);
+
+    void (async () => {
+      try {
+        let items = await api.conversations.list(project.id, agent.id);
+        if (items.length === 0) {
+          const created = await api.conversations.create(project.id, agent.id);
+          items = [created];
+        }
+        if (cancelled) return;
+        setConversations(items);
+        setActiveConversationId(items[0].id);
+      } catch (cause) {
+        if (cancelled) return;
+        setConversationError(cause instanceof Error ? cause.message : "Could not load saved conversations.");
+        setConversationLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      conversationLoadRef.current += 1;
+    };
+  }, [agent?.id, project?.id, setChatMessages]);
+
+  useEffect(() => {
+    if (!agent || !project || !activeConversationId) return;
+    const selectedConversation = conversations.find(
+      (item) => item.id === activeConversationId && item.project_id === project.id && item.agent_id === agent.id,
+    );
+    if (!selectedConversation) return;
+
+    const loadId = ++conversationLoadRef.current;
+    setConversationLoading(true);
+    setConversationError(null);
+    setChatMessages(agent.id, []);
+    void api.conversations.messages(activeConversationId)
+      .then((records) => {
+        if (conversationLoadRef.current !== loadId) return;
+        setChatMessages(agent.id, records.map((record) => fromStoredMessage(record, agent.name)));
+      })
+      .catch((cause) => {
+        if (conversationLoadRef.current !== loadId) return;
+        setConversationError(cause instanceof Error ? cause.message : "Could not load this conversation.");
+      })
+      .finally(() => {
+        if (conversationLoadRef.current === loadId) setConversationLoading(false);
+      });
+
+    return () => {
+      if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
+    };
+  }, [activeConversationId, conversations, agent?.id, agent?.name, project?.id, setChatMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -46,11 +138,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   // Tasks queued elsewhere (Run workflow dialog) go through exactly the same path as typing in the composer,
   // so they appear in this agent's chat history and trace like any other message.
   useEffect(() => {
-    if (!pendingTask || !agent || pendingTask.agentId !== agent.id || isProcessing) return;
+    if (!pendingTask || !agent || pendingTask.agentId !== agent.id || isProcessing || conversationLoading || !activeConversationId) return;
     const text = consumePendingTask();
     if (text) void sendTask(text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingTask, agent?.id, isProcessing]);
+  }, [pendingTask, agent?.id, isProcessing, conversationLoading, activeConversationId]);
 
   useEffect(() => {
     const targetAgent = activeExecutionAgentRef.current;
@@ -107,7 +199,27 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             durationSeconds,
           },
         };
-        addChatMessage(agentId, agentMsg);
+        let persistedAgentMsg = agentMsg;
+        try {
+          const saved = await api.conversations.appendMessage(targetAgent.conversationId, {
+            role: "assistant",
+            content: agentMsg.text,
+            execution_id: executionId,
+          });
+          persistedAgentMsg = {
+            ...agentMsg,
+            id: saved.id,
+            timestamp: new Date(saved.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            messageRecordId: saved.id,
+            feedbackValue: saved.feedback_value,
+            feedbackNote: saved.feedback_note,
+          };
+        } catch (cause) {
+          setConversationError(cause instanceof Error
+            ? `Run finished, but its answer could not be saved: ${cause.message}`
+            : "Run finished, but its answer could not be saved.");
+        }
+        addChatMessage(agentId, persistedAgentMsg);
         if (status === "cancelled") setChatNotice("Run stopped.");
         else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
         else if (status === "error" || status === "interrupted") {
@@ -156,9 +268,47 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     URL.revokeObjectURL(url);
   };
 
-  const handleClearChat = () => {
+  const handleNewConversation = async () => {
+    if (!agent || !project || isProcessing) return;
+    setConversationError(null);
+    try {
+      const created = await api.conversations.create(project.id, agent.id);
+      setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setChatMessages(agent.id, []);
+      setActiveConversationId(created.id);
+    } catch (cause) {
+      setConversationError(cause instanceof Error ? cause.message : "Could not create a conversation.");
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!agent || !project || isProcessing) return;
+    if (!window.confirm(`Delete this conversation with ${agent.name}? This cannot be undone.`)) return;
+    setConversationError(null);
+    try {
+      const created = await api.conversations.create(project.id, agent.id);
+      if (activeConversationId) await api.conversations.remove(activeConversationId);
+      setConversations((current) => [created, ...current.filter((item) => item.id !== activeConversationId && item.id !== created.id)]);
+      setChatMessages(agent.id, []);
+      setActiveConversationId(created.id);
+    } catch (cause) {
+      setConversationError(cause instanceof Error ? cause.message : "Could not delete this conversation.");
+    }
+  };
+
+  const handleFeedback = async (messageId: string, value: -1 | 1) => {
     if (!agent) return;
-    if (window.confirm(`Clear the saved conversation with ${agent.name}? This cannot be undone.`)) clearChat(agent.id);
+    const message = agentMessages.find((item) => item.id === messageId);
+    if (!message || message.sender !== "agent" || !message.messageRecordId) return;
+    try {
+      await api.conversations.feedback(message.messageRecordId, value, message.feedbackNote ?? undefined);
+      const latest = useStore.getState().chatMessages[agent.id] || [];
+      setChatMessages(agent.id, latest.map((item) =>
+        item.id === messageId && item.sender === "agent" ? { ...item, feedbackValue: value } : item,
+      ));
+    } catch (cause) {
+      setConversationError(cause instanceof Error ? cause.message : "Could not save message feedback.");
+    }
   };
 
   const handleCreateFirstAgent = async () => {
@@ -218,6 +368,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const sendTask = async (rawText: string, fromComposer = false) => {
     if (!rawText.trim() || isProcessing || !agent || !project) return;
+    if (!activeConversationId || conversationLoading) {
+      setChatError("Wait for the saved conversation to finish loading, then try again.");
+      return;
+    }
     if (!agent.model?.trim()) {
       setChatError("Pick a model in Config before starting a chat.");
       return;
@@ -228,21 +382,25 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setChatError(null);
     setChatNotice(null);
 
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: userText,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-    addChatMessage(agent.id, userMsg);
     setIsProcessing(true);
 
     try {
       const history = buildRunHistory(agentMessages);
+      const savedUser = await api.conversations.appendMessage(activeConversationId, {
+        role: "user",
+        content: userText,
+      });
+      const userMsg: ChatMessage = {
+        id: savedUser.id,
+        sender: "user",
+        text: savedUser.content,
+        timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      addChatMessage(agent.id, userMsg);
 
       const execution = await api.executions.run(project.id, agent.id, userText, history);
       processedExecutionRef.current = null;
-      activeExecutionAgentRef.current = { id: agent.id, name: agent.name };
+      activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
       // The stream owns completion now; do not poll the execution endpoint.
@@ -283,6 +441,27 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <label className="sr-only" htmlFor="conversation-switcher">Saved conversations</label>
+          <select
+            id="conversation-switcher"
+            aria-label="Saved conversations"
+            value={activeConversationId ?? ""}
+            onChange={(event) => setActiveConversationId(event.target.value || null)}
+            disabled={conversationLoading || isProcessing || conversations.length === 0}
+            className="max-w-40 rounded border border-studio-700 bg-studio-950 px-2 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
+          >
+            {conversations.map((conversation) => (
+              <option key={conversation.id} value={conversation.id}>{conversation.title || "New conversation"}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void handleNewConversation()}
+            disabled={isProcessing || conversationLoading}
+            className="rounded border border-studio-700 px-2 py-1 text-2xs font-mono text-studio-300 transition-colors hover:bg-studio-800 disabled:opacity-50"
+          >
+            New chat
+          </button>
           {agentMessages.length > 0 && (
             <>
               <button
@@ -297,9 +476,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                 type="button"
                 onClick={handleClearChat}
                 className="rounded px-2 py-1 text-2xs font-mono text-studio-400 transition-colors hover:bg-studio-800 hover:text-red-300"
-                title="Delete the saved conversation"
+                title="Delete this saved conversation and start a new one"
+                disabled={isProcessing}
               >
-                Clear
+                Delete
               </button>
             </>
           )}
@@ -324,7 +504,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         </div>
       )}
 
-      <div role="log" aria-label={`Conversation with ${agent.name}`} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+      <div role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+        {conversationLoading && (
+          <p role="status" className="rounded border border-studio-800 bg-studio-900 px-3 py-2 text-2xs text-studio-400">
+            Loading saved conversation…
+          </p>
+        )}
+        {conversationError && (
+          <p role="alert" className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-2xs text-amber-200">
+            {conversationError}
+          </p>
+        )}
         {agentMessages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
             <LogoMark size={48} className="mb-5 drop-shadow-lg" />
@@ -435,6 +625,25 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               >
                 View run log
               </button>
+            )}
+            {msg.sender === "agent" && msg.messageRecordId && (
+              <div role="group" aria-label="Rate this answer" className="mt-1 ml-1 flex items-center gap-2 text-2xs text-studio-500">
+                <span>Helpful?</span>
+                <button
+                  type="button"
+                  aria-label="Mark answer helpful"
+                  aria-pressed={msg.feedbackValue === 1}
+                  onClick={() => void handleFeedback(msg.id, 1)}
+                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === 1 ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-studio-800 text-studio-400 hover:bg-studio-800"}`}
+                >👍 Yes</button>
+                <button
+                  type="button"
+                  aria-label="Mark answer not helpful"
+                  aria-pressed={msg.feedbackValue === -1}
+                  onClick={() => void handleFeedback(msg.id, -1)}
+                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === -1 ? "border-amber-700 bg-amber-950 text-amber-200" : "border-studio-800 text-studio-400 hover:bg-studio-800"}`}
+                >👎 No</button>
+              </div>
             )}
           </div>
         ))}
