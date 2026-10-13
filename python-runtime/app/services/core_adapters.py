@@ -10,11 +10,11 @@ from app.contracts.graph import ToolBinding
 from app.contracts.naming import sanitize_tool_name
 from app.contracts.tools import (
     ArtifactRef,
-    Tool as V2Tool,
     ToolContext,
     ToolError,
     ToolResult,
 )
+from app.contracts.tools import Tool as V2Tool
 from app.infra.workspace import RunWorkspace as SafeRunWorkspace
 from app.tools.registry import build_tool
 
