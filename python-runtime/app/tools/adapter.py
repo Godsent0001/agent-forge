@@ -17,7 +17,8 @@ from app.contracts.tools import (
     ToolResult,
 )
 from app.contracts.tools import Tool as V2Tool
-from app.infra.workspace import RunWorkspace as SafeRunWorkspace, data_dir
+from app.infra.workspace import RunWorkspace as SafeRunWorkspace
+from app.infra.workspace import data_dir
 from app.tools.base import Tool as LegacyTool
 from app.tools.base import ToolExecutionError
 
