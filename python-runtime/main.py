@@ -27,7 +27,16 @@ from app.db import init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.infra.file_security import file_response_headers
 from app.infra.paths import data_dir
-from app.routers import agents, catalog as catalog_router, executions, executions_v2, projects, settings, system, tools
+from app.routers import (
+    agents,
+    executions,
+    executions_v2,
+    projects,
+    settings,
+    system,
+    tools,
+)
+from app.routers import catalog as catalog_router
 from app.services.executions import manager
 
 logging.basicConfig(
