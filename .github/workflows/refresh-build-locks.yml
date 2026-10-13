@@ -1,0 +1,61 @@
+name: Refresh build lockfiles (one-time)
+
+on:
+  push:
+    branches: [dev/kenny-ui]
+    paths:
+      - "package.json"
+      - "python-runtime/pyproject.toml"
+      - ".github/workflows/refresh-build-locks.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-and-verify:
+    if: startsWith(github.event.head_commit.message, 'chore(m3): upgrade Electron and add reproducible PyInstaller build group')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev/kenny-ui
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Regenerate npm lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Regenerate uv lockfile
+        run: uv lock --directory python-runtime
+      - name: Commit regenerated locks and remove one-time updater
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json python-runtime/uv.lock
+          git rm .github/workflows/refresh-build-locks.yml
+          git commit -m "chore(deps): refresh npm and Python build lockfiles"
+          git push origin HEAD:dev/kenny-ui
+      - name: Validate frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test -- --run
+          npm run build
+      - name: Validate backend and PyInstaller
+        run: |
+          cd python-runtime
+          uv sync --frozen --group dev --group build
+          uv run ruff check .
+          uv run pytest -m "not live"
+          uv run python scripts/export_fixtures.py
+          uv run python scripts/try_tool.py --help
+          uv run pyinstaller --clean --noconfirm python-runtime.spec
+      - name: Build Linux installer
+        run: npm run dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AgentForge-Linux-AppImage
+          path: dist-electron/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
