@@ -57,6 +57,21 @@ def test_upload_clean_file_lists_and_downloads_as_attachment(client, db_session,
     assert "sandbox" in download.headers["content-security-policy"]
 
 
+def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
+    project = _project(db_session)
+
+    content = b"Project brief\r\nOwner:\tKenny\r\n"
+    response = _upload(client, project.id, "brief.txt", content)
+
+    assert response.status_code == 201, response.text
+    attachment = response.json()
+    assert attachment["status"] == "clean"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == content
+
 def test_unavailable_scanner_quarantines_until_clean_rescan(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
