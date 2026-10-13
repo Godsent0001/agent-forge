@@ -3,6 +3,8 @@ import { providersNeedingKeys } from "../config/providers";
 import type { ChatMessage as RunChatMessage } from "../contracts";
 import type {
   Agent,
+  AgentLesson,
+  AgentMemory,
   CatalogShelf,
   CatalogToolEntry,
   ConversationMessageRecord,
@@ -153,6 +155,37 @@ export const api = {
     create: (payload: Partial<Tool> & { project_id: string; name: string; kind: string }) =>
       request<Tool>("/tools", { method: "POST", body: JSON.stringify(payload) }),
     remove: (id: string) => request<{ deleted: string }>(`/tools/${id}`, { method: "DELETE" }),
+  },
+
+  memory: {
+    list: (agentId: string, status?: "active" | "superseded" | "archived") =>
+      request<AgentMemory[]>(`/v2/agents/${encodeURIComponent(agentId)}/memory${status ? `?status=${status}` : ""}`),
+    create: (agentId: string, payload: { text: string; kind: AgentMemory["kind"]; pinned?: boolean }) =>
+      request<AgentMemory>(`/v2/agents/${encodeURIComponent(agentId)}/memory`, {
+        method: "POST", body: JSON.stringify(payload),
+      }),
+    update: (agentId: string, memoryId: string, payload: { text?: string; kind?: AgentMemory["kind"]; pinned?: boolean; status?: AgentMemory["status"] }) =>
+      request<AgentMemory>(`/v2/agents/${encodeURIComponent(agentId)}/memory/${encodeURIComponent(memoryId)}`, {
+        method: "PATCH", body: JSON.stringify(payload),
+      }),
+    remove: (agentId: string, memoryId: string) =>
+      request<{ deleted: boolean }>(`/v2/agents/${encodeURIComponent(agentId)}/memory/${encodeURIComponent(memoryId)}`, { method: "DELETE" }),
+    clear: (agentId: string) =>
+      request<{ deleted: number }>(`/v2/agents/${encodeURIComponent(agentId)}/memory`, { method: "DELETE" }),
+  },
+  lessons: {
+    list: (agentId: string, status?: "active" | "archived") =>
+      request<AgentLesson[]>(`/v2/agents/${encodeURIComponent(agentId)}/lessons${status ? `?status=${status}` : ""}`),
+    create: (agentId: string, payload: { text: string; evidence_execution_id?: string; score?: number }) =>
+      request<AgentLesson>(`/v2/agents/${encodeURIComponent(agentId)}/lessons`, {
+        method: "POST", body: JSON.stringify(payload),
+      }),
+    update: (agentId: string, lessonId: string, payload: { text?: string; status?: AgentLesson["status"]; score?: number }) =>
+      request<AgentLesson>(`/v2/agents/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`, {
+        method: "PATCH", body: JSON.stringify(payload),
+      }),
+    remove: (agentId: string, lessonId: string) =>
+      request<{ deleted: boolean }>(`/v2/agents/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`, { method: "DELETE" }),
   },
   conversations: {
     list: (projectId: string, agentId?: string, limit = 50) => {

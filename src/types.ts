@@ -76,6 +76,35 @@ export type ChatMessage =
       executionId?: string;
     };
 
+export type MemoryKind = "fact" | "preference" | "decision";
+export type MemorySourceType = "user_stated" | "user_edited" | "inferred";
+export type MemoryStatus = "active" | "superseded" | "archived";
+
+export interface AgentMemory {
+  id: string;
+  agent_id: string;
+  text: string;
+  kind: MemoryKind;
+  source_type: MemorySourceType;
+  source_execution_id: string | null;
+  created_at: string;
+  last_used_at: string | null;
+  use_count: number;
+  pinned: boolean;
+  status: MemoryStatus;
+  expires_at: string | null;
+}
+
+export interface AgentLesson {
+  id: string;
+  agent_id: string;
+  text: string;
+  evidence_execution_id: string | null;
+  status: "active" | "archived";
+  score: number;
+  created_at: string;
+}
+
 export interface Agent {
   id: string;
   project_id: string;
@@ -86,6 +115,7 @@ export interface Agent {
   system_prompt: string;
   tool_use_schema: string;
   memory_enabled: boolean;
+  lessons_enabled?: boolean;
   learned_experience?: string;
   created_at: string;
   tool_ids?: string[];
