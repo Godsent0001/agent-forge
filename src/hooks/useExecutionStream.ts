@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, getApiBase } from "../api/client";
+import { api, getApiBase, getApiToken } from "../api/client";
 import type { ExecutionEvent, ExecutionNode, ExecutionStatus } from "../types";
 
 export function reduceEvents(events: ExecutionEvent[]): ExecutionNode[] {
@@ -110,11 +110,14 @@ export function useExecutionStream(executionId: string | null) {
     const connect = async () => {
       try {
         const apiBase = await getApiBase();
+        const token = await getApiToken();
         if (cancelled) return;
         const wsBase = apiBase.replace(/^http/, "ws");
+        const params = new URLSearchParams({ after_seq: String(lastSeq()) });
+        if (token) params.set("token", token);
         const ws = new WebSocket(
           wsBase + "/v2/executions/" + encodeURIComponent(executionId) +
-          "/stream?after_seq=" + lastSeq(),
+          "/stream?" + params.toString(),
         );
         wsRef.current = ws;
         ws.onopen = () => {
