@@ -55,7 +55,8 @@ def assert_public_url(url: str, *, app_port: int | None = None) -> None:
         raise UnsafeURL("Destination hostname has no addresses")
     for address in addresses:
         if (
-            address.is_loopback
+            not address.is_global
+            or address.is_loopback
             or address.is_private
             or address.is_link_local
             or address.is_multicast
