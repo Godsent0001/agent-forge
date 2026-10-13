@@ -46,6 +46,7 @@ export function executionToolMessages(
         toolStatus: ended.status ?? "error",
         text: output,
         timestamp,
+        executionId: ended.execution_id,
       };
     });
 }
