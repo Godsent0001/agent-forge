@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api/client";
-import type { ExecutionEvent } from "../types";
+import { api } from "../../api/client";
+import type { ExecutionEvent } from "../../types";
 
 type Decision = "allow_once" | "allow_run" | "deny";
 
