@@ -49,7 +49,7 @@ _OUTPUT_DEFAULTS = {
     "render_worker": {"output_path": "render.mp4"},
 }
 _OUTPUT_PATH_KEYS = {"output_path", "output_image_path", "output_video_path"}
-_ID_KEYS = {"character_id", "episode_id", "job_id", "template_id"}
+_ID_KEYS = {"character_id", "episode_id", "job_id", "template_id", "voice"}
 
 
 def _relative_input(value: str) -> str:
