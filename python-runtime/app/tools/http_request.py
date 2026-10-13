@@ -24,7 +24,7 @@ async def _real_request_backend(method: str, url: str, body: str | None) -> str:
     current_url = url
     current_method = method
     current_body = body
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, trust_env=False) as client:
         for redirect_count in range(MAX_REDIRECTS + 1):
             assert_public_url(current_url, app_port=APP_PORT)
             headers = (
