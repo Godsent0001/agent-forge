@@ -97,7 +97,9 @@ class HttpRequestTool(Tool):
         try:
             assert_public_url(url, app_port=APP_PORT)
             return await self._request_fn(method, url, body or None)
-        except (UnsafeURL, ToolExecutionError):
+        except UnsafeURL as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        except ToolExecutionError:
             raise
         except Exception as exc:  # noqa: BLE001
             raise ToolExecutionError(f"http_request failed: {exc}") from exc
