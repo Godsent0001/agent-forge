@@ -8,9 +8,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
@@ -45,7 +45,31 @@ app.include_router(executions_v2.router)
 app.include_router(catalog_router.router)
 app.include_router(settings.router)
 
-app.mount("/files", StaticFiles(directory=str(OUTPUT_DIR)), name="files")
+@app.get("/files/{relpath:path}", tags=["legacy-files"])
+def get_legacy_file(relpath: str):
+    """Authenticated compatibility route for older output artifacts.
+
+    Do not mount StaticFiles here: active HTML/SVG/JS artifacts must never execute
+    on the sidecar origin, even when a caller possesses a valid query token.
+    """
+    from app.infra.workspace import RunWorkspace
+    from app.tools.base import ToolExecutionError
+
+    try:
+        path = RunWorkspace("legacy-files", root=OUTPUT_DIR).resolve(relpath)
+    except (ToolExecutionError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="File not found") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    headers = {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    }
+    if path.suffix.lower() in {".html", ".htm", ".svg", ".js", ".mjs", ".xml", ".xhtml", ".xsl"}:
+        headers["Content-Disposition"] = "attachment"
+    return FileResponse(path=path, headers=headers)
 
 app.add_middleware(TokenAuthMiddleware)
 
