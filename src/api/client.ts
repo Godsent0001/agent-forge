@@ -5,6 +5,19 @@ import type { Agent, CatalogShelf, CatalogToolEntry, Project, Tool } from "../ty
 
 let currentApiBase = "http://127.0.0.1:8000";
 let portInitPromise: Promise<void> | null = null;
+let apiTokenPromise: Promise<string> | null = null;
+
+export function getApiToken(): Promise<string> {
+  if (!apiTokenPromise) {
+    apiTokenPromise = (async () => {
+      if (typeof window !== "undefined" && window.electronAPI) {
+        return window.electronAPI.getApiToken();
+      }
+      return import.meta.env.VITE_DEV_TOKEN || "";
+    })();
+  }
+  return apiTokenPromise;
+}
 
 function ensurePortInitialized(): Promise<void> {
   if (!portInitPromise) {
@@ -40,9 +53,13 @@ export async function getApiBase(): Promise<string> {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   await ensurePortInitialized();
+  const token = await getApiToken();
+  const headers = new Headers(options?.headers);
+  if (!headers.has("Content-Type") && options?.body) headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", "Bearer " + token);
   const res = await fetch(`${currentApiBase}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
