@@ -148,7 +148,7 @@ class ProductionConfigTool(Tool):
     }
 
     def __init__(self, config_path: str | None = None):
-        self._path = Path(config_path).expanduser().resolve() if config_path else data_dir() / "production_config.json
+        self._path = Path(config_path).expanduser().resolve() if config_path else data_dir() / "production_config.json"
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
