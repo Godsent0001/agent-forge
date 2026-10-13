@@ -36,6 +36,7 @@ from app.core.skills.types import SkillManifest
 from app.core.skills.registry import select_skill
 from app.core.spans import span
 from app.core.tools.yield_time import YieldTimeTool
+from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
 
 logger = logging.getLogger(__name__)
 DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4
@@ -66,6 +67,8 @@ class RunnerCore:
         clock: Clock | None = None,
     ) -> RunResult:
         budget = BudgetTracker(req.options.budget, max_parallel_tools=getattr(req.options, "max_parallel_tool_calls", DEFAULT_MAX_PARALLEL_TOOL_CALLS))
+        # Shared built-ins are available by explicit tool binding; all existing kinds delegate unchanged.
+        tools = WorkspaceCapabilityToolFactory(tools)
         root_spec = graph.agents.get(graph.root_id)
         if not root_spec:
             return RunResult(
