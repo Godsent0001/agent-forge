@@ -140,7 +140,7 @@ def _assert_safe_text(data: bytes, extension: str) -> str:
         raise AttachmentStorageError("Text files must be valid UTF-8") from exc
     if "\x00" in text:
         raise AttachmentStorageError("Binary data is not allowed in text attachments")
-    if any(unicodedata.category(ch) == "Cc" and ch not in "\\t\\n\\r\\f" for ch in text):
+    if any(unicodedata.category(ch) == "Cc" and ch not in "\t\n\r\f" for ch in text):
         raise AttachmentStorageError("Text contains unsupported control characters")
     if ACTIVE_TEXT_RE.search(text[:8192]):
         raise AttachmentStorageError("HTML, SVG, scripts, and active text documents are not allowed")
