@@ -89,6 +89,21 @@ def test_query_tokens_are_scoped_to_execution_stream_and_file_routes():
     assert not _allows_query_token({"type": "http", "path": "/projects"})
     
 
+def test_project_attachment_routes_do_not_accept_query_tokens(client):
+    # D-22: project-scoped upload/download endpoints use the Authorization header,
+    # unlike legacy generated-file URLs and execution WebSockets.
+    query_token = {"token": "test-secret-token"}
+    listing = client.get("/v2/projects/project-1/attachments", params=query_token)
+    assert listing.status_code == 401
+
+    upload = client.post(
+        "/v2/projects/project-1/attachments",
+        params=query_token,
+        files={"file": ("note.txt", b"not-uploaded", "text/plain")},
+    )
+    assert upload.status_code == 401
+
+
 def test_cors_rejects_unapproved_origin(client):
     response = client.options(
         "/projects",

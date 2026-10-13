@@ -466,26 +466,28 @@ jobs:
 
 **Owner** Dev · **Size** M (1 day) · **Priority** P0 · **Depends on** D-09, D-10
 
-**Goal:** freeze a storage and security contract before implementing upload UI or allowing uploaded content into agent runs.
+**Goal:** freeze the storage and security boundary before uploaded content can enter an agent run.
 
-**Contract status (2026-10-13):** `docs/D-22-UPLOAD-SECURITY.md` now records storage, API, validation, authorization, lifecycle, retention, and threat-boundary decisions. The required two-owner review remains open. Upload endpoints, scanning integration, and upload UI are explicitly not part of this contract-only milestone.
+**M2 contract work**
+- [x] Document storage outside served roots, opaque server-generated IDs/keys, project-scoped metadata, byte/count quotas, bounded streaming, quarantine, format validation, and fail-closed scanning.
+- [x] Document attachment states, deletion/retention behavior, run-private copies, required security headers, and negative/security test cases.
+- [x] Reconcile the future public `attachment_ids` API with C-1's internal workspace-relative `AttachmentRef` and C-8's existing execution-file route. See the explicit boundary in `docs/D-22-UPLOAD-SECURITY.md`.
+- [x] Add a regression test proving project attachment routes do not accept query-string tokens.
+- [ ] Obtain explicit second-owner review/sign-off before implementing an upload endpoint or upload UI.
 
-**Files:** `docs/D-22-UPLOAD-SECURITY.md`, `docs/CONTRACTS.md` (only if shared API shapes must change), future upload route/storage implementation.
+**Future upload implementation gate — not claimed complete in M2**
+- [ ] Add attachment model and migration; implement project-scoped upload/list/metadata/content/delete routes.
+- [ ] Stream into quarantine with safe concurrent quota reservations, signature-aware parsing, and a scanner adapter; fail closed on missing/failed/uncertain scans.
+- [ ] Add `attachment_ids` to the public run-start DTO; copy only clean, authorized objects into a run's `RunWorkspace`, then construct C-1 references internally.
+- [ ] Add upload UI and API client only after both owners approve the contract.
+- [ ] Test auth and cross-project isolation, size/quota races, malformed/mismatched/polyglot inputs, scanner failure/infected verdicts, symlinks/traversal, interrupted uploads, deletion and prompt-injection handling.
 
-**Steps**
-- [ ] 1. Review `docs/D-22-UPLOAD-SECURITY.md` with both owners and reconcile it with C-1 attachments and C-8 file routes before coding the upload endpoint.
-- [ ] 2. Keep uploads project-scoped, stored outside the served workspace in generated opaque keys, with untrusted original filenames kept only as metadata.
-- [ ] 3. Enforce upload size/count/storage quotas while streaming; validate extension, detected MIME and file signature; quarantine before promotion. Scanner failure must not mark a file clean.
-- [ ] 4. Require authentication and project authorization for upload/list/download/delete. Never return a host path or permit cross-project access.
-- [ ] 5. Treat extracted text and metadata as untrusted input; never execute uploaded files or render active content inline. Copy only authorized attachments into a run workspace through the resolver.
-- [ ] 6. Add negative tests for unauthenticated/cross-project requests, oversized and mismatched files, traversal/symlink escapes, malformed files, scanner failure, guessed IDs and prompt-injection content.
+**Done when (contract phase)**
+- [x] Storage, validation, authorization, lifecycle, retention, and threat-boundary decisions are documented.
+- [x] The documented public/internal attachment boundary agrees with current C-1/C-8 shapes without pretending the upload API exists.
+- [ ] Both owners have reviewed and accepted the contract.
 
-**Done when**
-- [ ] The storage, validation, authorization, lifecycle, retention and threat-boundary decisions are documented and reviewed.
-- [ ] The attachment and file-route contracts agree across docs, Python models and TypeScript before any shape changes are merged.
-- [ ] The future upload implementation has explicit tests and no unauthenticated filesystem path can be reached.
-
-**Scope note:** this card freezes the contract. It does not mark upload routes, malware scanning or upload UI as implemented.
+**Scope note:** this card's M2 work is the reviewed contract and security boundary; it does not imply upload routes, attachment DB records, malware scanning, or upload UI are implemented. The implementation checkboxes above remain a gate for a later upload task.
 
 ---
 

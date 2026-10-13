@@ -1,12 +1,20 @@
 # D-22 — Workspace files and upload security contract
 
-**Status:** Contract draft written 2026-10-13. This document freezes the proposed boundary; it does not mean uploads, malware scanning, or the upload UI exist. Both project owners must review this contract before an upload endpoint is implemented.
+**Status (2026-10-13):** Engineering reconciliation is complete against the current C-1 `AttachmentRef`, C-8 execution-file route, `RunWorkspace`, and `TokenAuthMiddleware`. This is a contract, not an implementation: attachment records/routes, malware scanning, and upload UI do not exist yet. Both project owners must approve the contract before any upload endpoint or upload UI is implemented.
 
 ## Purpose and boundary
 
 D-22 defines how user-provided files become project attachments and how an approved attachment can be copied into a single execution workspace. It complements C-1 (the Runner sees only a workspace-relative `AttachmentRef`) and C-8 (authenticated `/v2` API and execution-file route). The local sidecar is a single-user desktop boundary, not a remote multi-tenant security boundary. Do not expose it on a network interface or interpret the random bearer token as per-project user identity.
 
 The model/tool must never provide a host path. The API accepts opaque attachment IDs; only the platform may map an authorized, clean attachment to a generated path inside the target run's workspace.
+
+## Reconciliation with the existing C-1 and C-8 shapes
+
+- **C-1 remains internal to the Runner.** Its `AttachmentRef.path` is relative to a single run workspace, with optional `mime` and display-only `name`. The browser must never submit an `AttachmentRef` or a path. The platform creates that reference only after resolving an attachment ID, checking its project and `clean` status, and copying the verified object into the run workspace.
+- **The current public run-start request has no attachment field yet.** When this contract is approved and uploads are implemented, extend the API request with `attachment_ids: string[]` (maximum 20), not `attachments: AttachmentRef[]`. Validate every ID against both the route/request project and the database row before creating the run.
+- **C-8's existing `GET /v2/executions/{execution_id}/files/{relpath:path}` serves run-generated artifacts only.** It resolves through `RunWorkspace`; it must not read from the upload store, accept an attachment ID as a path, or be reused as an attachment-download endpoint. The legacy `/files/{relpath:path}` route is likewise not upload storage.
+- **Authentication remains route-specific.** Existing generated-file and execution-stream URLs allow the token query parameter because media elements/WebSockets cannot reliably set an Authorization header. New project attachment routes must accept the bearer header only; the query token must not be enabled for `/v2/projects/...`. The attachment content handler must fetch by project plus attachment ID and return a forced-download response with the headers below.
+- **Storage roots are distinct.** The current run/artifact resolver is `AGENTFORGE_DATA_DIR/runs/{execution_id}`; D-22 upload bytes live under `AGENTFORGE_DATA_DIR/uploads/quarantine` and `uploads/objects`. Neither upload directory is a workspace, a static root, nor eligible for C-8 file serving.
 
 ## Storage contract
 
@@ -28,7 +36,7 @@ All routes require `Authorization: Bearer <token>`. Every lookup and mutation in
 | GET | `/v2/projects/{project_id}/attachments/{attachment_id}/content` | none | bytes only when status is `clean`; attachment disposition, `nosniff`, `no-store`, same-origin resource policy |
 | DELETE | `/v2/projects/{project_id}/attachments/{attachment_id}` | none | `{deleted: true}`; revoke access and remove stored bytes |
 
-The external run-start body refers to files by `attachment_ids: string[]`, with a maximum of 20. The platform checks that all IDs belong to the requested project and have status `clean`, checks total bytes, copies each file to a server-generated unique relative path within that execution's `RunWorkspace`, then constructs the internal C-1 `AttachmentRef(path, mime, name)` values. Internal `AttachmentRef.path` always remains workspace-relative. An API caller never supplies that path. C-1's type is the Runner-internal reference, not the upload record or a trusted client path.
+The future external run-start body will accept `attachment_ids: string[]`, with a maximum of 20; this field is not implemented yet. Once implemented, the platform must check that every ID belongs to the requested project and has status `clean`, check the combined byte limit, copy each verified object to a server-generated unique relative path within that execution's `RunWorkspace`, then construct internal C-1 `AttachmentRef(path, mime, name)` values. Internal `AttachmentRef.path` always remains workspace-relative. An API caller never supplies that path. C-1's type is the Runner-internal reference, not the upload record or a trusted client path.
 
 Project scoping here prevents accidental or cross-project ID use in this single-user app. Before multiple users/accounts or remote deployments are supported, add an authenticated principal and explicit project ownership/ACL checks; the local token alone is not multi-user authorization.
 
