@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from main import app
+from app.infra.auth import TokenAuthMiddleware, _allows_query_token
 
 
 @pytest.fixture()
@@ -44,18 +42,50 @@ def test_query_token_is_not_accepted_for_regular_api(client):
 
 
 def test_websocket_without_token_is_rejected(client):
+    from starlette.websockets import WebSocketDisconnect
     with pytest.raises(WebSocketDisconnect) as error:
         with client.websocket_connect("/v2/executions/not-a-run/stream"):
             pass
     assert error.value.code == 4401
 
 
-def test_websocket_accepts_query_token(client):
-    # Auth succeeds, then this route immediately closes an unknown run's event flow only if
-    # the test context exits. It is enough to establish the authenticated WS handshake.
-    with client.websocket_connect("/v2/executions/not-a-run/stream?token=test-secret-token") as ws:
-        ws.close()
+@pytest.mark.asyncio
+async def test_valid_websocket_query_token_passes_auth_middleware(monkeypatch):
+    monkeypatch.setenv("AGENTFORGE_TOKEN", "test-secret-token")
+    messages = []
 
+    async def inner(scope, receive, send):
+        await send({"type": "websocket.accept"})
+        await send({"type": "websocket.close", "code": 1000})
+
+    async def receive():
+        return {"type": "websocket.connect"}
+
+    async def send(message):
+        messages.append(message)
+
+    middleware = TokenAuthMiddleware(inner)
+    await middleware(
+        {
+            "type": "websocket",
+            "path": "/v2/executions/run/stream",
+            "query_string": b"token=test-secret-token",
+            "headers": [],
+        },
+        receive,
+        send,
+    )
+    assert messages[0]["type"] == "websocket.accept"
+    assert messages[1]["code"] == 1000
+
+
+def test_query_tokens_are_scoped_to_websocket_and_file_routes():
+    assert _allows_query_token({"type": "websocket", "path": "/anything"})
+    assert _allows_query_token({"type": "http", "path": "/files/result.png"})
+    assert _allows_query_token({"type": "http", "path": "/v2/executions/run/files/result.png"})
+    assert not _allows_query_token({"type": "http", "path": "/v2/executions/run"})
+    assert not _allows_query_token({"type": "http", "path": "/projects"})
+    
 
 def test_cors_rejects_unapproved_origin(client):
     response = client.options(
