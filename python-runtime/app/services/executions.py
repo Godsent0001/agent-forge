@@ -4,12 +4,13 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
+import math
 
 from sqlalchemy import update
 
 from app import models
 from app.contracts.events import EventDraft, RunEvent
-from app.contracts.run import RunRequest, RunResult, Totals
+from app.contracts.run import BudgetSpec, RunRequest, RunResult, Totals
 from app.infra.approvals import ApprovalGateImpl
 from app.db import SessionLocal
 from app.services.core_adapters import Workspace
@@ -36,6 +37,31 @@ def _bounded_data(data: dict) -> dict:
     if len(encoded.encode("utf-8")) <= 8192:
         return value
     return {"truncated": True, "preview": encoded[:7800] + "…"}
+
+ 
+def _apply_project_defaults(req: RunRequest, settings: dict, parallel_execution: bool) -> RunRequest:
+    """Apply validated project budget defaults and persisted parallel-tools flag."""
+    raw_budget = settings.get("budget", {})
+    if not isinstance(raw_budget, dict):
+        raw_budget = {}
+    values = req.options.budget.model_dump()
+    max_calls = raw_budget.get("max_llm_calls")
+    if isinstance(max_calls, int) and not isinstance(max_calls, bool) and 1 <= max_calls <= 10_000:
+        values["max_llm_calls"] = max_calls
+    max_seconds = raw_budget.get("max_seconds")
+    if isinstance(max_seconds, int) and not isinstance(max_seconds, bool) and 1 <= max_seconds <= 86_400:
+        values["max_seconds"] = max_seconds
+    max_cost = raw_budget.get("max_cost_usd", values["max_cost_usd"])
+    if max_cost is None:
+        values["max_cost_usd"] = None
+    elif isinstance(max_cost, (int, float)) and not isinstance(max_cost, bool) and math.isfinite(max_cost) and 0 <= max_cost <= 1_000_000:
+        values["max_cost_usd"] = float(max_cost)
+    budget = BudgetSpec.model_validate(values)
+    options = req.options.model_copy(update={
+        "budget": budget,
+        "parallel_tools": parallel_execution is True,
+    })
+    return req.model_copy(update={"options": options})
 
 
 class CancelTokenImpl:
@@ -141,20 +167,8 @@ class ExecutionManager:
             if project is None:
                 raise ValueError("Project not found")
             project_settings = dict(project.settings or {})
-            # Project policy and budgets are authoritative defaults for every new run.
-            raw_budget = project_settings.get("budget", {})
-            if not isinstance(raw_budget, dict):
-                raw_budget = {}
-            budget_updates = {}
-            for key in ("max_llm_calls", "max_cost_usd", "max_seconds"):
-                if key in raw_budget:
-                    budget_updates[key] = raw_budget[key]
-            updated_budget = req.options.budget.model_copy(update=budget_updates)
-            options_update = {
-                "parallel_tools": project_settings.get("parallel_tools", req.options.parallel_tools) is True,
-                "budget": updated_budget,
-            }
-            req = req.model_copy(update={"options": req.options.model_copy(update=options_update)})
+            project_settings["parallel_tools"] = project.parallel_execution is True
+            req = _apply_project_defaults(req, project_settings, project.parallel_execution)
             graph = load_agent_graph(db, req.project_id, req.root_agent_id)
             execution = models.Execution(
                 id=req.execution_id,
