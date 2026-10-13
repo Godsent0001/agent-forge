@@ -13,20 +13,35 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
 
+from app.infra.ssrf import UnsafeURL, assert_public_url
 from app.tools.base import Tool, ToolExecutionError
 
 SearchFn = Callable[[str, int], list[dict[str, Any]]]
 
 
 def _yt_dlp_search(query: str, limit: int) -> list[dict[str, Any]]:
+    parsed = urlparse(query)
+    if parsed.scheme.lower() in {"http", "https"}:
+        # Direct URL mode can otherwise make yt-dlp fetch localhost/private services.
+        try:
+            raw_port = __import__("os").environ.get("AGENTFORGE_PORT") or __import__("os").environ.get("PORT") or "8000"
+            runtime_port = int(raw_port)
+        except (TypeError, ValueError):
+            runtime_port = 8000
+        try:
+            assert_public_url(query, app_port=runtime_port)
+        except UnsafeURL as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        search_target = query
+    else:
+        search_target = f"ytsearch{limit}:{query}"
+
     try:
         import yt_dlp
     except ImportError as exc:
         raise ToolExecutionError(
             "video_source requires yt-dlp. Install the runtime dependency first."
         ) from exc
-
-    search_target = query if urlparse(query).scheme in {"http", "https"} else f"ytsearch{limit}:{query}"
     opts = {
         "quiet": True,
         "no_warnings": True,
