@@ -53,8 +53,8 @@ function useHasKey(keyId: string | undefined, needsKey: boolean): boolean | null
     let cancelled = false;
     setHasKey(null);
     keychain
-      .get(keyId)
-      .then((value) => !cancelled && setHasKey(!!value))
+      .status(keyId)
+      .then((value) => !cancelled && setHasKey(value.saved))
       .catch(() => !cancelled && setHasKey(null));
     return () => {
       cancelled = true;

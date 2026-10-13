@@ -25,10 +25,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.db import init_db
-from app.infra.paths import data_dir
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.infra.file_security import file_response_headers
-from app.routers import agents, executions, executions_v2, projects, settings, tools, system
+from app.infra.paths import data_dir
+from app.routers import agents, executions, executions_v2, projects, settings, system, tools
 from app.routers import catalog as catalog_router
 from app.services.executions import manager
 

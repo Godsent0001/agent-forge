@@ -15,8 +15,6 @@ from app.infra.paths import data_dir
 from app.tools.base import ToolExecutionError
 
 
-
-
 def safe_id(value: str) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
         raise ToolExecutionError("Invalid identifier; use 1-64 letters, digits, '_' or '-'")
