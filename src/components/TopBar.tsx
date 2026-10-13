@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useStore } from "../store/useStore";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import { Button } from "./ui/Button";
+import { ProjectSettings } from "./ProjectSettings";
 
 interface TopBarProps {
   onRun?: (executionId: string) => void;
@@ -26,6 +27,7 @@ export function TopBar({
   const createProject = useStore((s) => s.createProject);
 
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
@@ -127,6 +129,13 @@ export function TopBar({
 
         {/* Workflow execution controls */}
         <div className="flex items-center gap-2">
+          {project && (
+            <button type="button" onClick={() => setShowProjectSettings(true)}
+              className="rounded border border-studio-700 px-2 py-1.5 text-2xs text-studio-300 hover:bg-studio-800 hover:text-studio-100"
+              aria-label="Project execution settings" title="Project execution settings">
+              Settings
+            </button>
+          )}
           {/* Chat tasks are submitted from the composer. */}
           {activeTab !== "chat" && (
             <Button
@@ -142,6 +151,7 @@ export function TopBar({
 
         </div>
       </header>
+      {showProjectSettings && <ProjectSettings onClose={() => setShowProjectSettings(false)} />}
 
     </>
   );
