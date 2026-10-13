@@ -7,6 +7,7 @@ import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { useDraft } from "../hooks/useDraft";
 import type { Agent } from "../types";
+import { AgentMemoryPanel } from "./AgentMemoryPanel";
 
 type DraftProps = { value: string; onCommit: (next: string) => void };
 
@@ -37,7 +38,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
   const detachChildFromAgent = useStore((s) => s.detachChildFromAgent);
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const [activeTab, setActiveTab] = useState<"properties" | "prompt" | "tools" | "subagents">("properties");
+  const [activeTab, setActiveTab] = useState<"properties" | "prompt" | "tools" | "subagents" | "memory" | "lessons">("properties");
   const [saveIndicator, setSaveIndicator] = useState<SaveState>("Synced");
 
   if (!selectedAgent) {
@@ -107,6 +108,8 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
           { id: "prompt", label: "Instructions" },
           { id: "tools", label: "Tools", count: attachedTools.length },
           { id: "subagents", label: "Delegation", count: attachedSubAgents.length },
+          { id: "memory", label: "Memory" },
+          { id: "lessons", label: "Lessons" },
         ] as const).map((tab) => (
           <button
             key={tab.id}
@@ -160,19 +163,11 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
               onChange={(patch) => void persist(patch)}
             />
 
-            <div className="pt-2 border-t border-studio-800 flex items-center justify-between">
-              <div>
-                <span className="block text-xs font-medium text-studio-200">Episodic Memory</span>
-                <span className="text-2xs text-studio-500">Synthesize learned experience</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={selectedAgent.memory_enabled ?? true}
-                onChange={(e) => handleFieldChange("memory_enabled", e.target.checked)}
-                className="w-4 h-4 accent-accent-500 rounded cursor-pointer"
-              />
-            </div>
           </div>
+        )}
+
+        {(activeTab === "memory" || activeTab === "lessons") && (
+          <AgentMemoryPanel key={`${selectedAgent.id}-${activeTab}`} agent={selectedAgent} section={activeTab} />
         )}
 
         {activeTab === "prompt" && (
