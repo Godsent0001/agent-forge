@@ -5,14 +5,12 @@ on:
     branches: [dev/kenny-ui]
     paths:
       - "python-runtime/pyproject.toml"
-      - ".github/workflows/refresh-upload-lock.yml"
 
 permissions:
   contents: write
 
 jobs:
   refresh:
-    if: startsWith(github.event.head_commit.message, 'feat(uploads): add quarantined project attachment storage')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

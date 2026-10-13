@@ -183,12 +183,12 @@ def validate_attachment(path: Path, original_name: str, declared_mime: str | Non
             raise AttachmentStorageError("Malformed PDF or extension/signature mismatch")
         mime = "application/pdf"
     elif extension == ".png":
-        if not head.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if not head.startswith(bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])):
             raise AttachmentStorageError("PNG signature mismatch")
         _verify_image(path, "PNG")
         mime = "image/png"
     elif extension in {".jpg", ".jpeg"}:
-        if not head.startswith(b"\\xff\\xd8\\xff"):
+        if not head.startswith(bytes([0xFF, 0xD8, 0xFF])):
             raise AttachmentStorageError("JPEG signature mismatch")
         _verify_image(path, "JPEG")
         mime = "image/jpeg"
@@ -210,7 +210,7 @@ def validate_attachment(path: Path, original_name: str, declared_mime: str | Non
             raise AttachmentStorageError("MP4 signature mismatch")
         mime = "video/mp4"
     elif extension == ".webm":
-        if not head.startswith(b"\\x1a\\x45\\xdf\\xa3"):
+        if not head.startswith(bytes([0x1A, 0x45, 0xDF, 0xA3])):
             raise AttachmentStorageError("WebM signature mismatch")
         mime = "video/webm"
     else:

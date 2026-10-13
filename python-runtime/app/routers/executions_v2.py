@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
 import shutil
-from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
