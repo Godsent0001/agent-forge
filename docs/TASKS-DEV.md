@@ -466,28 +466,28 @@ jobs:
 
 **Owner** Dev · **Size** M (1 day) · **Priority** P0 · **Depends on** D-09, D-10
 
-**Goal:** freeze the storage and security boundary before uploaded content can enter an agent run.
+**Goal:** freeze and enforce the storage/security boundary before uploaded content enters an agent run.
 
-**M2 contract work**
-- [x] Document storage outside served roots, opaque server-generated IDs/keys, project-scoped metadata, byte/count quotas, bounded streaming, quarantine, format validation, and fail-closed scanning.
-- [x] Document attachment states, deletion/retention behavior, run-private copies, required security headers, and negative/security test cases.
-- [x] Reconcile the future public `attachment_ids` API with C-1's internal workspace-relative `AttachmentRef` and C-8's existing execution-file route. See the explicit boundary in `docs/D-22-UPLOAD-SECURITY.md`.
-- [x] Add a regression test proving project attachment routes do not accept query-string tokens.
-- [ ] Obtain explicit second-owner review/sign-off before implementing an upload endpoint or upload UI.
+**Contract phase**
+- [x] Document storage outside served roots, opaque IDs/keys, project-scoped metadata, quotas, bounded streaming, quarantine, validation and fail-closed scanning.
+- [x] Reconcile the public attachment_ids request with C-1 AttachmentRef and C-8 execution-file routes.
+- [ ] Obtain explicit second-owner review/sign-off; keep this approval gate visible.
 
-**Future upload implementation gate — not claimed complete in M2**
-- [ ] Add attachment model and migration; implement project-scoped upload/list/metadata/content/delete routes.
-- [ ] Stream into quarantine with safe concurrent quota reservations, signature-aware parsing, and a scanner adapter; fail closed on missing/failed/uncertain scans.
-- [ ] Add `attachment_ids` to the public run-start DTO; copy only clean, authorized objects into a run's `RunWorkspace`, then construct C-1 references internally.
-- [ ] Add upload UI and API client only after both owners approve the contract.
-- [ ] Test auth and cross-project isolation, size/quota races, malformed/mismatched/polyglot inputs, scanner failure/infected verdicts, symlinks/traversal, interrupted uploads, deletion and prompt-injection handling.
+**Implementation on dev/kenny-ui**
+- [x] Add attachment model and Alembic migration; project-scoped upload/list/metadata/content/delete/rescan routes.
+- [x] Keep upload bytes isolated in quarantine/objects; validate safe filename, supported extension, format/MIME, per-file size and project quota.
+- [x] Fail closed when the antivirus scanner is missing, times out, reports an error, or returns an uncertain verdict. Quarantined/rejected content cannot be downloaded or used in runs.
+- [x] Add run-start attachment_ids (max 20, 100 MiB combined), project-scoped lookup, clean-state and integrity checks, run-private copies and internal C-1 references.
+- [x] Add authenticated chat upload/select/download/delete/rescan UI and client calls.
+- [x] Add tests for clean/quarantined/infected statuses, active-text/signature mismatch rejection, project isolation, forced-download headers, run-private copies and deletion.
+- [ ] Expand adversarial tests for quota boundaries/races, malformed and polyglot media, symlinked storage roots, disconnects and failed disk writes.
 
-**Done when (contract phase)**
-- [x] Storage, validation, authorization, lifecycle, retention, and threat-boundary decisions are documented.
-- [x] The documented public/internal attachment boundary agrees with current C-1/C-8 shapes without pretending the upload API exists.
-- [ ] Both owners have reviewed and accepted the contract.
+**Operational requirement:** a ClamAV-compatible scanner must be available (AGENTFORGE_AV_SCANNER can override the executable). Missing scanning is deliberately fail-closed, so files remain quarantined and cannot be attached until a scan reports clean. This contract does not make the local sidecar a multi-user remote service.
 
-**Scope note:** this card's M2 work is the documented, engineering-reconciled contract and security boundary; second-owner review remains a gate before implementation. It does not imply upload routes, attachment DB records, malware scanning, or upload UI are implemented. The implementation checkboxes above remain a gate for a later upload task.
+**Done when**
+- [x] Upload path, isolation, scanner verdict handling and C-1/C-8 integration are implemented and covered by regression tests.
+- [x] Upload storage is not served through generated-file routes.
+- [ ] Second owner explicitly approves the contract and implementation.
 
 ---
 

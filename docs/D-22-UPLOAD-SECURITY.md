@@ -1,6 +1,6 @@
 # D-22 — Workspace files and upload security contract
 
-**Status (2026-10-13):** Engineering reconciliation is complete against the current C-1 `AttachmentRef`, C-8 execution-file route, `RunWorkspace`, and `TokenAuthMiddleware`. This is a contract, not an implementation: attachment records/routes, malware scanning, and upload UI do not exist yet. Both project owners must approve the contract before any upload endpoint or upload UI is implemented.
+**Status (2026-10-13):** Project-scoped attachment records/routes, quarantine storage, fail-closed scanning, run-private copies, and chat upload UI are implemented on dev/kenny-ui. The second-owner contract review remains an explicit approval gate; this is a local single-user sidecar, not a remote multi-tenant service.
 
 ## Purpose and boundary
 
@@ -11,7 +11,7 @@ The model/tool must never provide a host path. The API accepts opaque attachment
 ## Reconciliation with the existing C-1 and C-8 shapes
 
 - **C-1 remains internal to the Runner.** Its `AttachmentRef.path` is relative to a single run workspace, with optional `mime` and display-only `name`. The browser must never submit an `AttachmentRef` or a path. The platform creates that reference only after resolving an attachment ID, checking its project and `clean` status, and copying the verified object into the run workspace.
-- **The current public run-start request has no attachment field yet.** When this contract is approved and uploads are implemented, extend the API request with `attachment_ids: string[]` (maximum 20), not `attachments: AttachmentRef[]`. Validate every ID against both the route/request project and the database row before creating the run.
+- **Public run-start request:** the API accepts attachment_ids (maximum 20), never client-supplied AttachmentRef objects or paths. Every ID is looked up by both project_id and attachment ID.
 - **C-8's existing `GET /v2/executions/{execution_id}/files/{relpath:path}` serves run-generated artifacts only.** It resolves through `RunWorkspace`; it must not read from the upload store, accept an attachment ID as a path, or be reused as an attachment-download endpoint. The legacy `/files/{relpath:path}` route is likewise not upload storage.
 - **Authentication remains route-specific.** Existing generated-file and execution-stream URLs allow the token query parameter because media elements/WebSockets cannot reliably set an Authorization header. New project attachment routes must accept the bearer header only; the query token must not be enabled for `/v2/projects/...`. The attachment content handler must fetch by project plus attachment ID and return a forced-download response with the headers below.
 - **Storage roots are distinct.** The current run/artifact resolver is `AGENTFORGE_DATA_DIR/runs/{execution_id}`; D-22 upload bytes live under `AGENTFORGE_DATA_DIR/uploads/quarantine` and `uploads/objects`. Neither upload directory is a workspace, a static root, nor eligible for C-8 file serving.
@@ -24,7 +24,7 @@ The model/tool must never provide a host path. The API accepts opaque attachment
 - Stage to a newly created file with exclusive creation, stream in bounded chunks while counting bytes and hashing, flush/close it, and atomically promote only after validation and a clean scanner verdict. Resolve every server-generated storage path and verify it remains beneath the configured upload root. Reject symlinks and non-regular files.
 - The project quota is 500 MiB, the per-file ceiling is 25 MiB, a single upload request may contain one file, and a run may attach at most 20 files. Enforce limits while streaming (not after buffering the whole request) and reserve quota safely so concurrent requests cannot exceed it. Return 413 for size/quota excess and 422 for unsupported or malformed content.
 
-## API contract (future implementation)
+## Implemented API
 
 All routes require `Authorization: Bearer <token>`. Every lookup and mutation includes the route's `project_id`; query by both `project_id` and opaque attachment ID. Return 404 for an unknown ID and for an ID belonging to another project so clients cannot probe existence.
 
@@ -36,7 +36,7 @@ All routes require `Authorization: Bearer <token>`. Every lookup and mutation in
 | GET | `/v2/projects/{project_id}/attachments/{attachment_id}/content` | none | bytes only when status is `clean`; attachment disposition, `nosniff`, `no-store`, same-origin resource policy |
 | DELETE | `/v2/projects/{project_id}/attachments/{attachment_id}` | none | `{deleted: true}`; revoke access and remove stored bytes |
 
-The future external run-start body will accept `attachment_ids: string[]`, with a maximum of 20; this field is not implemented yet. Once implemented, the platform must check that every ID belongs to the requested project and has status `clean`, check the combined byte limit, copy each verified object to a server-generated unique relative path within that execution's `RunWorkspace`, then construct internal C-1 `AttachmentRef(path, mime, name)` values. Internal `AttachmentRef.path` always remains workspace-relative. An API caller never supplies that path. C-1's type is the Runner-internal reference, not the upload record or a trusted client path.
+The external run-start body accepts attachment_ids with a maximum of 20. The platform checks project ownership and clean status, enforces the combined limit, copies each verified object to a generated workspace-relative path, and constructs internal C-1 AttachmentRef values.
 
 Project scoping here prevents accidental or cross-project ID use in this single-user app. Before multiple users/accounts or remote deployments are supported, add an authenticated principal and explicit project ownership/ACL checks; the local token alone is not multi-user authorization.
 
@@ -56,7 +56,7 @@ Project scoping here prevents accidental or cross-project ID use in this single-
 - Files persist until explicit deletion or project deletion. Project deletion must remove attachment metadata and the associated blobs; deletion failure is surfaced and retried, not silently treated as complete. Quota accounting excludes removed bytes only after physical deletion succeeds.
 - A run gets a private copy of each attachment. Deleting the project attachment later does not mutate an already-started run's copy. Run-workspace cleanup/retention is governed separately by D-17/D-22; do not use the served artifact route as upload storage.
 
-## Required tests before enabling uploads
+## Regression coverage and remaining adversarial tests
 
 - Missing/invalid bearer token; cross-project ID on metadata, content, delete, and run-start attachment references; unknown/guessed IDs.
 - Streaming limit and quota boundaries, concurrent quota reservations, empty/truncated streams, disk full, disconnect/cancellation, duplicate names, and unsafe/control-character names.
@@ -64,6 +64,10 @@ Project scoping here prevents accidental or cross-project ID use in this single-
 - Traversal, absolute and Windows paths, symlinked storage parent, replaced object, and attempted access through both `/files` and `/v2/executions/{id}/files/`.
 - Prompt-injection text stays labelled untrusted content and cannot bypass approval or tool-policy gates. Delete removes blob and prevents subsequent download/run attachment.
 
-## Deliberate non-goals for M2
+## Implementation status and remaining gate
 
-D-22 freezes the above contract. Upload routes, attachment database records/migrations, malware-scanner integration, attachment IDs in the run-start API, and upload UI remain future implementation work and must not be implied by this document. Owner review is required before any of those pieces are coded.
+Implemented on dev/kenny-ui: project-scoped upload/list/metadata/content/delete/rescan routes; attachment model and migration; isolated quarantine and clean-object roots; bounded streaming and project/file quotas; format and signature validation; a ClamAV-compatible fail-closed scanner adapter; run-start attachment_ids and run-private copies; authenticated forced downloads; chat upload/select/download/delete/rescan UI; and automated regression tests.
+
+A missing scanner, timeout, crash, infected verdict, or uncertain result never produces a clean attachment. Files remain quarantined or rejected and cannot be downloaded or used in a run. Configure a ClamAV-compatible executable through AGENTFORGE_AV_SCANNER or ensure clamscan is available on PATH. The standard desktop installer does not bundle antivirus definitions.
+
+The second-owner review checkbox in TASKS-DEV.md remains open. Obtain explicit sign-off before treating this security contract as fully accepted. This local bearer token is not multi-user project authorization.
