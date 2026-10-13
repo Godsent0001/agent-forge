@@ -19,6 +19,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = None
     parallel_execution: bool | None = None
+    settings: dict | None = None
 
 
 class ProjectOut(BaseModel):
