@@ -53,7 +53,7 @@ async def test_http_tool_refuses_private_target_before_calling_backend():
         return "unexpected"
 
     tool = HttpRequestTool(request_fn=fake_request)
-    with pytest.raises(ToolExecutionError, match="private|local"):
+    with pytest.raises(ToolExecutionError, match="private|local|own port"):
         await tool.execute("GET http://127.0.0.1:8000/health", context=SimpleNamespace())
     assert called is False
 
@@ -81,7 +81,7 @@ async def test_redirect_to_private_target_is_rejected(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", mock_client)
 
     tool = HttpRequestTool()
-    with pytest.raises(ToolExecutionError, match="private|local"):
+    with pytest.raises(ToolExecutionError, match="private|local|own port"):
         await tool.execute("GET https://example.com/start", context=SimpleNamespace())
     assert calls == ["https://example.com/start"]
 
