@@ -160,7 +160,7 @@ export const api = {
   },
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
-    shelves: () => request<CatalogShelf[]>("/catalog/shelves"),
+    shelves: (pack?: "video" | "none") => request<CatalogShelf[]>(`/catalog/shelves${pack ? `?pack=${pack}` : ""}`),
   },
   settings: {
     /**
