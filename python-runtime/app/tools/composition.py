@@ -11,6 +11,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -24,7 +25,7 @@ class CompositionEngineTool(Tool):
 
         params = parse_json_input(input)
         layers = params.get("layers")  # [{image_path, x, y, anchor?}] bottom-to-top
-        out_path = params.get("output_path", "./output/composited_frame.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "composited_frame.png")
         canvas_size = tuple(params.get("canvas_size", [1080, 1920]))
 
         if not layers:
@@ -80,7 +81,7 @@ class EffectsEngineTool(Tool):
 
         if not Path(in_path).exists():
             raise ToolExecutionError(f"input_path not found: {in_path}")
-        out_path = out_path or "./output/effect_output.mp4"
+        out_path = out_path or str(data_dir() / "output" / "effect_output.mp4")
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
         proc = await asyncio.create_subprocess_exec(

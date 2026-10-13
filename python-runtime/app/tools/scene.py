@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -14,8 +15,8 @@ class SceneTemplateManagerTool(Tool):
     name = "scene_template_manager"
     description = "Manage reusable environment templates (background, lighting, camera, prop zones)."
 
-    def __init__(self, templates_dir: str = "./assets/scene_templates"):
-        self._root = Path(templates_dir)
+    def __init__(self, templates_dir: str | None = None):
+        self._root = Path(templates_dir).expanduser().resolve() if templates_dir else data_dir() / "assets" / "scene_templates"
         self._root.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, input: str, *, context: Any) -> str:
