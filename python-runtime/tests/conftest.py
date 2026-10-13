@@ -22,11 +22,13 @@ def db_session():
         Base.metadata.drop_all(engine)
 
 @pytest.fixture()
-def client(db_session):
+def client(db_session, monkeypatch):
     def override_get_db():
         yield db_session
     app.dependency_overrides[get_db] = override_get_db
+    monkeypatch.setenv("AGENTFORGE_TOKEN", "test-token")
+    monkeypatch.delenv("AGENTFORGE_DEV", raising=False)
     try:
-        yield TestClient(app)
+        yield TestClient(app, headers={"Authorization": "Bearer test-token"})
     finally:
         app.dependency_overrides.clear()
