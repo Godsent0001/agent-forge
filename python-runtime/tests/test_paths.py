@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from app.infra.paths import DATA_SUBDIRECTORIES, data_dir
+from app.tools.asset_cache import AssetCacheStoreTool, CacheEngineTool, ProductionConfigTool, ProjectManagerTool
+from app.tools.audio import VoiceGeneratorTool
+from app.tools.character import CharacterAssetManagerTool
+from app.tools.graphics import VisualAssetManagerTool
+from app.tools.rendering import RenderQueueTool
+from app.tools.scene import SceneTemplateManagerTool
 
 
 def test_data_dir_uses_configured_root_and_creates_standard_directories(monkeypatch, tmp_path):
@@ -32,3 +38,18 @@ def test_workspace_legacy_fallback_is_under_data_directory(monkeypatch, tmp_path
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(root))
     workspace = workspace_from(SimpleNamespace())
     assert workspace.root == (root / "output").resolve()
+
+
+def test_legacy_tool_storage_defaults_follow_configured_data_directory(monkeypatch, tmp_path):
+    root = tmp_path / "agentforge-user-data"
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(root))
+
+    assert CacheEngineTool()._root == root / "cache"
+    assert ProjectManagerTool()._root == root / "projects"
+    assert AssetCacheStoreTool()._root == root / "assets" / "shared"
+    assert ProductionConfigTool()._path == root / "production_config.json"
+    assert VoiceGeneratorTool()._voices_dir == root / "assets" / "voices"
+    assert CharacterAssetManagerTool()._root == root / "assets" / "characters"
+    assert VisualAssetManagerTool()._root == root / "assets" / "visuals"
+    assert RenderQueueTool()._path == root / "queues" / "render_queue.json"
+    assert SceneTemplateManagerTool()._root == root / "assets" / "scene_templates"

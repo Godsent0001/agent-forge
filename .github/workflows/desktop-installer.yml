@@ -1,0 +1,108 @@
+name: Desktop installer and lifecycle smoke
+
+on:
+  push:
+    branches: [dev/kenny-ui]
+    paths:
+      - "electron/**"
+      - "python-runtime/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - ".github/workflows/desktop-installer.yml"
+  pull_request:
+    paths:
+      - "electron/**"
+      - "python-runtime/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - ".github/workflows/desktop-installer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Build Windows installer
+        run: npm run dist
+      - name: Verify packaged CSP
+        shell: pwsh
+        run: |
+          $indexPath = Join-Path $PWD "dist/index.html"
+          if (-not (Test-Path $indexPath)) { throw "Built renderer index is missing." }
+          $html = Get-Content -Raw $indexPath
+          if ($html -notmatch 'Content-Security-Policy') { throw "Production CSP meta tag is missing." }
+          if ($html -notmatch 'font-src ''self'' data:') { throw "CSP permits external font origins or omitted its local font rule." }
+          if ($html -match 'fonts\.googleapis\.com|fonts\.gstatic\.com') { throw "Unexpected external Google Fonts reference in renderer." }
+      - name: Install and smoke-test packaged app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installer = Get-ChildItem -Path "dist-electron" -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $installer) { throw "electron-builder did not produce a Windows installer executable." }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "agentforge-smoke-install"
+          if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
+          New-Item -ItemType Directory -Path $installDir | Out-Null
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList @("/S", "/D=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Silent installer exited with code $($install.ExitCode)." }
+
+          $appExe = Join-Path $installDir "AgentForge.exe"
+          if (-not (Test-Path $appExe)) { throw "Installed AgentForge.exe was not found at $appExe." }
+          $first = $null
+          $second = $null
+          try {
+            $first = Start-Process -FilePath $appExe -PassThru
+            $dbPath = Join-Path $env:APPDATA "agentforge\data\db\agentforge.db"
+            $deadline = (Get-Date).AddSeconds(90)
+            while ((Get-Date) -lt $deadline -and -not (Test-Path $dbPath)) {
+              if ($first.HasExited) { throw "Packaged app exited before its runtime database was initialized." }
+              Start-Sleep -Seconds 1
+            }
+            if (-not (Test-Path $dbPath)) {
+              $possible = Get-ChildItem -Path $env:APPDATA -Filter "agentforge.db" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($possible) { $dbPath = $possible.FullName }
+              else { throw "The packaged runtime did not create its SQLite database in Electron user data." }
+            }
+
+            $second = Start-Process -FilePath $appExe -PassThru
+            if (-not $second.WaitForExit(15000)) { throw "Second launch did not exit after handing off to the first instance." }
+            Start-Sleep -Seconds 2
+            $sidecars = @(Get-CimInstance Win32_Process -Filter "Name = 'python-runtime.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
+            if ($sidecars.Count -ne 1) { throw "Expected one sidecar after a second launch; found $($sidecars.Count)." }
+
+            Stop-Process -Id $first.Id -Force
+            $stopDeadline = (Get-Date).AddSeconds(3)
+            do {
+              Start-Sleep -Milliseconds 250
+              $sidecars = @(Get-CimInstance Win32_Process -Filter "Name = 'python-runtime.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
+            } while ($sidecars.Count -gt 0 -and (Get-Date) -lt $stopDeadline)
+            if ($sidecars.Count -gt 0) { throw "Packaged sidecar did not exit within 3 seconds after force-quitting Electron." }
+          } finally {
+            if ($second -and -not $second.HasExited) { Stop-Process -Id $second.Id -Force -ErrorAction SilentlyContinue }
+            if ($first -and -not $first.HasExited) { Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AgentForge-Windows-Installer
+          path: dist-electron/*.exe
+          if-no-files-found: error
+          retention-days: 7
