@@ -4,7 +4,7 @@ import { ArtifactCard } from "./ArtifactCard";
 
 const FILE_PATH_REGEX = /(?:\.\/|\/|[A-Za-z]:\\)[^\s"'<>]+?\.(?:png|jpg|jpeg|gif|webm|mp4|wav|mp3|ogg|json|txt|csv|pdf|srt)/gi;
 
-export function ArtifactViewer({ content }: { content: string }) {
+export function ArtifactViewer({ content, executionId }: { content: string; executionId?: string }) {
   if (!content) return null;
   const matches = Array.from(new Set(content.match(FILE_PATH_REGEX) || []));
 
@@ -21,7 +21,7 @@ export function ArtifactViewer({ content }: { content: string }) {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {matches.map((filepath, idx) => (
-              <ArtifactCard key={idx} filepath={filepath} />
+              <ArtifactCard key={idx} filepath={filepath} executionId={executionId} />
             ))}
           </div>
         </div>
