@@ -86,6 +86,9 @@ def main() -> None:
     # Default development port
       port = 8000
 
+    # The outbound HTTP guard checks against this exact runtime port.
+    os.environ["AGENTFORGE_PORT"] = str(port)
+
     # Announce ready port for parent Electron process
     print(f"AGENTFORGE_READY:{port}", flush=True)
     logger.info(f"AGENTFORGE_READY:{port}")
