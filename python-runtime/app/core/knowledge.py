@@ -215,6 +215,9 @@ class KnowledgeIndex:
             old = db.execute("SELECT source_id FROM knowledge_sources WHERE name=? AND sha256=?", (document.name, document.sha256)).fetchone()
             if old:
                 return db.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE source_id=?", (old["source_id"],)).fetchone()[0]
+            old_rows = db.execute("SELECT source_id FROM knowledge_sources WHERE name=?", (document.name,)).fetchall()
+            for old_row in old_rows:
+                db.execute("DELETE FROM knowledge_chunks WHERE source_id=?", (old_row["source_id"],))
             db.execute("DELETE FROM knowledge_sources WHERE name=?", (document.name,))
             db.execute(
                 "INSERT INTO knowledge_sources VALUES (?, ?, ?, ?, ?, ?)",
@@ -244,18 +247,25 @@ class KnowledgeIndex:
         qtokens = set(_tokens(query))
         if not qtokens:
             return []
+        tokenized = [(row, _tokens(row["text"])) for row in rows]
+        document_frequency = {
+            term: sum(term in set(tokens) for _, tokens in tokenized)
+            for term in qtokens
+        }
         raw: list[tuple[sqlite3.Row, float, float]] = []
-        for row in rows:
-            tokens = _tokens(row["text"])
+        for row, tokens in tokenized:
             token_set = set(tokens)
             overlap = len(qtokens & token_set)
-            if not overlap:
-                continue
-            # BM25-like term frequency and inverse-document-frequency approximation.
-            tf = sum(min(tokens.count(t), 4) for t in qtokens)
-            idf = sum(math.log(1 + (len(rows) + 1) / (1 + sum(t in set(_tokens(r["text"])) for r in rows))) for t in qtokens if t in token_set)
-            lexical = (tf * idf) / (tf + 1.2 * (0.25 + 0.75 * len(tokens) / 400))
             semantic = float(semantic_score(query, row["text"])) if semantic_score else 0.0
+            # A semantic adapter may retrieve related chunks with no literal term overlap.
+            if not overlap and not semantic_score:
+                continue
+            tf = sum(min(tokens.count(t), 4) for t in qtokens)
+            idf = sum(
+                math.log(1 + (len(rows) + 1) / (1 + document_frequency[t]))
+                for t in qtokens if t in token_set
+            )
+            lexical = (tf * idf) / (tf + 1.2 * (0.25 + 0.75 * len(tokens) / 400)) if overlap else 0.0
             raw.append((row, lexical, semantic))
         if not raw:
             return []
