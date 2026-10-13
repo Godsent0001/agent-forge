@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app import models
 from app.contracts.run import RunOptions, RunRequest
 from app.db import SessionLocal
+from app.infra.approvals import resolve_approval
+from app.infra.workspace import RunWorkspace
+from app.tools.base import ToolExecutionError
 from app.services.executions import manager
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
@@ -20,6 +25,10 @@ class CreateExecutionRequest(BaseModel):
     task: str
     history: list[dict] = Field(default_factory=list)
     options: RunOptions = Field(default_factory=RunOptions)
+
+
+class ResolveApprovalRequest(BaseModel):
+    decision: Literal["allow_once", "allow_run", "deny"]
 
 
 def _execution_detail(row: models.Execution) -> dict:
@@ -121,6 +130,44 @@ def get_events(execution_id: str, after_seq: int = Query(default=0, ge=0)):
     finally:
         db.close()
 
+@router.post("/{execution_id}/approvals/{approval_id}")
+def resolve_execution_approval(execution_id: str, approval_id: str, payload: ResolveApprovalRequest):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+
+    try:
+        resolved = resolve_approval(execution_id=execution_id, approval_id=approval_id, decision=payload.decision)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Approval request not found or already resolved")
+    return {"status": "resolved", "decision": payload.decision}
+
+
+@router.get("/{execution_id}/files/{relpath:path}")
+def get_execution_file(execution_id: str, relpath: str):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+
+    try:
+        workspace = RunWorkspace(execution_id)
+        path = workspace.resolve(relpath)
+    except (ToolExecutionError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="Workspace file not found") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Workspace file not found")
+    return FileResponse(
+        path=path,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 @router.post("/{execution_id}/cancel")
 async def cancel_execution(execution_id: str):
