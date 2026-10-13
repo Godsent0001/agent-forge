@@ -7,7 +7,7 @@ import pytest
 
 from app.contracts.tools import ToolError
 from app.infra.workspace import RunWorkspace
-from app.tools.adapter import _normalize_payload
+from app.tools.adapter import _PERMISSION_MAP, _normalize_payload
 
 
 @pytest.fixture()
@@ -81,3 +81,17 @@ def test_project_and_asset_identifiers_are_validated(context):
         _normalize_payload("visual_asset_manager", json.dumps({"action": "get", "name": "../secret"}), context)
     with pytest.raises(ToolError):
         _normalize_payload("voice_generator", json.dumps({"dialogue": "hello", "voice": "../outside"}), context)
+
+
+
+def test_persistent_shared_state_mutators_request_write_permission():
+    persistent_mutators = {
+        "scene_template_manager",
+        "render_queue",
+        "project_manager",
+        "asset_cache_store",
+        "production_config",
+        "cache_engine",
+    }
+    for kind in persistent_mutators:
+        assert "fs_write" in _PERMISSION_MAP[kind]

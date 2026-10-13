@@ -14,6 +14,13 @@ DEFAULT_POLICIES = {
     "http_request": "ask",
     "web_search": "allow",
     "file_system": "allow",
+    # Shared-data mutators require approval unless the project explicitly changes policy.
+    "scene_template_manager": "ask",
+    "render_queue": "ask",
+    "project_manager": "ask",
+    "asset_cache_store": "ask",
+    "production_config": "ask",
+    "cache_engine": "ask",
 }
 APPROVAL_TIMEOUT_SECONDS = 300
 

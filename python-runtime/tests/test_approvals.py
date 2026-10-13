@@ -27,6 +27,41 @@ async def test_python_waits_for_user_and_emits_resolution():
 
 
 @pytest.mark.asyncio
+async def test_persistent_shared_state_mutator_defaults_to_approval():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-shared-writer",
+        settings={},
+        emit=emit,
+        tool_kinds={"asset_cache_store": "asset_cache_store"},
+        timeout_seconds=1,
+    )
+    task = asyncio.create_task(gate.check(
+        tool="asset_cache_store",
+        permissions={"fs_write"},
+        args_preview='{"action":"store"}',
+        span_id="writer-span",
+    ))
+    for _ in range(20):
+        if any(item.execution_id == "run-shared-writer" for item in PENDING.values()):
+            break
+        await asyncio.sleep(0)
+    approval_id = next(
+        key for key, item in PENDING.items() if item.execution_id == "run-shared-writer"
+    )
+    assert events[0].type == "approval_requested"
+    assert events[0].data["tool_kind"] == "asset_cache_store"
+    assert resolve_approval(
+        execution_id="run-shared-writer", approval_id=approval_id, decision="deny"
+    )
+    assert await task is False
+
+
+@pytest.mark.asyncio
 async def test_project_deny_policy_blocks_without_prompt():
     events = []
     async def emit(event):

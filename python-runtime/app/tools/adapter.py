@@ -32,6 +32,14 @@ _PERMISSION_MAP: dict[str, set[Permission]] = {
     "http_request": {"net"},
     "web_search": {"net"},
     "file_system": {"fs_write"},
+    # These tools mutate shared, persistent state outside the disposable run workspace.
+    # Require explicit user approval by default; project policy can still deny/allow them.
+    "scene_template_manager": {"fs_write"},
+    "render_queue": {"fs_write"},
+    "project_manager": {"fs_write"},
+    "asset_cache_store": {"fs_write"},
+    "production_config": {"fs_write"},
+    "cache_engine": {"fs_write"},
 }
 
 _INPUT_PATH_KEYS = {

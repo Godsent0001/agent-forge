@@ -3,7 +3,18 @@ import { useStore } from "../store/useStore";
 import { Button } from "./ui/Button";
 
 type Policy = "ask" | "allow" | "deny";
-const POLICY_DEFAULTS: Record<string, Policy> = { python: "ask", http_request: "ask", web_search: "allow", file_system: "allow" };
+const POLICY_DEFAULTS: Record<string, Policy> = {
+  python: "ask",
+  http_request: "ask",
+  web_search: "allow",
+  file_system: "allow",
+  scene_template_manager: "ask",
+  render_queue: "ask",
+  project_manager: "ask",
+  asset_cache_store: "ask",
+  production_config: "ask",
+  cache_engine: "ask",
+};
 
 export function ProjectSettings({ onClose }: { onClose: () => void }) {
   const project = useStore((state) => state.project);
@@ -25,12 +36,12 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     setMaxCostUsd(typeof budget.max_cost_usd === "number" ? String(budget.max_cost_usd) : budget.max_cost_usd === null ? "" : "0.50");
     setMaxLlmCalls(typeof budget.max_llm_calls === "number" ? String(budget.max_llm_calls) : "30");
     setMaxSeconds(typeof budget.max_seconds === "number" ? String(budget.max_seconds) : "300");
-    setPolicy({
-      python: configuredPolicy.python === "allow" || configuredPolicy.python === "deny" ? configuredPolicy.python : "ask",
-      http_request: configuredPolicy.http_request === "allow" || configuredPolicy.http_request === "deny" ? configuredPolicy.http_request : "ask",
-      web_search: configuredPolicy.web_search === "ask" || configuredPolicy.web_search === "deny" ? configuredPolicy.web_search : "allow",
-      file_system: configuredPolicy.file_system === "ask" || configuredPolicy.file_system === "deny" ? configuredPolicy.file_system : "allow",
-    });
+    setPolicy(Object.fromEntries(
+      Object.entries(POLICY_DEFAULTS).map(([kind, fallback]) => {
+        const value = configuredPolicy[kind];
+        return [kind, value === "allow" || value === "ask" || value === "deny" ? value : fallback];
+      }),
+    ) as Record<string, Policy>);
   }, [project?.id, project?.settings]);
 
   const save = async () => {
@@ -84,7 +95,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <h3 className="mb-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Tool policy</h3>
-            <p className="mb-3 text-2xs text-studio-500">“Ask” pauses the run until you approve. “Deny” blocks the tool call. “Allow” skips the prompt.</p>
+            <p className="mb-3 text-2xs text-studio-500">“Ask” pauses the run until you approve. Shared-state writers default to Ask because they persist changes beyond the current run. “Deny” blocks the tool call; “Allow” skips the prompt.</p>
             <div className="divide-y divide-studio-800 rounded border border-studio-800">
               {Object.keys(POLICY_DEFAULTS).map((kind) => (
                 <label key={kind} className="flex items-center justify-between gap-3 px-3 py-2.5">
