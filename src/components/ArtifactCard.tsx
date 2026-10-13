@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getApiToken } from "../api/client";
 import { useApiBase } from "../api/useApiBase";
 
-export function ArtifactCard({ filepath }: { filepath: string }) {
+export function ArtifactCard({ filepath, executionId }: { filepath: string; executionId?: string }) {
   const cleanPath = filepath.trim().replace(/^['"]|['"]$/g, "");
   const filename = cleanPath.split(/[\\/]/).pop() || cleanPath;
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -21,9 +21,12 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
 
   const relativePath = cleanPath.startsWith("./output/")
     ? cleanPath.slice("./output/".length)
-    : filename;
-  const fileUrl = apiBase && fileToken
-    ? apiBase + "/files/" + relativePath.split("/").map(encodeURIComponent).join("/") +
+    : cleanPath.replace(/^\.\//, "");
+  const route = executionId
+    ? "/v2/executions/" + encodeURIComponent(executionId) + "/files/"
+    : "/files/";
+  const fileUrl = apiBase && fileToken && relativePath && !/^[A-Za-z]:[\\/]/.test(relativePath) && !relativePath.startsWith("/")
+    ? apiBase + route + relativePath.split(/[\\/]/).map(encodeURIComponent).join("/") +
       "?token=" + encodeURIComponent(fileToken)
     : "";
 
