@@ -17,6 +17,7 @@ from app.contracts.tools import (
     ToolResult,
 )
 from app.contracts.tools import Tool as V2Tool
+from app.infra.workspace import data_dir
 from app.tools.base import Tool as LegacyTool
 from app.tools.base import ToolExecutionError
 
@@ -99,6 +100,19 @@ def _path_value(value: Any, ctx: ToolContext, *, output: bool = False) -> Any:
     return str(resolved)
 
 
+def _redact_host_paths(content: str, ctx: ToolContext) -> str:
+    """Keep host filesystem roots out of tool results shown to the model or UI."""
+    roots: set[Path] = {data_dir().resolve()}
+    workspace_root = getattr(getattr(ctx, "workspace", None), "root", None)
+    if workspace_root is not None:
+        roots.add(Path(workspace_root).resolve())
+    for root in sorted(roots, key=lambda item: len(str(item)), reverse=True):
+        root_text = str(root)
+        content = content.replace(root_text, ".")
+        content = content.replace(root_text.replace("/", "\\"), ".")
+    return content
+
+
 def _normalize_payload(kind: str, raw: str, ctx: ToolContext) -> str:
     """Resolve every recognized path argument under the run workspace."""
     # General-purpose tools have their own non-JSON input formats and guards.
@@ -166,10 +180,5 @@ class LegacyToolAdapter(V2Tool):
             content = await self._legacy.execute(normalized_input, context=ctx)
         except ToolExecutionError as exc:
             raise ToolError(str(exc)) from exc
-        root = getattr(getattr(ctx, "workspace", None), "root", None)
-        if root:
-            root_text = str(Path(root).resolve())
-            content = str(content).replace(root_text, ".")
-            # Windows tools may serialize a backslash path even if workspace uses pathlib.
-            content = content.replace(root_text.replace("/", "\\"), ".")
-        return ToolResult(content=str(content))
+        content = _redact_host_paths(str(content), ctx)
+        return ToolResult(content=content)

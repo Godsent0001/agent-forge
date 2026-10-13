@@ -159,3 +159,19 @@ def test_identifiers_are_rejected_before_becoming_paths(context, kind, key):
 def test_visual_asset_names_must_be_safe_filenames(context, name):
     with pytest.raises(ToolError):
         _normalize_payload("visual_asset_manager", json.dumps({"action": "info", "name": name}), context)
+
+
+def test_tool_results_redact_run_and_shared_data_roots(context, monkeypatch, tmp_path):
+    from app.tools.adapter import _redact_host_paths
+
+    configured_data = (tmp_path / "configured-data").resolve()
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(configured_data))
+    payload = (
+        f"run file: {context.workspace.root / 'renders' / 'final.mp4'}; "
+        f"shared file: {configured_data / 'assets' / 'shared' / 'music' / 'intro.wav'}"
+    )
+    redacted = _redact_host_paths(payload, context)
+    assert str(context.workspace.root) not in redacted
+    assert str(configured_data) not in redacted
+    assert "./renders/final.mp4" in redacted
+    assert "./assets/shared/music/intro.wav" in redacted
