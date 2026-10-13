@@ -10,8 +10,9 @@ from sqlalchemy import update
 from app import models
 from app.contracts.events import EventDraft, RunEvent
 from app.contracts.run import RunRequest, RunResult, Totals
+from app.infra.approvals import ApprovalGateImpl
 from app.db import SessionLocal
-from app.services.core_adapters import NullApprovals, Workspace
+from app.services.core_adapters import Workspace
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
 from app.tools.registry import DefaultToolFactory
@@ -136,6 +137,10 @@ class ExecutionManager:
     def start(self, req: RunRequest) -> dict:
         db = SessionLocal()
         try:
+            project = db.get(models.Project, req.project_id)
+            if project is None:
+                raise ValueError("Project not found")
+            project_settings = dict(project.settings or {})
             graph = load_agent_graph(db, req.project_id, req.root_agent_id)
             execution = models.Execution(
                 id=req.execution_id,
@@ -152,10 +157,10 @@ class ExecutionManager:
 
         token = CancelTokenImpl()
         self.tokens[req.execution_id] = token
-        self.active[req.execution_id] = asyncio.create_task(self._run(req, token))
+        self.active[req.execution_id] = asyncio.create_task(self._run(req, token, project_settings))
         return {"id": req.execution_id, "status": "running"}
 
-    async def _run(self, req: RunRequest, token: CancelTokenImpl) -> None:
+    async def _run(self, req: RunRequest, token: CancelTokenImpl, project_settings: dict | None = None) -> None:
         emitter = Emitter(req.execution_id, self.hub)
         status = "error"
         final_output = ""
@@ -174,6 +179,12 @@ class ExecutionManager:
             ))
             runner = get_runner()
             workspace = Workspace(req.execution_id)
+            approvals = ApprovalGateImpl(
+                execution_id=req.execution_id,
+                settings=project_settings or {},
+                emit=emitter.emit,
+                tool_kinds={binding.name: binding.kind for agent in graph.agents.values() for binding in agent.tools},
+            )
             try:
                 if runner.__class__.__name__ == "RunnerCore":
                     result: RunResult = await runner.run(
@@ -181,7 +192,7 @@ class ExecutionManager:
                         graph=graph,
                         emit=emitter.emit,
                         cancel=token,
-                        approvals=NullApprovals(),
+                        approvals=approvals,
                         workspace=workspace,
                         tools=DefaultToolFactory(),
                         memory=None,
@@ -195,7 +206,7 @@ class ExecutionManager:
                         graph=graph,
                         emit=emitter.emit,
                         cancel=token,
-                        approvals=_NoopApprovals(),
+                        approvals=approvals,
                         memory=_NoopMemory(),
                         workspace=workspace,
                         tools=_NoopTools(),
