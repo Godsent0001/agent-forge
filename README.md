@@ -45,7 +45,12 @@ cd python-runtime
 uv python install 3.11
 uv venv --python 3.11
 uv sync
-uv run python main.py     # sanity check: http://127.0.0.1:8756/health
+# The runtime now requires a bearer token. For a standalone local dev server:
+# macOS/Linux:
+AGENTFORGE_DEV=1 uv run python main.py
+# Windows PowerShell:
+# $env:AGENTFORGE_DEV="1"; uv run python main.py
+# Health check: http://127.0.0.1:8000/health
 ```
 
 Initialize the DB schema:
@@ -58,6 +63,13 @@ uv run alembic upgrade head
 ```bash
 npm run dev
 ```
+
+Electron generates a per-launch random bearer token and passes it only to the
+local sidecar and isolated renderer. Browser-only development must explicitly
+opt into the development token in both places: set `AGENTFORGE_DEV=1` for the
+runtime and add `VITE_DEV_TOKEN=dev` to `.env.local`. Do not use that fixed token
+outside local development. Ordinary API routes require `Authorization: Bearer …`;
+only WebSocket streams and generated-file URLs accept a query token.
 You should get: Vite on :5173 → Electron window → Python sidecar spawns →
 UI bootstraps a default project → Agent Tree/Editor/Execution panels render.
 
