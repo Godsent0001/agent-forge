@@ -332,6 +332,19 @@ def promote_staged_file(staging: Path, storage_key: str, *, clean: bool) -> Path
     return resolve_blob(storage_key, clean=clean)
 
 
+def promote_quarantined_blob_to_clean(storage_key: str) -> Path:
+    """Atomically promote a previously quarantined object after a clean rescan."""
+    _, quarantine, objects = upload_dirs()
+    source = resolve_blob(storage_key, clean=False)
+    destination = objects / f"{storage_key}.blob"
+    if destination.exists() or destination.is_symlink():
+        raise AttachmentStorageError("Clean storage key already exists")
+    if not source.resolve().is_relative_to(quarantine.resolve()):
+        raise AttachmentStorageError("Quarantined attachment escaped its storage root")
+    os.replace(source, destination)
+    return resolve_blob(storage_key, clean=True)
+
+
 def content_disposition(filename: str) -> str:
     safe = safe_original_name(filename)
     fallback = re.sub(r"[^A-Za-z0-9._-]", "_", safe) or "attachment"
