@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getApiToken } from "../api/client";
 import { useApiBase } from "../api/useApiBase";
 
 export function ArtifactCard({ filepath }: { filepath: string }) {
@@ -5,12 +7,24 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
   const filename = cleanPath.split(/[\\/]/).pop() || cleanPath;
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   const apiBase = useApiBase();
+  const [fileToken, setFileToken] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void getApiToken().then((token) => {
+      if (active) setFileToken(token);
+    }).catch(() => {
+      if (active) setFileToken("");
+    });
+    return () => { active = false; };
+  }, []);
 
   const relativePath = cleanPath.startsWith("./output/")
     ? cleanPath.slice("./output/".length)
     : filename;
-  const fileUrl = apiBase
-    ? apiBase + "/files/" + relativePath.split("/").map(encodeURIComponent).join("/")
+  const fileUrl = apiBase && fileToken
+    ? apiBase + "/files/" + relativePath.split("/").map(encodeURIComponent).join("/") +
+      "?token=" + encodeURIComponent(fileToken)
     : "";
 
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
@@ -23,7 +37,7 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
         <span className="font-medium text-studio-200 truncate max-w-[180px]" title={filename}>
           {filename}
         </span>
-        {apiBase ? (
+        {fileUrl ? (
           <a
             href={fileUrl}
             target="_blank"
@@ -37,19 +51,19 @@ export function ArtifactCard({ filepath }: { filepath: string }) {
         )}
       </div>
 
-      {isImage && apiBase && (
+      {isImage && fileUrl && (
         <div className="rounded overflow-hidden bg-studio-900 border border-studio-800 max-h-48 flex items-center justify-center">
           <img src={fileUrl} alt={filename} className="max-h-48 object-contain" />
         </div>
       )}
 
-      {isVideo && apiBase && (
+      {isVideo && fileUrl && (
         <div className="rounded overflow-hidden bg-black max-h-48">
           <video controls src={fileUrl} className="w-full max-h-48 object-contain" />
         </div>
       )}
 
-      {isAudio && apiBase && (
+      {isAudio && fileUrl && (
         <div className="pt-1">
           <audio controls src={fileUrl} className="w-full h-8" />
         </div>
