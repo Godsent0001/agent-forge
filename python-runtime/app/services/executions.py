@@ -141,6 +141,20 @@ class ExecutionManager:
             if project is None:
                 raise ValueError("Project not found")
             project_settings = dict(project.settings or {})
+            # Project policy and budgets are authoritative defaults for every new run.
+            raw_budget = project_settings.get("budget", {})
+            if not isinstance(raw_budget, dict):
+                raw_budget = {}
+            budget_updates = {}
+            for key in ("max_llm_calls", "max_cost_usd", "max_seconds"):
+                if key in raw_budget:
+                    budget_updates[key] = raw_budget[key]
+            updated_budget = req.options.budget.model_copy(update=budget_updates)
+            options_update = {
+                "parallel_tools": project_settings.get("parallel_tools", req.options.parallel_tools) is True,
+                "budget": updated_budget,
+            }
+            req = req.model_copy(update={"options": req.options.model_copy(update=options_update)})
             graph = load_agent_graph(db, req.project_id, req.root_agent_id)
             execution = models.Execution(
                 id=req.execution_id,
