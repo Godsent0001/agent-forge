@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import queue
 import re
 import subprocess
@@ -10,8 +11,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
-
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 

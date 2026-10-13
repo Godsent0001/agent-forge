@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.infra.paths import DATA_SUBDIRECTORIES, data_dir
 
 
