@@ -38,8 +38,8 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     const cost = maxCostUsd.trim() === "" ? null : Number(maxCostUsd);
     const calls = Number(maxLlmCalls);
     const seconds = Number(maxSeconds);
-    if ((cost !== null && (!Number.isFinite(cost) || cost < 0)) || !Number.isInteger(calls) || calls < 1 || !Number.isInteger(seconds) || seconds < 1) {
-      setError("Enter a non-negative cost and positive whole-number limits.");
+    if ((cost !== null && (!Number.isFinite(cost) || cost < 0 || cost > 1_000_000)) || !Number.isInteger(calls) || calls < 1 || calls > 10_000 || !Number.isInteger(seconds) || seconds < 1 || seconds > 86_400) {
+      setError("Cost must be between 0 and 1,000,000 USD; LLM calls must be 1–10,000; seconds must be 1–86,400.");
       return;
     }
     setSaving(true);
