@@ -11,8 +11,8 @@ from sqlalchemy import update
 from app import models
 from app.contracts.events import EventDraft, RunEvent
 from app.contracts.run import BudgetSpec, RunRequest, RunResult, Totals
-from app.infra.approvals import ApprovalGateImpl
 from app.db import SessionLocal
+from app.infra.approvals import ApprovalGateImpl
 from app.services.core_adapters import Workspace
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
