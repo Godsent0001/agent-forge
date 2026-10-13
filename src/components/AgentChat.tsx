@@ -61,6 +61,20 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
+  const rawBudget = project?.settings?.budget;
+  const budgetSettings = rawBudget && typeof rawBudget === "object" ? rawBudget as Record<string, unknown> : {};
+  const maximumCost = typeof budgetSettings.max_cost_usd === "number"
+    && Number.isFinite(budgetSettings.max_cost_usd)
+    && budgetSettings.max_cost_usd > 0
+    ? budgetSettings.max_cost_usd
+    : null;
+  const knownSpentCost = activeExecutionEvents
+    .filter((event) => event.type === "span_ended" && event.kind === "llm_call")
+    .reduce((sum, event) => {
+      const value = event.data.cost_usd;
+      return typeof value === "number" && Number.isFinite(value) && value >= 0 ? sum + value : sum;
+    }, 0);
+  const budgetWarning = isProcessing && maximumCost !== null && knownSpentCost >= maximumCost * 0.8;
 
   // Conversations are loaded from SQLite when the selected project/agent changes.
   // The Zustand copy is only a bounded rendering cache; the API remains authoritative.
@@ -496,6 +510,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       </div>
 
       {/* Chat Messages scroll area */}
+      {budgetWarning && (
+        <div role="status" aria-live="polite" className="shrink-0 border-b border-amber-800 bg-amber-950/40 px-6 py-2 text-2xs leading-relaxed text-amber-200">
+          <span className="font-semibold">Budget warning.</span> Known spend has reached at least 80% of the configured {new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 4 }).format(maximumCost ?? 0)} limit. Unknown-priced calls may make the actual total higher.
+        </div>
+      )}
       {simulatedReply && (
         <div role="note" className="shrink-0 border-b border-amber-900/50 bg-amber-950/30 px-6 py-2 text-2xs leading-relaxed text-amber-300">
           <span className="font-semibold">Demo runner active.</span> Replies marked “Simulated” are placeholders from the built-in test runner, not real model output.

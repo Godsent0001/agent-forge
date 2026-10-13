@@ -122,6 +122,10 @@ async def test_runner_single_answer():
         assert res.status == "completed"
         assert "Paris" in res.final_output
         assert res.totals.llm_calls == 1
+        llm_end = next(event for event in raw_events if event.type == "span_ended" and event.kind == "llm_call")
+        assert "usage" in llm_end.data
+        assert {"input_tokens", "output_tokens", "cache_read_tokens"} <= llm_end.data["usage"].keys()
+        assert "cost_usd" in llm_end.data
 
 
 @pytest.mark.asyncio

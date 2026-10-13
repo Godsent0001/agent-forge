@@ -356,6 +356,7 @@ class RunnerCore:
         budget: BudgetTracker,
         scenario: str | None = None,
     ) -> LLMTurn:
+        span_end_data: dict[str, Any] = {}
         async with span(
             emit,
             kind="llm_call",
@@ -366,6 +367,7 @@ class RunnerCore:
                 "model": spec.model,
                 "message_count": len(messages),
             },
+            end_data=span_end_data,
         ):
             if self.fake_llm:
                 turn = await self.fake_llm.complete(
@@ -396,6 +398,14 @@ class RunnerCore:
                 cache_read_tokens=turn.usage.cache_read_tokens,
                 cost_usd=turn.cost_usd,
             )
+            span_end_data.update({
+                "usage": {
+                    "input_tokens": turn.usage.input_tokens,
+                    "output_tokens": turn.usage.output_tokens,
+                    "cache_read_tokens": turn.usage.cache_read_tokens,
+                },
+                "cost_usd": turn.cost_usd,
+            })
 
             return turn
 
