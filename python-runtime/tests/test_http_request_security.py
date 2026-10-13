@@ -8,7 +8,7 @@ import pytest
 
 from app.infra.ssrf import UnsafeURL, assert_public_url
 from app.tools.base import ToolExecutionError
-from app.tools.http_request import MAX_RESPONSE_BYTES, HttpRequestTool, _real_request_backend
+from app.tools.http_request import MAX_RESPONSE_BYTES, HttpRequestTool, _app_port, _real_request_backend
 
 
 @pytest.mark.parametrize("url", [
@@ -28,6 +28,14 @@ def test_ssrf_guard_rejects_local_special_or_non_http_urls(url):
 
 def test_ssrf_guard_allows_public_literal_ip():
     assert_public_url("https://8.8.8.8/")
+
+
+
+def test_ssrf_guard_uses_the_actual_runtime_port(monkeypatch):
+    monkeypatch.setenv("AGENTFORGE_PORT", "9123")
+    assert _app_port() == 9123
+    with pytest.raises(UnsafeURL):
+        assert_public_url("http://8.8.8.8:9123/", app_port=_app_port())
 
 
 @pytest.mark.asyncio
