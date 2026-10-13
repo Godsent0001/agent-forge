@@ -1,8 +1,7 @@
 """SQLite-persisted task-plan state machine for recoverable agent workflows.
 
-This is a reusable orchestration primitive. It is not wired into the existing
-HTTP execution route or RunnerCore until the application integration boundary
-is agreed and covered by end-to-end tests.
+This is a reusable orchestration primitive. RunnerCore persists its task-plan
+claims and transitions here; the legacy HTTP execution route remains unchanged.
 """
 from __future__ import annotations
 
