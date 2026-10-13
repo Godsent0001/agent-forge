@@ -179,6 +179,7 @@ class LegacyToolAdapter(V2Tool):
             normalized_input = _normalize_payload(self.kind, args.input, ctx)
             content = await self._legacy.execute(normalized_input, context=ctx)
         except ToolExecutionError as exc:
-            raise ToolError(str(exc)) from exc
+            # Expected tool errors can contain absolute shared-asset paths too.
+            raise ToolError(_redact_host_paths(str(exc), ctx)) from exc
         content = _redact_host_paths(str(content), ctx)
         return ToolResult(content=content)

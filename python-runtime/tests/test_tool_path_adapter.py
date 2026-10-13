@@ -175,3 +175,14 @@ def test_tool_results_redact_run_and_shared_data_roots(context, monkeypatch, tmp
     assert str(configured_data) not in redacted
     assert "./renders/final.mp4" in redacted
     assert "./assets/shared/music/intro.wav" in redacted
+
+
+def test_tool_errors_also_redact_host_roots(context, monkeypatch, tmp_path):
+    from app.tools.adapter import _redact_host_paths
+
+    configured_data = (tmp_path / "agentforge-data").resolve()
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(configured_data))
+    message = f"Voice model not found: {configured_data / 'assets' / 'voices' / 'private.onnx'}"
+    redacted = _redact_host_paths(message, context)
+    assert str(configured_data) not in redacted
+    assert "./assets/voices/private.onnx" in redacted
