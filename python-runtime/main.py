@@ -9,8 +9,8 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.db import init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
