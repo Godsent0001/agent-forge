@@ -67,8 +67,8 @@ npm run dev
 Electron generates a per-launch random bearer token and passes it only to the
 local sidecar and isolated renderer. Browser-only development must explicitly
 opt into the development token in both places: set `AGENTFORGE_DEV=1` for the
-runtime and add `VITE_DEV_TOKEN=dev` to `.env.local`. Do not use that fixed token
-outside local development. Ordinary API routes require `Authorization: Bearer …`;
+runtime and add `VITE_DEV_TOKEN=dev` plus `VITE_API_BASE=http://127.0.0.1:8000`
+to `.env.local`. Do not use that fixed token outside local development. Ordinary API routes require `Authorization: Bearer …`;
 only WebSocket streams and generated-file URLs accept a query token.
 You should get: Vite on :5173 → Electron window → Python sidecar spawns →
 UI bootstraps a default project → Agent Tree/Editor/Execution panels render.
