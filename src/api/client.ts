@@ -103,6 +103,13 @@ export interface ExecutionSummary {
   totals: Record<string, unknown>;
 }
 
+export interface SystemCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+  fix: string | null;
+}
+
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
@@ -219,5 +226,8 @@ export const api = {
     syncKeysToBackend: () => keychain.syncToRuntime(),
     /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
+  },
+  system: {
+    check: () => request<SystemCheck[]>("/v2/system/check"),
   },
 };
