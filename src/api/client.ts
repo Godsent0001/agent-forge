@@ -152,6 +152,11 @@ export const api = {
       request<{ status: string }>(`/v2/executions/${id}/cancel`, {
         method: "POST",
       }),
+    resolveApproval: (executionId: string, approvalId: string, decision: "allow_once" | "allow_run" | "deny") =>
+      request<{ status: string; decision: string }>(
+        `/v2/executions/${encodeURIComponent(executionId)}/approvals/${encodeURIComponent(approvalId)}`,
+        { method: "POST", body: JSON.stringify({ decision }) },
+      ),
   },
   catalog: {
     list: () => request<CatalogToolEntry[]>("/catalog"),
