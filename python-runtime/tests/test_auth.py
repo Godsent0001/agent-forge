@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
 from app.infra.auth import TokenAuthMiddleware, _allows_query_token
+from main import app
 
 
 @pytest.fixture()
