@@ -126,7 +126,7 @@ def _normalize_payload(kind: str, raw: str, ctx: ToolContext) -> str:
                 raise ToolError(f"Invalid {key}: use 1-64 letters, digits, underscore or hyphen")
     if kind == "visual_asset_manager" and payload.get("name") not in (None, ""):
         name = payload["name"]
-        if not isinstance(name, str) or name in {".", ".."} or "/" in name or "\\" in name or "\\x00" in name:
+        if not isinstance(name, str) or name in {".", ".."} or "/" in name or "\\" in name or "\x00" in name:
             raise ToolError("Visual asset name must be a filename, not a path")
 
     for key in _INPUT_PATH_KEYS:
