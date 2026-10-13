@@ -22,7 +22,7 @@ interface StoreState {
   fetchProjects: () => Promise<Project[]>;
   switchProject: (projectId: string) => Promise<void>;
   createProject: (name: string) => Promise<void>;
-  updateProjectSettings: (patch: { name?: string; parallel_execution?: boolean }) => Promise<void>;
+  updateProjectSettings: (patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) => Promise<void>;
   loadProject: (project: Project) => Promise<void>;
   selectAgent: (id: string | null) => void;
   createAgent: (name: string) => Promise<Agent | undefined>;
