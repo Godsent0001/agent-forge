@@ -48,6 +48,7 @@ You own everything that is not the agent "brain": Electron, React UI, FastAPI ro
 | D-19 | Packaging build and smoke test | L (3d) | P0 | M3 | D-17, D-18 |
 | D-20 | Electron hardening and upgrade | M (1d) | P1 | M3 | D-19 |
 | D-21 | Usage and cost UI | M (1.5d) | P2 | M3 | A-10, A-13 |
+| D-22 | Workspace files and upload security contract | M (1d) | P0 | M2 | D-09, D-10 |
 
 ---
 
@@ -458,6 +459,31 @@ jobs:
 **Done when:** all tests pass and `http_request` to the app's own API is refused.
 
 **Watch out:** DNS rebinding between the check and the connect is a known gap; note it in the docstring.
+
+---
+
+## D-22 · Workspace files and upload security contract
+
+**Owner** Dev · **Size** M (1 day) · **Priority** P0 · **Depends on** D-09, D-10
+
+**Goal:** freeze a storage and security contract before implementing upload UI or allowing uploaded content into agent runs.
+
+**Files:** `docs/D-22-UPLOAD-SECURITY.md`, `docs/CONTRACTS.md` (only if shared API shapes must change), future upload route/storage implementation.
+
+**Steps**
+- [ ] 1. Review `docs/D-22-UPLOAD-SECURITY.md` with both owners and reconcile it with C-1 attachments and C-8 file routes before coding the upload endpoint.
+- [ ] 2. Keep uploads project-scoped, stored outside the served workspace in generated opaque keys, with untrusted original filenames kept only as metadata.
+- [ ] 3. Enforce upload size/count/storage quotas while streaming; validate extension, detected MIME and file signature; quarantine before promotion. Scanner failure must not mark a file clean.
+- [ ] 4. Require authentication and project authorization for upload/list/download/delete. Never return a host path or permit cross-project access.
+- [ ] 5. Treat extracted text and metadata as untrusted input; never execute uploaded files or render active content inline. Copy only authorized attachments into a run workspace through the resolver.
+- [ ] 6. Add negative tests for unauthenticated/cross-project requests, oversized and mismatched files, traversal/symlink escapes, malformed files, scanner failure, guessed IDs and prompt-injection content.
+
+**Done when**
+- [ ] The storage, validation, authorization, lifecycle, retention and threat-boundary decisions are documented and reviewed.
+- [ ] The attachment and file-route contracts agree across docs, Python models and TypeScript before any shape changes are merged.
+- [ ] The future upload implementation has explicit tests and no unauthenticated filesystem path can be reached.
+
+**Scope note:** this card freezes the contract. It does not mark upload routes, malware scanning or upload UI as implemented.
 
 ---
 
