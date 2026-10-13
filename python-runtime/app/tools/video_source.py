@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
@@ -24,7 +25,7 @@ def _yt_dlp_search(query: str, limit: int) -> list[dict[str, Any]]:
     if parsed.scheme.lower() in {"http", "https"}:
         # Direct URL mode can otherwise make yt-dlp fetch localhost/private services.
         try:
-            raw_port = __import__("os").environ.get("AGENTFORGE_PORT") or __import__("os").environ.get("PORT") or "8000"
+            raw_port = os.environ.get("AGENTFORGE_PORT") or os.environ.get("PORT") or "8000"
             runtime_port = int(raw_port)
         except (TypeError, ValueError):
             runtime_port = 8000
