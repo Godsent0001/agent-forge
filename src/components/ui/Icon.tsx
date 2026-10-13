@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-export type IconName = "agents" | "tools" | "settings" | "catalog" | "sidebar-collapse" | "chevron-left" | "chevron-right" | "inspector" | "logs" | "close" | "chat" | "editor" | "play" | "plus" | "workflow";
+export type IconName = "agents" | "tools" | "settings" | "catalog" | "sidebar-collapse" | "chevron-left" | "chevron-right" | "inspector" | "logs" | "close" | "chat" | "editor" | "play" | "plus" | "workflow" | "paperclip" | "chevron-up" | "chevron-down" | "upload" | "file-up" | "download" | "shield-check" | "trash-2";
 const glyphs: Record<IconName, ReactNode> = {
   agents: <><circle cx="9" cy="8" r="3" /><path d="M3.5 20v-1.5A4.5 4.5 0 0 1 8 14h2a4.5 4.5 0 0 1 4.5 4.5V20" /><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14h.5a3.5 3.5 0 0 1 3.5 3.5V20" /></>,
   tools: <><path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L3.5 17.5a2.1 2.1 0 0 0 3 3l5.7-5.7a4 4 0 0 0 5.3-5.3l-2.4 2.4-3.1-3.1z" /><path d="m15 5 4-1 1 4" /></>,
@@ -14,6 +14,14 @@ const glyphs: Record<IconName, ReactNode> = {
   editor: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h10M7 16h6" /></>,
   play: <path d="m8 5 11 7-11 7z" />, plus: <path d="M12 5v14M5 12h14" />,
   workflow: <><rect x="3" y="4" width="6" height="6" rx="1" /><rect x="15" y="14" width="6" height="6" rx="1" /><path d="M9 7h4a2 2 0 0 1 2 2v5M12 14l3 3" /></>,
+  "paperclip": <path d="m8.5 12.5 6.7-6.7a3.2 3.2 0 0 1 4.5 4.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l8.5-8.5" />,
+  "chevron-up": <path d="m6 14 6-6 6 6" />,
+  "chevron-down": <path d="m6 10 6 6 6-6" />,
+  "upload": <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v4h16v-4" /></>,
+  "file-up": <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M12 18v-6m-3 3 3-3 3 3" /></>,
+  "download": <><path d="M12 4v12m-5-5 5 5 5-5" /><path d="M4 20h16" /></>,
+  "shield-check": <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z" /><path d="m9 12 2 2 4-4" /></>,
+  "trash-2": <><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6m4-6v6" /></>,
 };
 export function Icon({ name, size = 18, className = "" }: { name: IconName; size?: number; className?: string }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={className}>{glyphs[name]}</svg>;

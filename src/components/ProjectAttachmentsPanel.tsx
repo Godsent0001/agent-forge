@@ -28,7 +28,7 @@ export function ProjectAttachmentsPanel({
 }: {
   projectId: string;
   selectedIds: string[];
-  onSelectedIdsChange: (ids: string[]) => void;
+  onSelectedIdsChange: React.Dispatch<React.SetStateAction<string[]>>;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -40,13 +40,14 @@ export function ProjectAttachmentsPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = async (isMountedProject = projectId) => {
-    const result = await api.attachments.list(isMountedProject, 100);
-    if (isMountedProject !== projectId) return;
+  const currentProjectId = useRef(projectId);
+  useEffect(() => { currentProjectId.current = projectId; }, [projectId]);
+
+  const refresh = async () => {
+    const requestedProjectId = projectId;
+    const result = await api.attachments.list(requestedProjectId, 100);
+    if (currentProjectId.current !== requestedProjectId) return;
     setItems(result.items);
-    const selectable = new Set(result.items.filter((item) => item.status === "clean").map((item) => item.id));
-    const retained = selectedIds.filter((id) => selectable.has(id));
-    if (retained.length !== selectedIds.length) onSelectedIdsChange(retained);
   };
 
   useEffect(() => {
@@ -115,7 +116,7 @@ export function ProjectAttachmentsPanel({
         const item = await api.attachments.upload(projectId, file);
         setItems((current) => [item, ...current.filter((old) => old.id !== item.id)]);
         if (item.status === "clean") {
-          onSelectedIdsChange((current) => current.includes(item.id) ? current : [...current, item.id].slice(-MAX_RUN_FILES));
+          setNotice(`${item.name} passed scanning. Select it below to attach it to a run.`);
         } else {
           setNotice(`${item.name} was uploaded but remains ${item.status}. Only clean-scanned files can be attached to a run.`);
         }
@@ -139,8 +140,7 @@ export function ProjectAttachmentsPanel({
       const result = await api.attachments.scan(projectId, item.id);
       setItems((current) => current.map((old) => old.id === item.id ? result : old));
       if (result.status === "clean") {
-        onSelectedIdsChange((current) => current.includes(item.id) ? current : [...current, item.id].slice(-MAX_RUN_FILES));
-        setNotice(`${item.name} passed scanning and is ready to attach.`);
+        setNotice(`${item.name} passed scanning. Select it below to attach it to a run.`);
       } else if (result.status === "rejected") {
         onSelectedIdsChange(selectedIds.filter((id) => id !== item.id));
         setNotice(`${item.name} was rejected by validation or scanning.`);
