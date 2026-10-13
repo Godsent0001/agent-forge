@@ -95,3 +95,48 @@ def test_persistent_shared_state_mutators_request_write_permission():
     }
     for kind in persistent_mutators:
         assert "fs_write" in _PERMISSION_MAP[kind]
+
+
+@pytest.mark.parametrize(("kind", "payload"), [
+    ("voice_generator", {"output_path": "../outside.wav"}),
+    ("audio_processing", {"audio_path": "../outside.wav"}),
+    ("audio_alignment", {"audio_path": "../outside.wav"}),
+    ("audio_mixer", {"voice_path": "../outside.wav"}),
+    ("audio_mixer", {"music_path": "../outside.mp3"}),
+    ("character_rig", {"audio_path": "../outside.wav"}),
+    ("composition_engine", {"layers": [{"image_path": "../outside.png"}]}),
+    ("effects_engine", {"input_path": "../outside.mp4"}),
+    ("audio_qc", {"audio_path": "../outside.wav"}),
+    ("video_qc", {"video_path": "../outside.mp4"}),
+    ("automated_preview_qc", {"preview_path": "../outside.mp4"}),
+    ("preview_renderer", {"image_path": "../outside.png"}),
+    ("final_renderer", {"audio_path": "../outside.wav"}),
+    ("render_worker", {"image_path": "../outside.png"}),
+    ("asset_cache_store", {"src_path": "../outside.wav", "category": "audio", "name": "source"}),
+])
+def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, kind, payload):
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps(payload), context)
+
+
+@pytest.mark.parametrize(("kind", "key"), [
+    ("voice_generator", "output_path"),
+    ("audio_processing", "output_path"),
+    ("audio_mixer", "output_path"),
+    ("character_rig", "output_image_path"),
+    ("character_rig", "output_video_path"),
+    ("composition_engine", "output_path"),
+    ("effects_engine", "output_path"),
+    ("evidence_graphics", "output_path"),
+    ("data_visualization", "output_path"),
+    ("headline_card", "output_path"),
+    ("debate_graphics", "output_path"),
+    ("caption_engine", "output_path"),
+    ("typography_engine", "output_path"),
+    ("preview_renderer", "output_path"),
+    ("final_renderer", "output_path"),
+    ("render_worker", "output_path"),
+])
+def test_path_taking_tool_outputs_reject_traversal(context, kind, key):
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps({key: "../../outside.bin"}), context)
