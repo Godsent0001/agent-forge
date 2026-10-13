@@ -44,6 +44,7 @@ class CancelToken(Protocol):
 class RunWorkspace(Protocol):
     root: Path                                   # <data_dir>/runs/<execution_id>/
     def resolve(self, rel: str) -> Path: ...     # raises ToolError on absolute paths, "..", symlink escapes
+    def asset(self, rel: str) -> Path: ...       # shared read-only asset root; same traversal/symlink checks
     def new_path(self, name: str) -> Path: ...   # safe, unique file path inside the workspace
     def relative(self, p: Path) -> str: ...
     def write_result(self, tool_call_id: str, content: str) -> ArtifactRef: ...

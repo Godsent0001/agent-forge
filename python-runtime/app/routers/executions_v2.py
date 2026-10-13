@@ -12,6 +12,7 @@ from app import models
 from app.contracts.run import RunOptions, RunRequest
 from app.db import SessionLocal
 from app.infra.approvals import resolve_approval
+from app.infra.file_security import file_response_headers
 from app.infra.workspace import RunWorkspace
 from app.services.executions import manager
 from app.tools.base import ToolExecutionError
@@ -164,11 +165,7 @@ def get_execution_file(execution_id: str, relpath: str):
         raise HTTPException(status_code=404, detail="Workspace file not found") from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Workspace file not found")
-    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
-    # Never render active document/script formats from the local sidecar origin.
-    if path.suffix.lower() in {".html", ".htm", ".svg", ".js", ".mjs", ".xml", ".xhtml", ".xsl"}:
-        headers["Content-Disposition"] = "attachment"
-    return FileResponse(path=path, headers=headers)
+    return FileResponse(path=path, headers=file_response_headers(path))
 
 @router.post("/{execution_id}/cancel")
 async def cancel_execution(execution_id: str):

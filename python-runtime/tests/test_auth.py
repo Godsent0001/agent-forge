@@ -79,8 +79,10 @@ async def test_valid_websocket_query_token_passes_auth_middleware(monkeypatch):
     assert messages[1]["code"] == 1000
 
 
-def test_query_tokens_are_scoped_to_websocket_and_file_routes():
-    assert _allows_query_token({"type": "websocket", "path": "/anything"})
+def test_query_tokens_are_scoped_to_execution_stream_and_file_routes():
+    assert _allows_query_token({"type": "websocket", "path": "/v2/executions/run/stream"})
+    assert not _allows_query_token({"type": "websocket", "path": "/anything"})
+    assert not _allows_query_token({"type": "websocket", "path": "/v2/projects/run/stream"})
     assert _allows_query_token({"type": "http", "path": "/files/result.png"})
     assert _allows_query_token({"type": "http", "path": "/v2/executions/run/files/result.png"})
     assert not _allows_query_token({"type": "http", "path": "/v2/executions/run"})

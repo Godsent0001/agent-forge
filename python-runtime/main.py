@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 
 from app.db import init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
+from app.infra.file_security import file_response_headers
 from app.routers import agents, executions, executions_v2, projects, settings, tools
 from app.routers import catalog as catalog_router
 from app.services.executions import manager
@@ -62,14 +63,7 @@ def get_legacy_file(relpath: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    headers = {
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; sandbox",
-    }
-    if path.suffix.lower() in {".html", ".htm", ".svg", ".js", ".mjs", ".xml", ".xhtml", ".xsl"}:
-        headers["Content-Disposition"] = "attachment"
-    return FileResponse(path=path, headers=headers)
+    return FileResponse(path=path, headers=file_response_headers(path))
 
 app.add_middleware(TokenAuthMiddleware)
 

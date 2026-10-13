@@ -6,6 +6,7 @@ import pytest
 
 from app.infra.ssrf import UnsafeURL, assert_public_url
 from app.infra.workspace import RunWorkspace, safe_id
+from app.services.core_adapters import Workspace
 from app.tools.base import ToolExecutionError
 
 
@@ -61,3 +62,22 @@ def test_ssrf_rejects_non_http_and_url_credentials():
     for url in ('file:///etc/passwd', 'ftp://example.com', 'https://user:pass@example.com'):
         with pytest.raises(UnsafeURL):
             assert_public_url(url)
+
+
+
+def test_runner_workspace_exposes_shared_asset_resolver(monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    workspace = Workspace("asset-run")
+    asset = workspace.asset("voices/default.onnx")
+    assert asset == (tmp_path / "agentforge-data" / "assets" / "voices" / "default.onnx").resolve()
+    with pytest.raises(ToolExecutionError):
+        workspace.asset("../outside.txt")
+
+
+def test_shared_asset_resolver_rejects_symlink_escape(tmp_path):
+    workspace = RunWorkspace("asset-link-run", root=tmp_path / "run", assets_root=tmp_path / "assets")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (workspace.assets_root / "escape").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ToolExecutionError):
+        workspace.asset("escape/secret.txt")

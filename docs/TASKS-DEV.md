@@ -468,6 +468,8 @@ jobs:
 
 **Goal:** freeze a storage and security contract before implementing upload UI or allowing uploaded content into agent runs.
 
+**Contract status (2026-10-13):** `docs/D-22-UPLOAD-SECURITY.md` now records storage, API, validation, authorization, lifecycle, retention, and threat-boundary decisions. The required two-owner review remains open. Upload endpoints, scanning integration, and upload UI are explicitly not part of this contract-only milestone.
+
 **Files:** `docs/D-22-UPLOAD-SECURITY.md`, `docs/CONTRACTS.md` (only if shared API shapes must change), future upload route/storage implementation.
 
 **Steps**

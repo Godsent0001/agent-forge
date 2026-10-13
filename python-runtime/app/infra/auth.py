@@ -59,11 +59,26 @@ def _query_token(scope: Scope) -> str | None:
 
 
 def _allows_query_token(scope: Scope) -> bool:
-    if scope["type"] == "websocket":
-        return True
     path = scope.get("path", "")
-    return path.startswith("/files/") or (
-        path.startswith("/v2/executions/") and "/files/" in path
+    if scope["type"] == "websocket":
+        parts = path.strip("/").split("/")
+        return (
+            len(parts) == 4
+            and parts[0] == "v2"
+            and parts[1] == "executions"
+            and bool(parts[2])
+            and parts[3] == "stream"
+        )
+    if path.startswith("/files/"):
+        return True
+    parts = path.strip("/").split("/")
+    return (
+        len(parts) >= 5
+        and parts[0] == "v2"
+        and parts[1] == "executions"
+        and bool(parts[2])
+        and parts[3] == "files"
+        and bool(parts[4])
     )
 
 

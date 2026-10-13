@@ -60,7 +60,7 @@ class ApprovalGateImpl:
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
         kind = self._kind_for(tool, permissions)
-        if (self.execution_id, kind) in self.allowed_for_run or (self.execution_id, tool) in self.allowed_for_run:
+        if (self.execution_id, tool) in self.allowed_for_run:
             return True
 
         policy = "ask" if force else self._policy_for(kind, permissions)
@@ -126,7 +126,7 @@ class ApprovalGateImpl:
         if cancelled:
             raise asyncio.CancelledError
         if decision == "allow_run":
-            self.allowed_for_run.add((self.execution_id, kind))
+            self.allowed_for_run.add((self.execution_id, tool))
         return decision in {"allow_once", "allow_run"}
 
 
@@ -138,6 +138,6 @@ def resolve_approval(*, execution_id: str, approval_id: str, decision: str) -> b
     if not pending or pending.execution_id != execution_id or pending.future.done():
         return False
     if decision == "allow_run":
-        pending.gate.allowed_for_run.add((execution_id, pending.kind))
+        pending.gate.allowed_for_run.add((execution_id, pending.tool))
     pending.future.set_result(decision)
     return True

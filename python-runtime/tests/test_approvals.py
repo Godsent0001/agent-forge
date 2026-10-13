@@ -37,7 +37,7 @@ async def test_project_deny_policy_blocks_without_prompt():
 
 
 @pytest.mark.asyncio
-async def test_allow_run_remembers_tool_kind_for_one_execution():
+async def test_allow_run_is_limited_to_exact_tool_name():
     events = []
     async def emit(event):
         events.append(event)
@@ -51,7 +51,15 @@ async def test_allow_run_remembers_tool_kind_for_one_execution():
     assert resolve_approval(execution_id="run-3", approval_id=approval_id, decision="allow_run")
     assert await first is True
     assert await gate.check(tool="python", permissions={"subprocess"}, args_preview="{}", span_id="s2") is True
-    assert len([event for event in events if event.type == "approval_requested"]) == 1
+    other = asyncio.create_task(gate.check(tool="python-other", permissions={"subprocess"}, args_preview="{}", span_id="s3"))
+    for _ in range(20):
+        if any(value.execution_id == "run-3" and value.tool == "python-other" for value in PENDING.values()):
+            break
+        await asyncio.sleep(0)
+    other_id = next(key for key, value in PENDING.items() if value.execution_id == "run-3" and value.tool == "python-other")
+    assert resolve_approval(execution_id="run-3", approval_id=other_id, decision="deny")
+    assert await other is False
+    assert len([event for event in events if event.type == "approval_requested"]) == 2
 
 
 @pytest.mark.asyncio

@@ -87,6 +87,10 @@ class Workspace:
     def resolve(self, rel: str) -> Path:
         return self._workspace.resolve(rel)
 
+    def asset(self, rel: str) -> Path:
+        """Resolve a reusable shared asset without exposing its host root."""
+        return self._workspace.asset(rel)
+
     def new_path(self, name: str) -> Path:
         return self._workspace.new_path(name)
 
