@@ -5,6 +5,7 @@ import pytest
 from app.contracts.artifacts import ArtifactCreate, ArtifactUpdate
 from app.core.artifact_store import (
     ArtifactNotFound,
+    ArtifactStoreError,
     ArtifactVersionConflict,
     InvalidArtifactDependency,
     SQLiteArtifactStore,
@@ -93,7 +94,7 @@ def test_project_listing_is_scoped_and_integrity_is_checked(tmp_path):
     blob = store._blob_path(one.sha256)
     blob.write_bytes(b"tampered")
     assert not store.verify_integrity(one.artifact_id)
-    with pytest.raises(Exception, match="integrity check failed"):
+    with pytest.raises(ArtifactStoreError, match="integrity check failed"):
         store.read(one.artifact_id)
 
 
