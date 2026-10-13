@@ -12,12 +12,12 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 import tempfile
 from typing import Any
 
 if os.name != "nt":
     import resource
-import shutil
 
 from app.tools.base import Tool, ToolExecutionError
 
