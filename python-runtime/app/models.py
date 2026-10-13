@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     String,
@@ -138,10 +139,18 @@ class MemoryEntry(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String, default="fact")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_type: Mapped[str] = mapped_column(String, default="user_stated")
+    evidence: Mapped[str] = mapped_column(Text, default="")
     source_execution_id: Mapped[str | None] = mapped_column(
-        ForeignKey("executions.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("executions.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    use_count: Mapped[int] = mapped_column(default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="active")
+    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String, nullable=True)
     summarized: Mapped[bool] = mapped_column(Boolean, default=False)
 
     agent: Mapped[Agent] = relationship(back_populates="memory_entries")
@@ -269,3 +278,24 @@ Index(
     ConversationMessage.conversation_id,
     ConversationMessage.created_at,
 )
+
+
+
+class LessonEntry(Base):
+    """Persistent user-reviewable lesson used to guide future agent runs."""
+
+    __tablename__ = "lessons"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_execution_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executions.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+
+Index("ix_memory_entries_agent_status_created", MemoryEntry.agent_id, MemoryEntry.status, MemoryEntry.created_at)
+Index("ix_lessons_agent_status_created", LessonEntry.agent_id, LessonEntry.status, LessonEntry.created_at)

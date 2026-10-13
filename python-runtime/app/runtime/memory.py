@@ -92,7 +92,10 @@ async def read_memory(db, agent_id: str, llm) -> str:
     agent = db.get(models.Agent, agent_id)
     entries = (
         db.query(models.MemoryEntry)
-        .filter(models.MemoryEntry.agent_id == agent_id)
+        .filter(
+            models.MemoryEntry.agent_id == agent_id,
+            models.MemoryEntry.status == "active",
+        )
         .order_by(models.MemoryEntry.created_at)
         .all()
     )

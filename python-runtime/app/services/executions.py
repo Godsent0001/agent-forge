@@ -14,6 +14,7 @@ from app.contracts.run import BudgetSpec, RunRequest, RunResult, Totals
 from app.db import SessionLocal
 from app.infra.approvals import ApprovalGateImpl
 from app.services.core_adapters import Workspace
+from app.services.memory_store import SqlLessonStore, SqlMemoryStore
 from app.services.graph_loader import load_agent_graph
 from app.services.runner_factory import get_runner
 from app.tools.registry import DefaultToolFactory
@@ -223,8 +224,8 @@ class ExecutionManager:
                         approvals=approvals,
                         workspace=workspace,
                         tools=DefaultToolFactory(),
-                        memory=None,
-                        lessons=None,
+                        memory=SqlMemoryStore(),
+                        lessons=SqlLessonStore(),
                         intents=None,
                         run_history=None,
                     )
