@@ -84,13 +84,15 @@ Produces the installer / application bundle inside `dist-electron/`.
 
 See [`docs/`](docs/) for project plans, contracts, task cards, and testing guidance.
 
-## Running with real models
+## RunnerCore and model configuration
 
-By default the backend uses a built-in **test runner** that answers with `FakeRunner completed: <your task>`. The UI labels those replies "Simulated". To use real models:
+The application uses **RunnerCore by default** for both the established `/executions` API and `/v2/executions`. Normal startup therefore uses the selected agent's configured model and requires valid provider credentials before real model calls can succeed.
 
-1. Start the app with the live runner: `npm run dev:live` (same as `npm run dev` with `AGENTFORGE_RUNNER=v2`).
-2. Open **Provider settings** and save a key for the provider you want (keys stay on your device and are re-applied to the runtime at every start).
-3. Pick the provider and model on the agent. Any model your provider offers can be used through **Custom model ID**.
+1. Open **Provider settings** and save a key for the provider you want (keys stay on your device and are re-applied to the runtime at every start).
+2. Pick the provider and model on the agent. Any model your provider offers can be used through **Custom model ID**.
+3. For a local development session, `npm run dev` and `npm run dev:live` both use RunnerCore; `dev:live` explicitly sets `AGENTFORGE_RUNNER=v2`.
+
+For deterministic simulation/tests only, explicitly set `AGENTFORGE_RUNNER=fake`; this uses the placeholder FakeRunner and is not the normal application execution path. Do not use that override when validating real model execution.
 
 Models are routed through LiteLLM as `<provider>/<model>`. Providers listed in `src/config/providers.ts` need the matching key handled by the runtime (`app/routers/settings.py`).
 
