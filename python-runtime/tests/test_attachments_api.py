@@ -186,7 +186,7 @@ def test_windows_defender_scanner_is_found_in_platform_or_default_directory(monk
     assert attachment_storage._find_windows_defender_scanner() == str(scanner)
 
 
-def test_windows_defender_only_returns_clean_for_successful_non_remediating_scan(monkeypatch, tmp_path):
+async def test_windows_defender_only_returns_clean_for_successful_non_remediating_scan(monkeypatch, tmp_path):
     class FakeProcess:
         def __init__(self, returncode):
             self.returncode = returncode
