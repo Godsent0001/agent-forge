@@ -40,7 +40,7 @@ async def test_reads_text_attachment_in_bounded_chunks(tmp_path: Path):
         ReadAttachmentInput(path="attachments/brief.txt", start_char=first.next_offset, max_chars=100),
         ctx,
     )
-    assert second.content.endswith("x" * 100)
+    assert "\n" + ("x" * 100) + "\n[Excerpt truncated" in second.content
     assert second.truncated is True
 
 
