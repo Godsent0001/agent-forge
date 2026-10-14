@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any, ClassVar, Literal
+
 from pydantic import BaseModel, Field
 
 from app.contracts.memory import Intent, IntentStore

@@ -15,36 +15,34 @@ async def span(
     name: str | None = None,
     parent_span_id: str | None = None,
     data: dict[str, Any] | None = None,
-    span_id: str | None = None,
-    emit_start: bool = True,
+    end_data: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Manage a span; resumed root spans can reuse their original ID without a second start."""
-    span_id = span_id or str(uuid.uuid4())
+    """Async context manager for span lifecycle management. Ensures span_ended is always emitted."""
+    span_id = str(uuid.uuid4())
     start_data = dict(data or {})
+    final_data = end_data if end_data is not None else {}
 
-    if emit_start:
-        await emit(
-            EventDraft(
-                type="span_started",
-                span_id=span_id,
-                parent_span_id=parent_span_id,
-                kind=kind,
-                name=name,
-                data=start_data,
-            )
+    await emit(
+        EventDraft(
+            type="span_started",
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            kind=kind,
+            name=name,
+            data=start_data,
         )
+    )
 
     status: SpanStatus = "ok"
-    end_data: dict[str, Any] = {}
     try:
         yield span_id
     except asyncio.CancelledError:
         status = "cancelled"
-        end_data["cancelled"] = True
+        final_data["cancelled"] = True
         raise
     except Exception as exc:
         status = "error"
-        end_data["error"] = str(exc)
+        final_data["error"] = str(exc)
         raise
     finally:
         await emit(
@@ -55,6 +53,6 @@ async def span(
                 kind=kind,
                 name=name,
                 status=status,
-                data=end_data,
+                data=dict(final_data),
             )
         )

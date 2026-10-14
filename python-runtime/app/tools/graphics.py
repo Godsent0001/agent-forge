@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -34,8 +35,8 @@ class VisualAssetManagerTool(Tool):
     name = "visual_asset_manager"
     description = "Manage non-character visual assets: logos, photos, icons, charts, screenshots."
 
-    def __init__(self, assets_dir: str = "./assets/visuals"):
-        self._root = Path(assets_dir)
+    def __init__(self, assets_dir: str | None = None):
+        self._root = Path(assets_dir).expanduser().resolve() if assets_dir else data_dir() / "assets" / "visuals"
         self._root.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -69,7 +70,7 @@ class EvidenceGraphicsTool(Tool):
         stat = params.get("stat", "")
         claim = params.get("claim", "")
         source = params.get("source", "")
-        out_path = params.get("output_path", "./output/evidence_card.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "evidence_card.png")
         if not stat and not claim:
             raise ToolExecutionError("evidence_graphics requires at least 'stat' or 'claim'")
 
@@ -102,7 +103,7 @@ class DataVisualizationTool(Tool):
         chart_type = params.get("chart_type", "bar")
         labels = params.get("labels")
         values = params.get("values")
-        out_path = params.get("output_path", "./output/chart.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "chart.png")
         title = params.get("title", "")
 
         if not labels or not values or len(labels) != len(values):
@@ -145,7 +146,7 @@ class HeadlineCardTool(Tool):
         params = parse_json_input(input)
         kind = params.get("kind", "REPORT").upper()
         headline = params.get("headline", "")
-        out_path = params.get("output_path", "./output/headline_card.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "headline_card.png")
         if kind not in self.KINDS:
             raise ToolExecutionError(f"Unknown kind '{kind}'. Known: {', '.join(self.KINDS)}")
         if not headline:
@@ -178,7 +179,7 @@ class DebateGraphicsTool(Tool):
 
         params = parse_json_input(input)
         label = params.get("label", "").upper()
-        out_path = params.get("output_path", "./output/debate_label.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "debate_label.png")
         color = self.LABELS.get(label)
         if color is None:
             raise ToolExecutionError(f"Unknown label '{label}'. Known: {', '.join(self.LABELS)}")
@@ -202,7 +203,7 @@ class CaptionEngineTool(Tool):
         params = parse_json_input(input)
         words = params.get("words")  # from audio_alignment
         max_words_per_line = params.get("max_words_per_line", 5)
-        out_path = params.get("output_path", "./output/captions.srt")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "captions.srt")
 
         if not words:
             raise ToolExecutionError("caption_engine requires a 'words' array (from audio_alignment output)")
@@ -238,7 +239,7 @@ class TypographyEngineTool(Tool):
         params = parse_json_input(input)
         text = params.get("text", "")
         size = params.get("size", 64)
-        out_path = params.get("output_path", "./output/typography.png")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "typography.png")
         if not text:
             raise ToolExecutionError("typography_engine requires 'text'")
 

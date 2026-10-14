@@ -1,0 +1,209 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from app.contracts.tools import ToolError
+from app.infra.workspace import RunWorkspace
+from app.tools.adapter import _PERMISSION_MAP, _normalize_payload
+
+
+@pytest.fixture()
+def context(tmp_path):
+    workspace = RunWorkspace(
+        "adapter-test",
+        root=tmp_path / "run",
+        assets_root=tmp_path / "assets",
+    )
+    return SimpleNamespace(workspace=workspace)
+
+
+def test_audio_input_and_default_output_are_scoped_to_run_workspace(context):
+    payload = json.loads(_normalize_payload(
+        "audio_processing",
+        json.dumps({"audio_path": "./output/source.wav"}),
+        context,
+    ))
+    root = context.workspace.root
+    assert payload["audio_path"] == str(root / "source.wav")
+    assert payload["output_path"] == str(root / "processed_voice.wav")
+    assert (root / "processed_voice.wav").parent.is_dir()
+
+
+@pytest.mark.parametrize("value", [
+    "../outside.wav",
+    "nested/../../outside.wav",
+    "/etc/passwd",
+    r"C:\\Windows\\system.ini",
+    r"\\\\server\\share\\secret.txt",
+])
+def test_path_arguments_reject_traversal_and_absolute_paths(context, value):
+    with pytest.raises(ToolError):
+        _normalize_payload("audio_processing", json.dumps({"audio_path": value}), context)
+
+
+def test_nested_composition_paths_are_resolved_inside_workspace(context):
+    payload = json.loads(_normalize_payload(
+        "composition_engine",
+        json.dumps({
+            "layers": [{"image_path": "assets/frame.png", "x": 0, "y": 0}],
+            "output_path": "./output/final.png",
+        }),
+        context,
+    ))
+    root = context.workspace.root
+    assert payload["layers"][0]["image_path"] == str(root / "assets" / "frame.png")
+    assert payload["output_path"] == str(root / "final.png")
+
+
+def test_symlink_escape_is_blocked_for_tool_input(context, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (context.workspace.root / "link").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ToolError):
+        _normalize_payload(
+            "audio_processing",
+            json.dumps({"audio_path": "link/secret.wav"}),
+            context,
+        )
+
+
+def test_project_and_asset_identifiers_are_validated(context):
+    with pytest.raises(ToolError):
+        _normalize_payload("project_manager", json.dumps({"episode_id": "../escape"}), context)
+    with pytest.raises(ToolError):
+        _normalize_payload("asset_cache_store", json.dumps({
+            "action": "store", "src_path": "input.wav", "category": "../outside", "name": "x"
+        }), context)
+    with pytest.raises(ToolError):
+        _normalize_payload("visual_asset_manager", json.dumps({"action": "get", "name": "../secret"}), context)
+    with pytest.raises(ToolError):
+        _normalize_payload("voice_generator", json.dumps({"dialogue": "hello", "voice": "../outside"}), context)
+
+
+
+def test_persistent_shared_state_mutators_request_write_permission():
+    persistent_mutators = {
+        "scene_template_manager",
+        "render_queue",
+        "project_manager",
+        "asset_cache_store",
+        "production_config",
+        "cache_engine",
+    }
+    for kind in persistent_mutators:
+        assert "fs_write" in _PERMISSION_MAP[kind]
+
+
+def _replace_unsafe_path_values(value, unsafe_path):
+    if isinstance(value, dict):
+        return {key: _replace_unsafe_path_values(child, unsafe_path) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_replace_unsafe_path_values(child, unsafe_path) for child in value]
+    if isinstance(value, str) and value.startswith("../outside"):
+        return unsafe_path
+    return value
+
+
+@pytest.mark.parametrize("unsafe_path", ["../../x", "/etc/x", "C:" + chr(92) + "x", "link/escape"])
+@pytest.mark.parametrize(("kind", "payload"), [
+    ("voice_generator", {"output_path": "../outside.wav"}),
+    ("audio_processing", {"audio_path": "../outside.wav"}),
+    ("audio_alignment", {"audio_path": "../outside.wav"}),
+    ("audio_mixer", {"voice_path": "../outside.wav"}),
+    ("audio_mixer", {"music_path": "../outside.mp3"}),
+    ("character_rig", {"audio_path": "../outside.wav"}),
+    ("composition_engine", {"layers": [{"image_path": "../outside.png"}]}),
+    ("effects_engine", {"input_path": "../outside.mp4"}),
+    ("audio_qc", {"audio_path": "../outside.wav"}),
+    ("video_qc", {"video_path": "../outside.mp4"}),
+    ("automated_preview_qc", {"preview_path": "../outside.mp4"}),
+    ("preview_renderer", {"image_path": "../outside.png"}),
+    ("final_renderer", {"audio_path": "../outside.wav"}),
+    ("render_worker", {"image_path": "../outside.png"}),
+    ("asset_cache_store", {"src_path": "../outside.wav", "category": "audio", "name": "source"}),
+])
+def test_path_taking_tool_inputs_and_outputs_reject_traversal(context, tmp_path, kind, payload, unsafe_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (context.workspace.root / "link").symlink_to(outside, target_is_directory=True)
+    unsafe_payload = _replace_unsafe_path_values(payload, unsafe_path)
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps(unsafe_payload), context)
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize("unsafe_path", ["../../x", "/etc/x", "C:" + chr(92) + "x", "link/escape"])
+@pytest.mark.parametrize(("kind", "key"), [
+    ("voice_generator", "output_path"),
+    ("audio_processing", "output_path"),
+    ("audio_mixer", "output_path"),
+    ("character_rig", "output_image_path"),
+    ("character_rig", "output_video_path"),
+    ("composition_engine", "output_path"),
+    ("effects_engine", "output_path"),
+    ("evidence_graphics", "output_path"),
+    ("data_visualization", "output_path"),
+    ("headline_card", "output_path"),
+    ("debate_graphics", "output_path"),
+    ("caption_engine", "output_path"),
+    ("typography_engine", "output_path"),
+    ("preview_renderer", "output_path"),
+    ("final_renderer", "output_path"),
+    ("render_worker", "output_path"),
+])
+def test_path_taking_tool_outputs_reject_traversal(context, tmp_path, kind, key, unsafe_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (context.workspace.root / "link").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps({key: unsafe_path}), context)
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize(("kind", "key"), [
+    ("character_asset_manager", "character_id"),
+    ("character_rig", "character_id"),
+    ("project_manager", "episode_id"),
+    ("render_worker", "job_id"),
+    ("scene_template_manager", "template_id"),
+    ("voice_generator", "voice"),
+])
+def test_identifiers_are_rejected_before_becoming_paths(context, kind, key):
+    with pytest.raises(ToolError):
+        _normalize_payload(kind, json.dumps({key: "../escape"}), context)
+
+
+@pytest.mark.parametrize("name", ["../secret.svg", "nested/secret.svg", "nested\\\\secret.svg", "bad" + chr(0) + "name.svg"])
+def test_visual_asset_names_must_be_safe_filenames(context, name):
+    with pytest.raises(ToolError):
+        _normalize_payload("visual_asset_manager", json.dumps({"action": "info", "name": name}), context)
+
+
+def test_tool_results_redact_run_and_shared_data_roots(context, monkeypatch, tmp_path):
+    from app.tools.adapter import _redact_host_paths
+
+    configured_data = (tmp_path / "configured-data").resolve()
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(configured_data))
+    payload = (
+        f"run file: {context.workspace.root / 'renders' / 'final.mp4'}; "
+        f"shared file: {configured_data / 'assets' / 'shared' / 'music' / 'intro.wav'}"
+    )
+    redacted = _redact_host_paths(payload, context)
+    assert str(context.workspace.root) not in redacted
+    assert str(configured_data) not in redacted
+    assert "./renders/final.mp4" in redacted
+    assert "./assets/shared/music/intro.wav" in redacted
+
+
+def test_tool_errors_also_redact_host_roots(context, monkeypatch, tmp_path):
+    from app.tools.adapter import _redact_host_paths
+
+    configured_data = (tmp_path / "agentforge-data").resolve()
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(configured_data))
+    message = f"Voice model not found: {configured_data / 'assets' / 'voices' / 'private.onnx'}"
+    redacted = _redact_host_paths(message, context)
+    assert str(configured_data) not in redacted
+    assert "./assets/voices/private.onnx" in redacted

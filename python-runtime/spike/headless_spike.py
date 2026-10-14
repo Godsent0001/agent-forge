@@ -28,7 +28,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-
 # ---------------------------------------------------------------------------
 # 1. Events — the shape the future WebSocket stream (Phase 7) will emit
 # ---------------------------------------------------------------------------

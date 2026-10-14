@@ -1,0 +1,40 @@
+name: Python runtime tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "python-runtime/**"
+      - ".github/workflows/python-runtime-tests.yml"
+  push:
+    branches: [feat/artifact-runtime-foundation]
+    paths:
+      - "python-runtime/**"
+      - ".github/workflows/python-runtime-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: python-runtime
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: python-runtime/pyproject.toml
+      - name: Install runtime and test dependencies
+        run: python -m pip install -e . pytest pytest-asyncio
+      - name: Run complete Python runtime test suite
+        run: python -m pytest tests -v

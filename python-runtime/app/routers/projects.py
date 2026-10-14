@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.deps import get_db
+from app.infra.attachment_storage import AttachmentStorageError, remove_attachment_blobs
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -38,6 +39,8 @@ def update_project(project_id: str, payload: schemas.ProjectUpdate, db: Session 
         project.name = payload.name
     if payload.parallel_execution is not None:
         project.parallel_execution = payload.parallel_execution
+    if payload.settings is not None:
+        project.settings = payload.settings
     db.commit()
     db.refresh(project)
     return project
@@ -48,6 +51,15 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     project = db.get(models.Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    attachments = db.query(models.ProjectAttachment).filter_by(project_id=project_id).all()
+    try:
+        for attachment in attachments:
+            remove_attachment_blobs(attachment.storage_key)
+    except AttachmentStorageError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Project attachments could not be safely removed; retry deletion",
+        ) from exc
     db.delete(project)
     db.commit()
     return {"deleted": project_id}

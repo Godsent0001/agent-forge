@@ -1,18 +1,19 @@
+
 import pytest
-from datetime import datetime, timezone
-from app.contracts.graph import AgentSpec
-from app.contracts.memory import MemoryCandidate, MemoryItem
-from app.core.memory.inmemory import InMemoryStore, InMemoryIntentStore, InMemoryRunHistory
+
+from app.contracts.memory import MemoryCandidate
+from app.core.llm.types import LLMTurn
+from app.core.memory.compaction import compact_conversation, should_compact_conversation
+from app.core.memory.inmemory import (
+    InMemoryStore,
+)
 from app.core.memory.recall import recall_memories
 from app.core.memory.safety import validate_and_filter_candidate
-from app.core.memory.compaction import should_compact_conversation, compact_conversation
-from app.core.llm.types import LLMTurn
 
 
 @pytest.mark.asyncio
 async def test_memory_recall_and_pinned():
     store = InMemoryStore()
-    now = datetime.now(timezone.utc)
 
     await store.add("agent_1", [
         MemoryCandidate(text="User works on Orion project", kind="fact", evidence="work on Orion"),

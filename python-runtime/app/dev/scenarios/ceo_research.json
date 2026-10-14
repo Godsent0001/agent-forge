@@ -1,0 +1,92 @@
+[
+  {
+    "op": "agent_start",
+    "name": "CEO Agent",
+    "agent_id": "agent-ceo",
+    "input": "Find the latest news"
+  },
+  {
+    "op": "llm",
+    "ms": 40,
+    "usage": {
+      "in": 1200,
+      "out": 80
+    },
+    "cost": 0.004,
+    "tools": [
+      "research_agent"
+    ]
+  },
+  {
+    "op": "tool_start",
+    "name": "research_agent",
+    "tool_call_id": "call_research",
+    "args": {
+      "task": "Find 3 sources"
+    }
+  },
+  {
+    "op": "agent_start",
+    "name": "Research Agent",
+    "agent_id": "agent-research",
+    "input": "Find 3 sources"
+  },
+  {
+    "op": "llm",
+    "ms": 40,
+    "usage": {
+      "in": 800,
+      "out": 60
+    },
+    "cost": 0.002,
+    "tools": [
+      "web_search"
+    ]
+  },
+  {
+    "op": "tool_start",
+    "name": "web_search",
+    "tool_call_id": "call_search",
+    "args": {
+      "query": "latest news"
+    }
+  },
+  {
+    "op": "tool_end",
+    "ok": true,
+    "result": "Found three useful sources."
+  },
+  {
+    "op": "llm",
+    "ms": 20,
+    "usage": {
+      "in": 900,
+      "out": 90
+    },
+    "cost": 0.002,
+    "tools": []
+  },
+  {
+    "op": "agent_end",
+    "output": "Found three useful sources."
+  },
+  {
+    "op": "tool_end",
+    "ok": true,
+    "result": "Research completed."
+  },
+  {
+    "op": "llm",
+    "ms": 20,
+    "usage": {
+      "in": 1500,
+      "out": 100
+    },
+    "cost": 0.003,
+    "tools": []
+  },
+  {
+    "op": "agent_end",
+    "output": "Summary of the latest news, with three useful sources."
+  }
+]

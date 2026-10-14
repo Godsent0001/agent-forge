@@ -1,7 +1,6 @@
 """In-memory implementations of MemoryStore, IntentStore, RunHistory, and InsightStore for testing."""
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
 
 from app.contracts.memory import (
     Insight,

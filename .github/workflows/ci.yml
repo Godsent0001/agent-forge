@@ -1,0 +1,59 @@
+name: ci
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: cd python-runtime && uv sync --frozen --group dev
+      - run: cd python-runtime && uv run ruff check .
+      - run: cd python-runtime && uv run pytest -m "not live"
+      - name: Validate FakeRunner fixture export
+        run: cd python-runtime && uv run python scripts/export_fixtures.py
+      - name: Validate tool CLI entry point
+        run: cd python-runtime && uv run python scripts/try_tool.py --help
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+
+  package-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv python install 3.11
+      - run: npm ci
+      - name: Build Linux desktop package and bundled Python sidecar
+        run: npm run dist
+      - name: Verify packaged application artifacts
+        run: |
+          test -d dist-electron
+          find dist-electron -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.deb' \) -print -quit | grep -q .
+      - uses: actions/upload-artifact@v6
+        with:
+          name: agentforge-linux-package
+          path: dist-electron/*
+          if-no-files-found: error
+          retention-days: 7

@@ -1,53 +1,102 @@
 import { useEffect, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { api, getApiBase } from "./api/client";
 import { AgentChat } from "./components/AgentChat";
 import { AgentEditor } from "./components/AgentEditor";
 import { AgentTree } from "./components/AgentTree";
 import { ExecutionTree } from "./components/ExecutionTree";
 import { TopBar } from "./components/TopBar";
+import { RunTaskModal } from "./components/RunTaskModal";
+import { WorkflowCanvas } from "./components/WorkflowCanvas";
+import { PropertiesPanel } from "./components/PropertiesPanel";
+import { ToolCatalogModal } from "./components/ToolCatalogModal";
 import { useStore } from "./store/useStore";
+import { Icon } from "./components/ui/Icon";
 
 type BootState = "checking-sidecar" | "sidecar-down" | "loading-project" | "ready";
 
 export default function App() {
   const [boot, setBoot] = useState<BootState>("checking-sidecar");
- const [activeApiBase, setActiveApiBase] = useState<string>("http://127.0.0.1:8000");
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [activeApiBase, setActiveApiBase] = useState<string>(
+    typeof window !== "undefined" ? window.location.origin : ""
+  );
+
   const fetchProjects = useStore((s) => s.fetchProjects);
   const loadProject = useStore((s) => s.loadProject);
+  const selectedAgentId = useStore((s) => s.selectedAgentId);
+  const agents = useStore((s) => s.agents);
+  const selectAgent = useStore((s) => s.selectAgent);
+  const queueTask = useStore((s) => s.queueTask);
+  const project = useStore((s) => s.project);
+
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "config">("chat");
+  const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("chat");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const [inspectorWidth, setInspectorWidth] = useState(320);
+  const [resizeDrag, setResizeDrag] = useState<{ panel: "sidebar" | "inspector"; startX: number; startWidth: number } | null>(null);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
+  const [showRunDialog, setShowRunDialog] = useState(false);
+  const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
+  const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
+  const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
+
+  useEffect(() => {
+    const updateViewport = () => setIsCompactViewport(window.innerWidth < 768);
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactViewport) return;
+    // On phones, start with chat unobstructed; the explorer and inspector open on demand.
+    setIsSidebarCollapsed(true);
+    setIsPropertiesOpen(false);
+    setIsExecutionTreeOpen(false);
+  }, [isCompactViewport]);
 
   useEffect(() => {
     let cancelled = false;
 
     const bootstrap = async () => {
-      let sidecarUp = false;
-      for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
-        try {
-          const apiBase = await getApiBase();
-          setActiveApiBase(apiBase);
-          const res = await fetch(`${apiBase}/health`);
-          if (res.ok) {
-            sidecarUp = true;
-            break;
+      try {
+        let sidecarUp = false;
+        for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+          try {
+            const apiBase = await getApiBase();
+            setActiveApiBase(apiBase);
+            const res = await fetch(`${apiBase}/health`);
+            if (res.ok) {
+              sidecarUp = true;
+              break;
+            }
+          } catch {
+            // not ready yet
           }
-        } catch {
-          // not up yet
+          await new Promise((r) => setTimeout(r, 400));
         }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      if (cancelled) return;
-      if (!sidecarUp) {
-        setBoot("sidecar-down");
-        return;
-      }
 
-      setBoot("loading-project");
-      await api.settings.syncKeysToBackend();
-      const projects = await fetchProjects();
-      const project = projects[0] ?? (await api.projects.create("My First Project"));
-      await loadProject(project);
-      if (!cancelled) setBoot("ready");
+        if (cancelled) return;
+        if (!sidecarUp) {
+          setBoot("sidecar-down");
+          return;
+        }
+
+        setBoot("loading-project");
+        await api.settings.syncKeysToBackend();
+        const projects = await fetchProjects();
+        const initialProject = projects[0] ?? (await api.projects.create("Workflow Studio"));
+        await loadProject(initialProject);
+        if (!cancelled) setBoot("ready");
+      } catch (error) {
+        if (!cancelled) {
+          setBootError(error instanceof Error ? error.message : "AgentForge failed to start");
+          setBoot("sidecar-down");
+        }
+      }
     };
 
     bootstrap();
@@ -56,44 +105,155 @@ export default function App() {
     };
   }, [fetchProjects, loadProject]);
 
+  // A chat run should surface its live trace immediately, without leaving the conversation.
+  const handleChatRunStarted = (executionId: string) => {
+    setActiveExecutionId(executionId);
+    setIsExecutionTreeOpen(true);
+    setIsPropertiesOpen(false);
+  };
+
+  const beginResize = (panel: "sidebar" | "inspector", event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isCompactViewport) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizeDrag({ panel, startX: event.clientX, startWidth: panel === "sidebar" ? sidebarWidth : inspectorWidth });
+  };
+  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!resizeDrag) return;
+    const delta = event.clientX - resizeDrag.startX;
+    if (resizeDrag.panel === "sidebar") setSidebarWidth(Math.max(184, Math.min(440, resizeDrag.startWidth + delta)));
+    else setInspectorWidth(Math.max(240, Math.min(560, resizeDrag.startWidth - delta)));
+  };
+  const endResize = () => setResizeDrag(null);
+  const toggleInspector = () => {
+    if (isPropertiesOpen && !isExecutionTreeOpen) setIsPropertiesOpen(false);
+    else { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }
+  };
+  const toggleLogs = () => {
+    if (isExecutionTreeOpen) setIsExecutionTreeOpen(false);
+    else { setIsExecutionTreeOpen(true); setIsPropertiesOpen(false); }
+  };
+
+  // Primary Run Workflow trigger
+  // "Run workflow" is the chat composer with room for more options later: the task is queued into the
+  // selected agent's conversation, so it is saved to chat history and produces a run log like any message.
+  const handleTriggerRun = async (task: string) => {
+    const currentAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
+    if (!project || !currentAgent) throw new Error("Create an agent before running a workflow.");
+    selectAgent(currentAgent.id);
+    queueTask(currentAgent.id, task);
+    setActiveTab("chat");
+    setIsRunningQuickRun(true);
+    setTimeout(() => setIsRunningQuickRun(false), 1200);
+  };
+
   if (boot === "checking-sidecar" || boot === "loading-project") {
     return (
-      <div className="h-full flex items-center justify-center bg-surface-950 text-slate-500 text-sm font-medium">
-        {boot === "checking-sidecar" ? "Starting runtime sidecar…" : "Loading project workspace…"}
+      <div className="h-full w-full flex items-center justify-center bg-studio-950 text-studio-400 text-xs font-mono">
+        {boot === "checking-sidecar" ? "Connecting to AgentForge runtime…" : "Loading workspace…"}
       </div>
     );
   }
 
   if (boot === "sidecar-down") {
     return (
-      <div className="h-full flex items-center justify-center bg-surface-950">
-        <div className="rounded-panel border border-slate-200 bg-white shadow-card px-8 py-6 max-w-md">
-          <h1 className="text-lg font-bold text-status-error mb-2">Runtime unreachable</h1>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            The Python sidecar didn't respond on {activeApiBase}. Check your terminal logs or ensure the Python backend is running properly.
+      <div className="h-full w-full flex items-center justify-center bg-studio-950 p-4">
+        <div className="rounded-panel border border-studio-700 bg-studio-900 shadow-elevated p-6 max-w-md w-full">
+          <h1 className="text-base font-bold text-status-error mb-2">Runtime Unreachable</h1>
+          <p className="text-xs text-studio-300 leading-relaxed">
+            The AgentForge backend did not respond on <code className="text-accent-400">{activeApiBase}</code>.
+            Ensure the server process is running.
           </p>
+          {bootError && (
+            <pre className="mt-3 max-h-32 overflow-auto rounded bg-red-950/40 border border-red-900/60 p-2.5 text-2xs text-red-300 font-mono whitespace-pre-wrap">
+              {bootError}
+            </pre>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded bg-studio-800 hover:bg-studio-700 border border-studio-600 px-3 py-1.5 text-xs font-medium text-studio-100 transition-colors cursor-pointer"
+          >
+            Reload Workspace
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-surface-950 overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-studio-950 overflow-hidden text-studio-100">
+      {/* Top Application Header */}
       <TopBar
         onRun={setActiveExecutionId}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        onTriggerQuickRun={() => setShowRunDialog(true)}
+        isRunning={isRunningQuickRun}
       />
-      <div className="flex-1 grid grid-cols-[280px_1fr_320px] min-h-0 overflow-hidden">
-        <AgentTree />
-        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "chat" ? "flex flex-col" : "hidden"}`}>
-          <AgentChat onRunExecution={setActiveExecutionId} />
+
+      {/* Main Studio Viewport */}
+      <div className="relative flex-1 flex min-h-0 overflow-hidden">
+        <div className={`relative h-full shrink-0 border-r border-studio-800 ${isCompactViewport ? "absolute inset-y-0 left-0 z-40 shadow-elevated" : ""}`} style={{ width: isSidebarCollapsed ? 44 : sidebarWidth }}>
+          <AgentTree
+            onOpenConfig={() => { setActiveTab("config"); setIsPropertiesOpen(false); setIsExecutionTreeOpen(false); }}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed((value) => !value)}
+            onSelectExecution={setActiveExecutionId}
+          />
+          {!isSidebarCollapsed && !isCompactViewport && (
+            <div role="separator" aria-label="Resize explorer" aria-orientation="vertical" tabIndex={0}
+              onPointerDown={(event) => beginResize("sidebar", event)} onPointerMove={moveResize}
+              onPointerUp={endResize} onPointerCancel={endResize}
+              onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(184, Math.min(440, width + (event.key === "ArrowRight" ? 12 : -12)))); } }}
+              className="absolute right-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+            />
+          )}
         </div>
-        <div className={`min-w-0 h-full overflow-hidden ${activeTab === "config" ? "flex flex-col" : "hidden"}`}>
-          <AgentEditor />
-        </div>
-        <ExecutionTree executionId={activeExecutionId} />
+
+        {activeTab === "canvas" ? (
+          <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
+        ) : activeTab === "chat" ? (
+          <div className="flex-1 flex min-w-0 h-full overflow-hidden"><AgentChat onRunExecution={handleChatRunStarted} /></div>
+        ) : (
+          <div className="flex-1 min-w-0 h-full overflow-hidden"><AgentEditor /></div>
+        )}
+
+        {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && (
+          <div className={`relative h-full shrink-0 bg-studio-900 border-l border-studio-700/80 ${isCompactViewport ? "absolute inset-y-0 right-11 z-40 shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
+            {!isCompactViewport && (
+              <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
+                onPointerDown={(event) => beginResize("inspector", event)} onPointerMove={moveResize}
+                onPointerUp={endResize} onPointerCancel={endResize}
+                onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setInspectorWidth((width) => Math.max(240, Math.min(560, width + (event.key === "ArrowLeft" ? 12 : -12)))); } }}
+                className="absolute left-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+              />
+            )}
+            {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} onSelectExecution={setActiveExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
+          </div>
+        )}
+
+        {activeTab !== "config" && (
+          <aside aria-label="Workspace panels" className="z-30 flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-studio-800 bg-studio-900 py-2">
+            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
+              className={`rounded-md p-2 transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              <Icon name="inspector" />
+            </button>
+            <button type="button" onClick={toggleLogs} aria-label={activeTab === "chat" ? "Activity" : "View logs"} aria-pressed={isExecutionTreeOpen} title={activeTab === "chat" ? "Activity" : "View logs"}
+              className={`rounded-md p-2 transition-colors ${isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              <Icon name="logs" />
+            </button>
+          </aside>
+        )}
       </div>
+
+      {showToolCatalogModal && <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />}
+      {showRunDialog && (
+        <RunTaskModal
+          agentName={(agents.find((a) => a.id === selectedAgentId) || agents[0])?.name ?? "Agent"}
+          onClose={() => setShowRunDialog(false)}
+          onSubmit={handleTriggerRun}
+        />
+      )}
     </div>
   );
 }

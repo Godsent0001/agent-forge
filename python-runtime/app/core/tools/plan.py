@@ -1,5 +1,6 @@
 """Plan tool for maintaining structured agent task execution plans."""
 from typing import Any, ClassVar, Literal
+
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Tool, ToolError, ToolResult

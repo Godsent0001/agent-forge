@@ -1,0 +1,20 @@
+[
+  {
+    "op": "agent_start",
+    "name": "Budget Test Agent"
+  },
+  {
+    "op": "llm",
+    "ms": 10,
+    "usage": {
+      "in": 500,
+      "out": 200
+    },
+    "cost": 0.05,
+    "tools": []
+  },
+  {
+    "op": "budget_exceeded",
+    "message": "Scenario budget exceeded as expected."
+  }
+]

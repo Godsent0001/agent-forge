@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
 
@@ -50,7 +51,7 @@ class PreviewRendererTool(Tool):
         params = parse_json_input(input)
         image_path = params.get("image_path")  # a composited frame, from composition_engine
         audio_path = params.get("audio_path")
-        out_path = params.get("output_path", "./output/preview.mp4")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "preview.mp4")
 
         if not image_path or not Path(image_path).exists():
             raise ToolExecutionError(f"preview_renderer requires an existing 'image_path': {image_path}")
@@ -67,7 +68,7 @@ class FinalRendererTool(Tool):
         params = parse_json_input(input)
         image_path = params.get("image_path")
         audio_path = params.get("audio_path")
-        out_path = params.get("output_path", "./output/final.mp4")
+        out_path = params.get("output_path") or str(data_dir() / "output" / "final.mp4")
 
         if not image_path or not Path(image_path).exists():
             raise ToolExecutionError(f"final_renderer requires an existing 'image_path': {image_path}")
@@ -80,8 +81,8 @@ class RenderQueueTool(Tool):
     name = "render_queue"
     description = "Queue multiple episodes for rendering, track job status."
 
-    def __init__(self, queue_path: str = "./output/render_queue.json"):
-        self._path = Path(queue_path)
+    def __init__(self, queue_path: str | None = None):
+        self._path = Path(queue_path).expanduser().resolve() if queue_path else data_dir() / "queues" / "render_queue.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if not self._path.exists():
             self._path.write_text("[]")
@@ -130,7 +131,7 @@ class RenderWorkerTool(Tool):
         job_id = params.get("job_id")
         image_path = params.get("image_path")
         audio_path = params.get("audio_path")
-        out_path = params.get("output_path", f"./output/{job_id or 'job'}.mp4")
+        out_path = params.get("output_path") or str(data_dir() / "output" / f"{job_id or 'job'}.mp4")
 
         if not image_path or not Path(image_path).exists():
             raise ToolExecutionError(f"render_worker requires an existing 'image_path': {image_path}")

@@ -1,0 +1,34 @@
+[
+  {
+    "op": "agent_start",
+    "name": "Approval Test Agent"
+  },
+  {
+    "op": "tool_start",
+    "name": "python",
+    "args": {
+      "code": "print('safe approval test')"
+    }
+  },
+  {
+    "op": "approval",
+    "tool": "python",
+    "permissions": [
+      "subprocess"
+    ],
+    "force": true,
+    "reason": "Test the Python tool approval prompt.",
+    "args": {
+      "code": "print('safe approval test')"
+    }
+  },
+  {
+    "op": "tool_end",
+    "ok": true,
+    "result": "Approved scenario completed."
+  },
+  {
+    "op": "agent_end",
+    "output": "Approval path completed."
+  }
+]

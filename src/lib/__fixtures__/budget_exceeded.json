@@ -1,0 +1,106 @@
+[
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 1,
+    "ts": "2026-10-12T12:00:00.000Z",
+    "type": "execution_started",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "task": "fixture scenario: budget_exceeded"
+    }
+  },
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 2,
+    "ts": "2026-10-12T12:00:00.040Z",
+    "type": "span_started",
+    "span_id": "agent-1",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "Budget Test Agent",
+    "status": null,
+    "data": {
+      "depth": 0,
+      "agent_id": "agent-1",
+      "input_preview": "Test input"
+    }
+  },
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 3,
+    "ts": "2026-10-12T12:00:00.060Z",
+    "type": "span_started",
+    "span_id": "llm-1",
+    "parent_span_id": "agent-1",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 4,
+    "ts": "2026-10-12T12:00:00.080Z",
+    "type": "span_ended",
+    "span_id": "llm-1",
+    "parent_span_id": "agent-1",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 500,
+        "output_tokens": 200,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.05,
+      "finish_reason": "stop",
+      "tool_calls": []
+    }
+  },
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 5,
+    "ts": "2026-10-12T12:00:00.100Z",
+    "type": "span_ended",
+    "span_id": "agent-1",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "Budget Test Agent",
+    "status": "error",
+    "data": {
+      "output_preview": ""
+    }
+  },
+  {
+    "execution_id": "fixture-budget_exceeded",
+    "seq": 6,
+    "ts": "2026-10-12T12:00:00.120Z",
+    "type": "execution_ended",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "status": "budget_exceeded",
+      "final_output": "",
+      "error": "Scenario budget exceeded as expected.",
+      "totals": {
+        "llm_calls": 1,
+        "tool_calls": 0,
+        "input_tokens": 120,
+        "output_tokens": 35,
+        "cost_usd": 0.001
+      }
+    }
+  }
+]

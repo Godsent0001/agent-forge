@@ -1,17 +1,18 @@
-from typing import Any
-import pytest
-from pathlib import Path
+import asyncio
 import tempfile
+from pathlib import Path
+from typing import Any
+
+import pytest
+from pydantic import BaseModel
+
+from app.contracts.checks import check_events
+from app.contracts.events import RunEvent
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
 from app.contracts.run import BudgetSpec, RunOptions, RunRequest
 from app.contracts.tools import ArtifactRef, Tool, ToolResult
-from app.contracts.checks import check_events
-from app.contracts.events import EventDraft, RunEvent
-from app.core.budget import BudgetTracker
-from app.core.checkpoint import AgentFrame, ExecutionCheckpoint, SQLiteCheckpointStore
-from app.core.runner import _fingerprint
 from app.core.llm.fake import FakeLLM
-from app.core.llm.types import LLMTurn, ToolCall, Usage
+from app.core.llm.types import LLMError, LLMTurn, ToolCall
 from app.core.runner import RunnerCore
 
 
@@ -121,6 +122,10 @@ async def test_runner_single_answer():
         assert res.status == "completed"
         assert "Paris" in res.final_output
         assert res.totals.llm_calls == 1
+        llm_end = next(event for event in raw_events if event.type == "span_ended" and event.kind == "llm_call")
+        assert "usage" in llm_end.data
+        assert {"input_tokens", "output_tokens", "cache_read_tokens"} <= llm_end.data["usage"].keys()
+        assert "cost_usd" in llm_end.data
 
 
 @pytest.mark.asyncio
@@ -278,125 +283,593 @@ async def test_runner_sub_agent_delegation():
         assert "$10B" in res.final_output
 
 
-@pytest.mark.asyncio
-async def test_runner_resumes_interrupted_tool_without_replaying_it(tmp_path):
-    execution_id = "resume-safe-1"
-    request = RunRequest(
-        execution_id=execution_id,
-        project_id="project",
-        root_agent_id="root",
-        task="Recover safely after interruption",
-    )
-    graph = AgentGraph(
-        root_id="root",
-        agents={"root": AgentSpec(id="root", name="Root Agent", provider="fake", model="fake-model")},
-    )
-    root_span_id = "11111111-1111-4111-8111-111111111111"
-    tool_span_id = "22222222-2222-4222-8222-222222222222"
-    messages = [
-        {"role": "system", "content": "system"},
-        {"role": "user", "content": request.task},
-        {"role": "assistant", "content": "searching", "tool_calls": [
-            {"id": "tc-done", "type": "function",
-             "function": {"name": "web_search", "arguments": "{}"}},
-            {"id": "tc-interrupted", "type": "function",
-             "function": {"name": "web_search", "arguments": "{}"}}
-        ]},
-    ]
-    budget = BudgetTracker(request.options.budget)
-    store = SQLiteCheckpointStore(tmp_path / ".agentforge" / "checkpoints.sqlite3")
-    checkpoint = ExecutionCheckpoint(
-        execution_id=execution_id,
-        graph_fingerprint=_fingerprint(graph.model_dump(mode="json")),
-        status="running",
-        frames=[AgentFrame(
-            invocation_id="33333333-3333-4333-8333-333333333333",
-            agent_id="root", span_id=root_span_id, task=request.task, depth=0,
-            iteration=1, messages=messages, pending_tool_call_ids=["tc-interrupted"],
-            completed_tool_results={"tc-done": "Previously completed search result."},
-        )],
-        task_state={
-            "messages": messages, "iterations": 1, "tool_call_history": [],
-            "pending_tool_call_ids": ["tc-interrupted"], "root_span_id": root_span_id,
-            "completed_tool_results": {"tc-done": "Previously completed search result."},
-        },
-        budget_state=budget.snapshot(),
-        metadata={
-            "request_fingerprint": _fingerprint(request.model_dump(mode="json", exclude={"execution_id"})),
-            "root_span_id": root_span_id,
-            "active_spans": [
-                {"span_id": root_span_id, "parent_span_id": None, "kind": "agent", "name": "Root Agent"},
-                {"span_id": tool_span_id, "parent_span_id": root_span_id, "kind": "tool_call", "name": "web_search"},
-            ],
-        },
-    )
-    await store.save(checkpoint)
+class FailingToolFactory:
+    def build(self, binding: ToolBinding) -> Tool:
+        class FailingTool(Tool):
+            kind = binding.kind
+            default_description = "Failing test tool"
 
-    events = [
-        EventDraft(type="span_started", span_id=root_span_id, parent_span_id=None,
-                   kind="agent", name="Root Agent", data={}),
-        EventDraft(type="span_started", span_id=tool_span_id, parent_span_id=root_span_id,
-                   kind="tool_call", name="web_search", data={}),
-    ]
+            async def run(self, args: dict, ctx: Any) -> ToolResult:
+                raise RuntimeError("simulated tool failure")
+
+        return FailingTool()
+
+
+class SlowToolFactory:
+    def build(self, binding: ToolBinding) -> Tool:
+        class SlowTool(Tool):
+            kind = binding.kind
+            default_description = "Slow test tool"
+
+            async def run(self, args: dict, ctx: Any) -> ToolResult:
+                await asyncio.sleep(30)
+                return ToolResult(ok=True, content="unexpected completion")
+
+        return SlowTool()
+
+
+@pytest.mark.asyncio
+async def test_runner_tool_failure_is_returned_to_model_and_run_recovers():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Calling the tool.",
+            tool_calls=[ToolCall(id="fail-1", name="failing_tool", arguments={})],
+        ),
+        LLMTurn(text="I recovered after the tool failed."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Recovery Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="failing_tool", name="failing_tool")],
+            )
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        req = RunRequest(
+            execution_id="exec_fail",
+            project_id="proj_1",
+            root_agent_id="root_1",
+            task="Use the failing tool and recover",
+        )
+
+        result = await runner.run(
+            req=req,
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=FailingToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "recovered" in result.final_output
+    assert len(fake_llm.received_calls) == 2
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert tool_messages
+    assert "tool crashed (RuntimeError: simulated tool failure)" in tool_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_runner_cancel_closes_tool_and_agent_spans():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Starting slow work.",
+            tool_calls=[ToolCall(id="slow-1", name="slow_tool", arguments={})],
+        ),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Slow Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="slow_tool", name="slow_tool")],
+            )
+        },
+    )
+
+    events = []
     async def emit(draft):
         events.append(draft)
 
-    fake_llm = FakeLLM([LLMTurn(text="Recovered without replaying the interrupted tool.")])
-    result = await RunnerCore(fake_llm=fake_llm).run(
-        req=request, graph=graph, emit=emit, cancel=MockCancelToken(),
-        approvals=MockApprovalGate(), workspace=MockWorkspace(tmp_path),
-        tools=MockToolFactory(), memory=None, lessons=None, intents=None, run_history=None,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        req = RunRequest(
+            execution_id="exec_cancel",
+            project_id="proj_1",
+            root_agent_id="root_1",
+            task="Cancel this run",
+        )
 
-    assert result.status == "completed"
-    assert "Recovered without replaying" in result.final_output
-    assert len(fake_llm.received_calls) == 1
-    restored_messages = fake_llm.received_calls[0]["messages"]
-    assert any(
-        m.get("role") == "tool" and m.get("tool_call_id") == "tc-interrupted"
-        and "outcome is unknown" in m.get("content", "")
-        for m in restored_messages
-    )
-    assert any(
-        m.get("role") == "tool" and m.get("tool_call_id") == "tc-done"
-        and m.get("content") == "Previously completed search result."
-        for m in restored_messages
-    )
-    assert sum(e.type == "span_started" and e.span_id == root_span_id for e in events) == 1
-    assert sum(e.type == "span_ended" and e.span_id == root_span_id for e in events) == 1
-    assert sum(e.type == "span_ended" and e.span_id == tool_span_id for e in events) == 1
-    assert await store.load(execution_id) is None
+        task = asyncio.create_task(
+            runner.run(
+                req=req,
+                graph=graph,
+                emit=emit,
+                cancel=MockCancelToken(),
+                approvals=MockApprovalGate(),
+                workspace=MockWorkspace(Path(tmpdir)),
+                tools=SlowToolFactory(),
+                memory=None,
+                lessons=None,
+                intents=None,
+                run_history=None,
+            )
+        )
+        await asyncio.sleep(0.01)
+        task.cancel()
+        result = await task
+
+    assert result.status == "cancelled"
+    started = {event.span_id for event in events if event.type == "span_started"}
+    ended = {event.span_id: event for event in events if event.type == "span_ended"}
+    assert started == set(ended)
+    assert any(event.status == "cancelled" for event in ended.values())
+
+
+class RequiredArg(BaseModel):
+    value: str
+
+
+class SchemaToolFactory:
+    def build(self, binding: ToolBinding) -> Tool:
+        class SchemaTool(Tool):
+            kind = binding.kind
+            default_description = "Schema test tool"
+            Input = RequiredArg
+
+            async def run(self, args: RequiredArg, ctx: Any) -> ToolResult:
+                return ToolResult(ok=True, content=f"accepted {args.value}")
+
+        return SchemaTool()
 
 
 @pytest.mark.asyncio
-async def test_runner_schedules_multiple_tool_calls_in_one_turn(tmp_path):
+async def test_runner_parallel_tool_calls_preserve_result_order():
     fake_llm = FakeLLM([
         LLMTurn(
-            text="I will search two independent items.",
+            text="Running both tools.",
             tool_calls=[
-                ToolCall(id="scheduled-1", name="web_search", arguments={"query": "first"}),
-                ToolCall(id="scheduled-2", name="web_search", arguments={"query": "second"}),
+                ToolCall(id="p1", name="first_tool", arguments={}),
+                ToolCall(id="p2", name="second_tool", arguments={}),
             ],
         ),
-        LLMTurn(text="Both searches completed."),
+        LLMTurn(text="Both tools completed."),
     ])
+    runner = RunnerCore(fake_llm=fake_llm)
     graph = AgentGraph(
-        root_id="root",
-        agents={"root": AgentSpec(
-            id="root", name="Scheduler Agent", provider="fake", model="fake-model",
-            tools=[ToolBinding(id="search", kind="web_search", name="web_search")],
-        )},
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Parallel Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[
+                    ToolBinding(id="tb1", kind="first_tool", name="first_tool"),
+                    ToolBinding(id="tb2", kind="second_tool", name="second_tool"),
+                ],
+            )
+        },
     )
-    request = RunRequest(
-        execution_id="scheduler-batch-1", project_id="project", root_agent_id="root",
-        task="Search two independent items",
-        options=RunOptions(parallel_tools=True),
-    )
-    result = await RunnerCore(fake_llm=fake_llm).run(
-        req=request, graph=graph, emit=noop_emit, cancel=MockCancelToken(),
-        approvals=MockApprovalGate(), workspace=MockWorkspace(tmp_path),
-        tools=MockToolFactory(), memory=None, lessons=None, intents=None, run_history=None,
-    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_parallel",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Run both",
+                options=RunOptions(parallel_tools=True),
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
     assert result.status == "completed"
     assert result.totals.tool_calls == 2
-    assert "Both searches completed" in result.final_output
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_messages] == ["p1", "p2"]
+
+
+@pytest.mark.asyncio
+async def test_runner_unknown_tool_is_recoverable():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Trying an unavailable tool.",
+            tool_calls=[ToolCall(id="unknown-1", name="missing_tool", arguments={})],
+        ),
+        LLMTurn(text="I can continue without that tool."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={"root_1": AgentSpec(id="root_1", name="Agent", provider="fake", model="fake-model")},
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_unknown",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Use the missing tool",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "continue" in result.final_output
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert "ERROR: unknown tool 'missing_tool'" in tool_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_runner_invalid_tool_args_are_recoverable():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Calling with bad args.",
+            tool_calls=[ToolCall(id="bad-1", name="schema_tool", arguments={})],
+        ),
+        LLMTurn(text="I corrected the input."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="schema_tool", name="schema_tool")],
+            )
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_bad_args",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Use the schema tool",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=SchemaToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "corrected" in result.final_output
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert "ERROR: invalid arguments for 'schema_tool'" in tool_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_runner_sub_agent_failure_is_recoverable():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Delegating.",
+            tool_calls=[ToolCall(id="sub-fail", name="research_child", arguments={"task": "research"})],
+        ),
+        LLMError("simulated child LLM failure"),
+        LLMTurn(text="I recovered from the failed sub-agent."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="CEO",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="research_child", description="Research")],
+            ),
+            "research_child": AgentSpec(
+                id="research_child",
+                name="Research",
+                provider="fake",
+                model="fake-model",
+            ),
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_sub_fail",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Recover from research failure",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "recovered" in result.final_output
+
+
+@pytest.mark.asyncio
+async def test_runner_loop_detection_forces_tool_free_final_turn():
+    fake_llm = FakeLLM([
+        LLMTurn(text="again", tool_calls=[ToolCall(id="loop-1", name="loop_tool", arguments={"x": 1})]),
+        LLMTurn(text="again", tool_calls=[ToolCall(id="loop-2", name="loop_tool", arguments={"x": 1})]),
+        LLMTurn(text="again", tool_calls=[ToolCall(id="loop-3", name="loop_tool", arguments={"x": 1})]),
+        LLMTurn(text="Forced final answer."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Loop Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="loop_tool", name="loop_tool")],
+            )
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_loop",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Avoid looping",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert result.final_output == "Forced final answer."
+    assert len(fake_llm.received_calls) == 4
+    assert fake_llm.received_calls[-1]["tools"] == []
+
+
+@pytest.mark.asyncio
+async def test_runner_depth_limit_is_recoverable():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Delegating.",
+            tool_calls=[ToolCall(id="depth-1", name="child", arguments={"task": "too deep"})],
+        ),
+        LLMTurn(text="I can answer without the child."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Root",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="child")],
+            ),
+            "child": AgentSpec(
+                id="child",
+                name="Child",
+                provider="fake",
+                model="fake-model",
+            ),
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_depth",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Respect depth",
+                options=RunOptions(max_depth=0),
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    assert "answer without" in result.final_output
+
+
+@pytest.mark.asyncio
+async def test_runner_cycle_stops_with_error_status():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Root delegates.",
+            tool_calls=[ToolCall(id="cycle-1", name="child", arguments={"task": "cycle"})],
+        ),
+        LLMTurn(
+            text="Child delegates back.",
+            tool_calls=[ToolCall(id="cycle-2", name="root_1", arguments={"task": "cycle back"})],
+        ),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Root",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="child")],
+            ),
+            "child": AgentSpec(
+                id="child",
+                name="Child",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="root_1")],
+            ),
+        },
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_cycle",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Detect the cycle",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "error"
+    assert "Cycle detected" in result.error
+
+
+@pytest.mark.asyncio
+async def test_runner_sub_agent_trace_passes_contract_checker():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="Delegating.",
+            tool_calls=[ToolCall(id="trace-1", name="research_child", arguments={"task": "research"})],
+        ),
+        LLMTurn(text="Research complete."),
+        LLMTurn(text="Final answer."),
+    ])
+    runner = RunnerCore(fake_llm=fake_llm)
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="CEO",
+                provider="fake",
+                model="fake-model",
+                children=[ChildLink(agent_id="research_child")],
+            ),
+            "research_child": AgentSpec(
+                id="research_child",
+                name="Research",
+                provider="fake",
+                model="fake-model",
+            ),
+        },
+    )
+
+    drafts = []
+
+    async def emit(draft):
+        drafts.append(draft)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await runner.run(
+            req=RunRequest(
+                execution_id="exec_trace",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Trace delegation",
+            ),
+            graph=graph,
+            emit=emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=MockToolFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    events = [
+        RunEvent(
+            execution_id="exec_trace",
+            seq=seq,
+            ts="2026-10-07T12:00:00Z",
+            type=draft.type,
+            span_id=draft.span_id,
+            parent_span_id=draft.parent_span_id,
+            kind=draft.kind,
+            name=draft.name,
+            status=draft.status,
+            data=draft.data,
+        )
+        for seq, draft in enumerate(drafts, 1)
+    ]
+
+    assert result.status == "completed"
+    assert check_events(events, platform_events=False) == []

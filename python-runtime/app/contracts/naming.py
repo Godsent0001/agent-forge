@@ -9,7 +9,9 @@ _BAD = re.compile(r"[^a-z0-9_-]")
 def sanitize_tool_name(name: str) -> str:
     """Lower-case, other characters become '_', must start with a letter, at most 64 chars."""
     s = _BAD.sub("_", (name or "").strip().lower())
-    if not s or not s[0].isalpha() or not s[0].isascii():
+    if not s:
+        return "tool"
+    if not s[0].isalpha() or not s[0].isascii():
         s = "t_" + s
     return s[:_MAX_LEN]
 

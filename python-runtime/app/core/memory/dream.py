@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Sequence
+from typing import Any
 
 from app.contracts.memory import Insight, InsightStore, MemoryStore, RunHistory
 
@@ -38,8 +38,8 @@ async def run_dream_synthesis(
         "Rules:\n"
         "- Max 3 insights\n"
         "- Each insight must cite existing execution_ids from the list below\n\n"
-        f"Recent executions:\n" + "\n".join(digest_summaries) + "\n\n"
-        f"Active memories:\n" + "\n".join(memory_summaries)
+        "Recent executions:\n" + "\n".join(digest_summaries) + "\n\n"
+        "Active memories:\n" + "\n".join(memory_summaries)
     )
 
     try:

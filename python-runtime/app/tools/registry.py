@@ -12,33 +12,71 @@ descriptions shown in the picker UI).
 
 from __future__ import annotations
 
+from app.contracts.graph import ToolBinding
+from app.contracts.tools import Tool as V2Tool
+from app.infra.workspace import data_dir
+from app.tools.adapter import LegacyToolAdapter
 from app.tools.asset_cache import (
-    AssetCacheStoreTool, CacheEngineTool, DependencyEngineTool,
-    ProductionConfigTool, ProjectManagerTool,
+    AssetCacheStoreTool,
+    CacheEngineTool,
+    DependencyEngineTool,
+    ProductionConfigTool,
+    ProjectManagerTool,
 )
-from app.tools.audio import AudioAlignmentTool, AudioMixerTool, AudioProcessingTool, VoiceGeneratorTool
+from app.tools.audio import (
+    AudioAlignmentTool,
+    AudioMixerTool,
+    AudioProcessingTool,
+    VoiceGeneratorTool,
+)
 from app.tools.base import Tool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
 from app.tools.character import (
-    BodyPoseTool, CharacterAssetManagerTool, CharacterPerformanceTool, CharacterRigTool,
-    EyeEngineTool, FacialExpressionTool, FacialPerformanceTool, GestureEngineTool, LipSyncTool,
+    BodyPoseTool,
+    CharacterAssetManagerTool,
+    CharacterPerformanceTool,
+    CharacterRigTool,
+    EyeEngineTool,
+    FacialExpressionTool,
+    FacialPerformanceTool,
+    GestureEngineTool,
+    LipSyncTool,
 )
 from app.tools.composition import CompositionEngineTool, EffectsEngineTool
 from app.tools.filesystem import FileSystemTool
 from app.tools.graphics import (
-    CaptionEngineTool, DataVisualizationTool, DebateGraphicsTool, EvidenceGraphicsTool,
-    HeadlineCardTool, TypographyEngineTool, VisualAssetManagerTool,
+    CaptionEngineTool,
+    DataVisualizationTool,
+    DebateGraphicsTool,
+    EvidenceGraphicsTool,
+    HeadlineCardTool,
+    TypographyEngineTool,
+    VisualAssetManagerTool,
 )
 from app.tools.http_request import HttpRequestTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.qc import (
-    AudioQCTool, AutomatedPreviewQCTool, LipSyncQCTool, SceneQCTool,
-    ScriptToVideoQCTool, VideoQCTool,
+    AudioQCTool,
+    AutomatedPreviewQCTool,
+    LipSyncQCTool,
+    SceneQCTool,
+    ScriptToVideoQCTool,
+    VideoQCTool,
 )
-from app.tools.rendering import FinalRendererTool, PreviewRendererTool, RenderQueueTool, RenderWorkerTool
-from app.tools.scene import LightingEngineTool, SceneBuilderTool, SceneTemplateManagerTool
+from app.tools.rendering import (
+    FinalRendererTool,
+    PreviewRendererTool,
+    RenderQueueTool,
+    RenderWorkerTool,
+)
+from app.tools.scene import (
+    LightingEngineTool,
+    SceneBuilderTool,
+    SceneTemplateManagerTool,
+)
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
+from app.tools.video_source import VideoSourceTool
 from app.tools.web_search import WebSearchTool
 
 # kind -> zero-arg factory. Config-driven ones (paths mostly) are handled
@@ -48,6 +86,7 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "web_search": WebSearchTool,
     "python": PythonExecTool,
     "http_request": HttpRequestTool,
+    "video_source": VideoSourceTool,
     # Audio
     "audio_processing": AudioProcessingTool,
     "audio_alignment": AudioAlignmentTool,
@@ -125,3 +164,42 @@ def build_tool(kind: str, config: dict) -> Tool:
         return ProductionConfigTool(config_path=config.get("config_path", "./production_config.json"))
 
     raise ValueError(f"Unknown tool kind: {kind}")
+
+
+# v2 registry contract (D-08). Keep build_tool() above unchanged: the legacy
+# engine calls it directly and must retain its historical behavior.
+NATIVE_TOOLS: dict[str, type[V2Tool]] = {}
+
+
+class DefaultToolFactory:
+    """Build a native v2 tool when available, otherwise adapt the legacy tool."""
+
+    def build(self, binding: ToolBinding) -> V2Tool:
+        native = NATIVE_TOOLS.get(binding.kind)
+        if native is not None:
+            return native()
+
+        # Never let a persisted Tool.config choose arbitrary host directories.
+        # Legacy execution still uses build_tool() unchanged; v2 uses fixed data roots.
+        root = data_dir()
+        safe_roots = {
+            "file_system": {"root_dir": str(root / "files")},
+            "voice_generator": {"voices_dir": str(root / "assets" / "voices")},
+            "character_asset_manager": {"characters_dir": str(root / "assets" / "characters")},
+            "scene_template_manager": {"templates_dir": str(root / "assets" / "scene_templates")},
+            "visual_asset_manager": {"assets_dir": str(root / "assets" / "visuals")},
+            "render_queue": {"queue_path": str(root / "queues" / "render_queue.json")},
+            "cache_engine": {"cache_dir": str(root / "cache")},
+            "project_manager": {"projects_root": str(root / "projects")},
+            "asset_cache_store": {"store_dir": str(root / "assets" / "shared")},
+            "production_config": {"config_path": str(root / "production_config.json")},
+        }
+        config = dict(binding.config or {})
+        for key in (
+            "root_dir", "voices_dir", "characters_dir", "templates_dir", "assets_dir",
+            "queue_path", "cache_dir", "projects_root", "store_dir", "config_path",
+        ):
+            config.pop(key, None)
+        config.update(safe_roots.get(binding.kind, {}))
+        legacy = build_tool(binding.kind, config)
+        return LegacyToolAdapter(legacy, binding)

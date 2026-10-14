@@ -2,6 +2,7 @@
 import re
 from pathlib import Path
 from typing import Any, ClassVar
+
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Tool, ToolError, ToolResult

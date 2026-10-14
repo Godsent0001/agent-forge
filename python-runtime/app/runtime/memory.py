@@ -85,12 +85,17 @@ def assemble_memory_context(summary: str, recent: list[EntryLike],
 # --- DB integration -----------------------------------------------------
 
 async def read_memory(db, agent_id: str, llm) -> str:
-    from app import models  # local import: keeps this module importable/testable without SQLAlchemy
+    from app import (
+        models,  # local import: keeps this module importable/testable without SQLAlchemy
+    )
 
     agent = db.get(models.Agent, agent_id)
     entries = (
         db.query(models.MemoryEntry)
-        .filter(models.MemoryEntry.agent_id == agent_id)
+        .filter(
+            models.MemoryEntry.agent_id == agent_id,
+            models.MemoryEntry.status == "active",
+        )
         .order_by(models.MemoryEntry.created_at)
         .all()
     )
