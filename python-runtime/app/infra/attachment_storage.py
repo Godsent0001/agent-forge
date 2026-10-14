@@ -248,11 +248,66 @@ def _verify_image(path: Path, expected_format: str) -> None:
         raise AttachmentStorageError("Image is malformed or exceeds safe decoder limits") from exc
 
 
+def _find_windows_defender_scanner() -> str | None:
+    """Locate Microsoft's installed scanner without assuming a versioned path."""
+    if os.name != "nt":
+        return None
+    program_data = Path(os.environ.get("PROGRAMDATA", r"C:\\ProgramData"))
+    program_files = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files"))
+    candidates: list[Path] = []
+    platform_dir = program_data / "Microsoft" / "Windows Defender" / "Platform"
+    try:
+        candidates.extend(
+            folder / "MpCmdRun.exe"
+            for folder in sorted(platform_dir.iterdir(), reverse=True)
+            if folder.is_dir()
+        )
+    except OSError:
+        pass
+    candidates.append(program_files / "Windows Defender" / "MpCmdRun.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+async def _scan_with_windows_defender(path: Path, executable: str) -> tuple[str, str | None]:
+    """Run a non-remediating custom scan; any ambiguous result remains quarantined."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            executable,
+            "-Scan", "-ScanType", "3", "-File", str(path), "-DisableRemediation",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return "error", "Microsoft Defender Antivirus"
+        # MpCmdRun documents 0 as no malware found (or successful remediation) and
+        # 2 as malware not remediated or a scan error. DisableRemediation prevents
+        # the scanner from modifying the quarantined upload, so only 0 is clean.
+        _ = (stdout, stderr)
+        if proc.returncode == 0:
+            return "clean", "Microsoft Defender Antivirus"
+        return "error", "Microsoft Defender Antivirus"
+    except OSError:
+        return "error", "Microsoft Defender Antivirus"
+
+
 async def scan_attachment(path: Path) -> tuple[str, str | None]:
     """Return clean/infected/unavailable/error. Missing or failed scanner fails closed."""
     scanner = os.environ.get("AGENTFORGE_AV_SCANNER", "clamscan")
     executable = shutil.which(scanner) or (scanner if Path(scanner).is_absolute() and Path(scanner).is_file() else None)
     if not executable:
+        # Windows desktop installs normally have Microsoft Defender but do not have
+        # ClamAV. Prefer the OS scanner rather than requiring a separate AV install.
+        if scanner == "clamscan" and os.name == "nt":
+            defender = _find_windows_defender_scanner()
+            if defender:
+                return await _scan_with_windows_defender(path, defender)
         return "unavailable", None
     try:
         version_proc = await asyncio.create_subprocess_exec(
@@ -268,7 +323,7 @@ async def scan_attachment(path: Path) -> tuple[str, str | None]:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
