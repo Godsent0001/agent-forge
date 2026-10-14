@@ -14,7 +14,7 @@ from app import models, schemas
 from app.contracts.run import RunRequest as CoreRunRequest
 from app.db import SessionLocal
 from app.deps import get_db
-from app.services.executions import manager as core_execution_manager
+from app.services.executions import legacy_event_payload, manager as core_execution_manager
 from app.ws import manager as legacy_ws_manager
 
 router = APIRouter(prefix="/executions", tags=["executions"])
@@ -81,9 +81,13 @@ def get_execution(execution_id: str, db: Session = Depends(get_db)):
 def get_execution_events(execution_id: str, db: Session = Depends(get_db)):
     if db.get(models.Execution, execution_id) is None:
         raise HTTPException(status_code=404, detail="Execution not found")
-    return (
+    rows = (
         db.query(models.ExecutionEventRow)
         .filter(models.ExecutionEventRow.execution_id == execution_id)
         .order_by(models.ExecutionEventRow.timestamp)
         .all()
     )
+    return [
+        {**legacy_event_payload(row), "timestamp": row.timestamp}
+        for row in rows
+    ]
