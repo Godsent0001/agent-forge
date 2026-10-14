@@ -104,6 +104,10 @@ export function ProjectAttachmentsPanel({
     setNotice(null);
     setUploading(true);
     let uploaded = 0;
+    let autoSelectedCount = 0;
+    let autoSelectedBytes = selectedBytes;
+    let autoSelectedFiles = selectedIds.length;
+    const autoSelectedIds: string[] = [];
     try {
       for (const file of Array.from(files)) {
         if (file.size > MAX_FILE_BYTES) {
@@ -116,14 +120,25 @@ export function ProjectAttachmentsPanel({
         const item = await api.attachments.upload(projectId, file);
         setItems((current) => [item, ...current.filter((old) => old.id !== item.id)]);
         if (item.status === "clean") {
-          setNotice(`${item.name} passed scanning. Select it below to attach it to a run.`);
+          if (autoSelectedFiles < MAX_RUN_FILES && autoSelectedBytes + item.size_bytes <= MAX_RUN_BYTES) {
+            autoSelectedIds.push(item.id);
+            autoSelectedFiles += 1;
+            autoSelectedBytes += item.size_bytes;
+            autoSelectedCount += 1;
+          } else {
+            setNotice(`${item.name} passed scanning, but was not auto-selected because the run attachment limit would be exceeded.`);
+          }
         } else {
           setNotice(`${item.name} was uploaded but remains ${item.status}. Only clean-scanned files can be attached to a run.`);
         }
         uploaded += 1;
       }
+      if (autoSelectedIds.length > 0) {
+        onSelectedIdsChange((current) => [...current, ...autoSelectedIds.filter((id) => !current.includes(id))]);
+        setNotice(`${autoSelectedCount} clean file${autoSelectedCount === 1 ? "" : "s"} scanned and automatically attached to the next run.`);
+      }
       await refresh();
-      if (uploaded > 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
+      if (uploaded > 0 && autoSelectedIds.length === 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Upload failed.");
     } finally {
