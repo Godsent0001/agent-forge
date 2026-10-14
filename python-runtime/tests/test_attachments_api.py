@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app import models
+from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
 from app.routers import attachments as attachments_router
 from app.routers import executions_v2
@@ -172,3 +173,41 @@ def test_delete_removes_metadata_and_blobs(client, db_session, monkeypatch, tmp_
     assert deleted.status_code == 200
     assert not stored.exists()
     assert client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}").status_code == 404
+
+
+def test_windows_defender_scanner_is_found_in_platform_or_default_directory(monkeypatch, tmp_path):
+    platform_dir = tmp_path / "Microsoft" / "Windows Defender" / "Platform" / "4.18.1"
+    platform_dir.mkdir(parents=True)
+    scanner = platform_dir / "MpCmdRun.exe"
+    scanner.write_bytes(b"test executable")
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path))
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path / "Program Files"))
+
+    assert attachment_storage._find_windows_defender_scanner() == str(scanner)
+
+
+def test_windows_defender_only_returns_clean_for_successful_non_remediating_scan(monkeypatch, tmp_path):
+    class FakeProcess:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+        async def communicate(self):
+            return b"", b""
+
+    async def run_clean(*args, **kwargs):
+        return FakeProcess(0)
+
+    async def run_uncertain(*args, **kwargs):
+        return FakeProcess(2)
+
+    monkeypatch.setattr(attachment_storage.asyncio, "create_subprocess_exec", run_clean)
+    assert await attachment_storage._scan_with_windows_defender(tmp_path / "brief.txt", "MpCmdRun.exe") == (
+        "clean",
+        "Microsoft Defender Antivirus",
+    )
+
+    monkeypatch.setattr(attachment_storage.asyncio, "create_subprocess_exec", run_uncertain)
+    assert await attachment_storage._scan_with_windows_defender(tmp_path / "brief.txt", "MpCmdRun.exe") == (
+        "error",
+        "Microsoft Defender Antivirus",
+    )
