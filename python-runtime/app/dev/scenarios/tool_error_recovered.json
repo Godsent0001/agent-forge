@@ -1,0 +1,32 @@
+[
+  {
+    "op": "agent_start",
+    "name": "Recovery Agent"
+  },
+  {
+    "op": "tool_start",
+    "name": "unstable_tool",
+    "args": {
+      "query": "simulate recoverable failure"
+    }
+  },
+  {
+    "op": "tool_end",
+    "ok": false,
+    "result": "Temporary tool error (scenario test)."
+  },
+  {
+    "op": "llm",
+    "ms": 10,
+    "usage": {
+      "in": 80,
+      "out": 40
+    },
+    "cost": 0.001,
+    "tools": []
+  },
+  {
+    "op": "agent_end",
+    "output": "The tool failed, but the agent recovered and completed the task."
+  }
+]

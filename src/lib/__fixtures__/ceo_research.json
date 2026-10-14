@@ -1,0 +1,315 @@
+[
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 1,
+    "ts": "2026-10-12T12:00:00.000Z",
+    "type": "execution_started",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "task": "fixture scenario: ceo_research"
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 2,
+    "ts": "2026-10-12T12:00:00.040Z",
+    "type": "span_started",
+    "span_id": "agent-ceo",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "CEO Agent",
+    "status": null,
+    "data": {
+      "depth": 0,
+      "agent_id": "agent-ceo",
+      "input_preview": "Find the latest news"
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 3,
+    "ts": "2026-10-12T12:00:00.060Z",
+    "type": "span_started",
+    "span_id": "llm-ceo",
+    "parent_span_id": "agent-ceo",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 4,
+    "ts": "2026-10-12T12:00:00.080Z",
+    "type": "span_ended",
+    "span_id": "llm-ceo",
+    "parent_span_id": "agent-ceo",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 1200,
+        "output_tokens": 80,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.004,
+      "finish_reason": "tool_calls",
+      "tool_calls": [
+        "research_agent"
+      ]
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 5,
+    "ts": "2026-10-12T12:00:00.100Z",
+    "type": "span_started",
+    "span_id": "tool-research",
+    "parent_span_id": "agent-ceo",
+    "kind": "tool_call",
+    "name": "research_agent",
+    "status": null,
+    "data": {
+      "tool_name": "research_agent",
+      "tool_call_id": "call-tool-research",
+      "args": "{\"task\":\"Find 3 sources\"}"
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 6,
+    "ts": "2026-10-12T12:00:00.120Z",
+    "type": "span_started",
+    "span_id": "agent-research",
+    "parent_span_id": "tool-research",
+    "kind": "agent",
+    "name": "Research Agent",
+    "status": null,
+    "data": {
+      "depth": 1,
+      "agent_id": "agent-research",
+      "input_preview": "Find 3 sources"
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 7,
+    "ts": "2026-10-12T12:00:00.140Z",
+    "type": "span_started",
+    "span_id": "llm-research",
+    "parent_span_id": "agent-research",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 8,
+    "ts": "2026-10-12T12:00:00.160Z",
+    "type": "span_ended",
+    "span_id": "llm-research",
+    "parent_span_id": "agent-research",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 800,
+        "output_tokens": 60,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.002,
+      "finish_reason": "tool_calls",
+      "tool_calls": [
+        "web_search"
+      ]
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 9,
+    "ts": "2026-10-12T12:00:00.180Z",
+    "type": "span_started",
+    "span_id": "tool-search",
+    "parent_span_id": "agent-research",
+    "kind": "tool_call",
+    "name": "web_search",
+    "status": null,
+    "data": {
+      "tool_name": "web_search",
+      "tool_call_id": "call-tool-search",
+      "args": "{\"query\":\"latest news\"}"
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 10,
+    "ts": "2026-10-12T12:00:00.200Z",
+    "type": "span_ended",
+    "span_id": "tool-search",
+    "parent_span_id": "agent-research",
+    "kind": "tool_call",
+    "name": "web_search",
+    "status": "ok",
+    "data": {
+      "result_preview": "Found three useful sources.",
+      "is_error": false,
+      "artifacts": []
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 11,
+    "ts": "2026-10-12T12:00:00.220Z",
+    "type": "span_started",
+    "span_id": "llm-research-final",
+    "parent_span_id": "agent-research",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 12,
+    "ts": "2026-10-12T12:00:00.240Z",
+    "type": "span_ended",
+    "span_id": "llm-research-final",
+    "parent_span_id": "agent-research",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 900,
+        "output_tokens": 90,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.002,
+      "finish_reason": "stop",
+      "tool_calls": []
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 13,
+    "ts": "2026-10-12T12:00:00.260Z",
+    "type": "span_ended",
+    "span_id": "agent-research",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "Research Agent",
+    "status": "ok",
+    "data": {
+      "output_preview": "Found three useful sources."
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 14,
+    "ts": "2026-10-12T12:00:00.280Z",
+    "type": "span_ended",
+    "span_id": "tool-research",
+    "parent_span_id": "agent-ceo",
+    "kind": "tool_call",
+    "name": "research_agent",
+    "status": "ok",
+    "data": {
+      "result_preview": "Research completed.",
+      "is_error": false,
+      "artifacts": []
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 15,
+    "ts": "2026-10-12T12:00:00.300Z",
+    "type": "span_started",
+    "span_id": "llm-ceo-final",
+    "parent_span_id": "agent-ceo",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": null,
+    "data": {
+      "provider": "fake",
+      "model": "fake/scenario",
+      "message_count": 1
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 16,
+    "ts": "2026-10-12T12:00:00.320Z",
+    "type": "span_ended",
+    "span_id": "llm-ceo-final",
+    "parent_span_id": "agent-ceo",
+    "kind": "llm_call",
+    "name": "llm",
+    "status": "ok",
+    "data": {
+      "usage": {
+        "input_tokens": 1500,
+        "output_tokens": 100,
+        "cache_read_tokens": 0
+      },
+      "cost_usd": 0.003,
+      "finish_reason": "stop",
+      "tool_calls": []
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 17,
+    "ts": "2026-10-12T12:00:00.340Z",
+    "type": "span_ended",
+    "span_id": "agent-ceo",
+    "parent_span_id": null,
+    "kind": "agent",
+    "name": "CEO Agent",
+    "status": "ok",
+    "data": {
+      "output_preview": "Summary of the latest news, with three useful sources."
+    }
+  },
+  {
+    "execution_id": "fixture-ceo_research",
+    "seq": 18,
+    "ts": "2026-10-12T12:00:00.360Z",
+    "type": "execution_ended",
+    "span_id": null,
+    "parent_span_id": null,
+    "kind": null,
+    "name": null,
+    "status": null,
+    "data": {
+      "status": "completed",
+      "final_output": "Summary of the latest news, with three useful sources.",
+      "error": null,
+      "totals": {
+        "llm_calls": 1,
+        "tool_calls": 0,
+        "input_tokens": 120,
+        "output_tokens": 35,
+        "cost_usd": 0.001
+      }
+    }
+  }
+]

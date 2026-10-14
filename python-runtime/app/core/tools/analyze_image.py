@@ -1,5 +1,6 @@
 """Analyze image tool for vision-capable LLMs."""
 from typing import Any, ClassVar
+
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Tool, ToolError, ToolResult

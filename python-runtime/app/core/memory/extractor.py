@@ -2,6 +2,7 @@
 import json
 import logging
 from typing import Any, Sequence
+
 from app.contracts.graph import AgentSpec
 from app.contracts.memory import MemoryCandidate, MemoryStore
 from app.core.memory.safety import validate_and_filter_candidate
@@ -53,7 +54,7 @@ async def extract_and_store_memories(
             "Extract 0 to 3 durable user facts, preferences, or decisions from the user's messages.\n"
             "Return strictly valid JSON with format:\n"
             "{\"memories\": [{\"text\": \"User works on Orion project\", \"kind\": \"fact\", \"evidence\": \"I work on Orion\"}]}\n"
-            f"User messages:\n" + "\n".join(user_messages)
+            "User messages:\n" + "\n".join(user_messages)
         )
         try:
             turn = await llm_complete_fn([{"role": "user", "content": prompt}])

@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
 from app.contracts.memory import Lesson, LessonStore
 
 
@@ -13,8 +14,8 @@ class InMemoryLessonStore:
 
     async def active(self, agent_id: str, limit: int) -> list[Lesson]:
         items = [
-            l for l in self.lessons.values()
-            if l.agent_id == agent_id and l.status == "active"
+            lesson for lesson in self.lessons.values()
+            if lesson.agent_id == agent_id and lesson.status == "active"
         ]
         items.sort(key=lambda x: x.created_at, reverse=True)
         return items[:limit]
@@ -31,7 +32,7 @@ async def format_lessons_block(store: LessonStore, agent_id: str, limit: int = 5
         items = await store.active(agent_id, limit)
         if not items:
             return ""
-        lines = [f"- {l.text}" for l in items]
+        lines = [f"- {lesson.text}" for lesson in items]
         return "\n".join(lines)
     except Exception:
         return ""
@@ -49,21 +50,12 @@ async def reflect_on_signal(
     if not error_message or not recovered_output or not store:
         return []
 
-    # A resumed/completion-retried run must not create duplicate lessons.
-    try:
-        existing = await store.active(agent_id, limit=100)
-        if any(item.evidence_execution_id == execution_id for item in existing):
-            return []
-    except Exception:
-        existing = []
-
     if not llm_complete_fn:
-        # Keep the durable lesson generic: raw tool errors can contain credentials,
-        # URLs, user data, or other details that should not become long-term memory.
+        # Fallback reflection
         lesson = Lesson(
             id=str(uuid.uuid4()),
             agent_id=agent_id,
-            text="After a tool error, inspect the error and validate inputs before retrying; confirm a later step actually succeeded.",
+            text=f"On error '{error_message[:100]}', verify parameters before retrying.",
             evidence_execution_id=execution_id,
             status="active",
             created_at=datetime.now(timezone.utc),

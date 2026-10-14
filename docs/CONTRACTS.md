@@ -7,7 +7,7 @@
 
 - **C-1:** `history_summary` (request) and `new_summary` / `summarized_count` (result) for conversation compaction; `attachments`; `RunOptions.memory`, `RunOptions.timezone`, `RunOptions.llm_aliases`.
 - **C-2:** well-known `llm_call` names (`memory_extract`, `compaction`, `trim_summary`, `embed`); new `tool_call` end keys (`truncated`, `saved_result`, `result_data`); structure rules S1 to S4 next to R1 to R6.
-- **C-3:** `ToolResult.truncated` and `next_offset`; `RunWorkspace.write_result`; the pagination and saved-results conventions; `CancelToken` now lives in `tools.py` (re-exported by `runner.py`).
+- **C-3:** `ToolResult.truncated` and `next_offset`; `RunWorkspace.asset` for the shared read-only asset root and `RunWorkspace.write_result`; pagination and saved-results conventions; `CancelToken` now lives in `tools.py` (re-exported by `runner.py`).
 - **C-4:** `LLMParams.reasoning`.
 - **C-5:** `Runner.run` also takes `lessons`, `intents`, `run_history` and an optional `clock`, so the Runner interface does not reopen at A-06 / A-07.
 - **C-6:** replaced by the v2 memory contracts (semantic memory, run history, intents, insights); lessons stay a draft.
@@ -365,6 +365,7 @@ class CancelToken(Protocol):
 class RunWorkspace(Protocol):
     root: Path                                   # <data_dir>/runs/<execution_id>/
     def resolve(self, rel: str) -> Path: ...     # raises ToolError on absolute paths, "..", symlink escapes
+    def asset(self, rel: str) -> Path: ...       # shared read-only <data_dir>/assets root; same path checks
     def new_path(self, name: str) -> Path: ...   # safe, unique file path inside the workspace
     def relative(self, p: Path) -> str: ...
     def write_result(self, tool_call_id: str, content: str) -> ArtifactRef: ...

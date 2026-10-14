@@ -1,8 +1,7 @@
 """LLM types and exceptions for AgentForge Core."""
 from typing import Literal
-from pydantic import BaseModel, Field
 
-from app.contracts.graph import LLMParams
+from pydantic import BaseModel, Field
 
 
 class TextPart(BaseModel):
@@ -17,6 +16,12 @@ class ImagePart(BaseModel):
 
 
 ContentPart = TextPart | ImagePart
+
+
+class LLMParams(BaseModel):
+    timeout_s: float = 60.0
+    temperature: float | None = 0.2
+    max_tokens: int | None = 4096
 
 
 class ToolSpec(BaseModel):

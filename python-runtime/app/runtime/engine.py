@@ -14,12 +14,20 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app import models
+from app.contracts.graph import ToolBinding
+from app.contracts.naming import sanitize_tool_name
+from app.infra.workspace import RunWorkspace
 from app.llm import LLMInterface
 from app.runtime.agent import RuntimeAgent
 from app.runtime.agent_tool import AgentTool
-from app.runtime.context import CycleDetectedError, ExecutionContext, ExecutionEvent, RecursionLimitError
+from app.runtime.context import (
+    CycleDetectedError,
+    ExecutionContext,
+    ExecutionEvent,
+    RecursionLimitError,
+)
 from app.tools.base import Tool
-from app.tools.registry import build_tool
+from app.tools.registry import DefaultToolFactory
 from app.ws import manager
 
 
@@ -33,10 +41,20 @@ class ExecutionEngine:
 
     def _build_tools_for(self, agent_row: models.Agent) -> dict[str, Tool]:
         tools: dict[str, Tool] = {}
+        factory = DefaultToolFactory()
 
         for link in agent_row.tool_links:
             tool_row = link.tool
-            tool = build_tool(tool_row.kind, tool_row.config)
+            # Keep the frozen legacy loop behind the v2 workspace and safe-root
+            # adapter until S-04 removes it; its approval-less tools fail closed.
+            binding = ToolBinding(
+                id=str(tool_row.id),
+                kind=tool_row.kind,
+                name=sanitize_tool_name(tool_row.kind),
+                description=tool_row.description or None,
+                config=tool_row.config or {},
+            )
+            tool = factory.build(binding)
             tools[tool.name] = tool
 
         for link in agent_row.child_links:
@@ -68,7 +86,7 @@ class ExecutionEngine:
         RuntimeAgent.__init__(runtime_agent, agent_row, llm, tools, self._db, parallel_execution=parallel_execution)
         return runtime_agent
 
-    async def run(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
+    def create_execution(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
         execution = models.Execution(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -78,6 +96,22 @@ class ExecutionEngine:
         )
         self._db.add(execution)
         self._db.commit()
+        return execution
+
+    async def run(self, project_id: str, root_agent_id: str, task: str) -> models.Execution:
+        execution = self.create_execution(project_id, root_agent_id, task)
+        return await self.run_existing(execution.id, project_id, root_agent_id, task)
+
+    async def run_existing(
+        self,
+        execution_id: str,
+        project_id: str,
+        root_agent_id: str,
+        task: str,
+    ) -> models.Execution:
+        execution = self._db.get(models.Execution, execution_id)
+        if execution is None:
+            raise ValueError(f"Execution {execution_id} not found")
 
         async def sink(event: ExecutionEvent) -> None:
             row = models.ExecutionEventRow(
@@ -98,7 +132,12 @@ class ExecutionEngine:
                 "data": event.data,
             })
 
-        context = ExecutionContext(execution_id=execution.id, sink=sink)
+        context = ExecutionContext(
+            execution_id=execution.id,
+            visited_agent_ids=(root_agent_id,),
+            sink=sink,
+            workspace=RunWorkspace(execution_id),
+        )
 
         try:
             await context.emit("ExecutionStarted")

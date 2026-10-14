@@ -1,0 +1,22 @@
+[
+  {
+    "op": "agent_start",
+    "name": "Assistant"
+  },
+  {
+    "op": "llm",
+    "provider": "fake",
+    "model": "fake/scenario",
+    "ms": 10,
+    "usage": {
+      "in": 120,
+      "out": 35
+    },
+    "cost": 0.001,
+    "tools": []
+  },
+  {
+    "op": "agent_end",
+    "output": "This is a deterministic answer from the test runner."
+  }
+]

@@ -32,6 +32,7 @@ class CatalogEntry:
     shelf: str
     description: str
     status: str  # "real" | "stub"
+    pack: str | None = "video"
 
 
 SHELVES: dict[str, str] = {
@@ -46,6 +47,7 @@ SHELVES: dict[str, str] = {
     "asset_cache": "Asset & Cache",
     "qc": "Quality Control",
     "orchestration": "Orchestration",
+    "video": "Video Sources",
 }
 
 
@@ -242,6 +244,10 @@ CATALOG: list[CatalogEntry] = [
                  "real"),
 
     # --- Orchestration -------------------------------------------------
+    CatalogEntry("video_source", "Video Source", "video",
+                 "Searches yt-dlp-supported video hosts and returns source metadata for clip selection.",
+                 "real"),
+
     CatalogEntry("pipeline_orchestrator", "Pipeline Orchestrator", "orchestration",
                  "Coordinates the full script-to-mp4 pipeline stage by stage: "
                  "voice -> alignment -> lip-sync -> performance -> graphics -> "
@@ -254,8 +260,8 @@ def get_catalog_entry(kind: str) -> CatalogEntry | None:
     return next((e for e in CATALOG if e.kind == kind), None)
 
 
-def catalog_by_shelf() -> dict[str, list[CatalogEntry]]:
+def catalog_by_shelf(entries: list[CatalogEntry] | None = None) -> dict[str, list[CatalogEntry]]:
     grouped: dict[str, list[CatalogEntry]] = {shelf: [] for shelf in SHELVES}
-    for entry in CATALOG:
+    for entry in CATALOG if entries is None else entries:
         grouped.setdefault(entry.shelf, []).append(entry)
     return grouped

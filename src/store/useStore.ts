@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { api } from "../api/client";
 import type { Agent, ChatMessage, Project, Tool } from "../types";
+import { DEFAULT_MODELS } from "../config/models";
 
 interface StoreState {
   projects: Project[];
@@ -10,11 +12,18 @@ interface StoreState {
   selectedAgentId: string | null;
   chatMessages: Record<string, ChatMessage[]>;
   addChatMessage: (agentId: string, msg: ChatMessage) => void;
+  setChatMessages: (agentId: string, messages: ChatMessage[]) => void;
+  clearChat: (agentId: string) => void;
+  /** A task waiting to be sent through the chat pipeline (e.g. from the Run workflow dialog). */
+  pendingTask: { agentId: string; text: string } | null;
+  queueTask: (agentId: string, text: string) => void;
+  /** Returns the queued task text (if any) and clears the queue. */
+  consumePendingTask: () => string | null;
 
   fetchProjects: () => Promise<Project[]>;
   switchProject: (projectId: string) => Promise<void>;
   createProject: (name: string) => Promise<void>;
-  updateProjectSettings: (patch: { name?: string; parallel_execution?: boolean }) => Promise<void>;
+  updateProjectSettings: (patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) => Promise<void>;
   loadProject: (project: Project) => Promise<void>;
   selectAgent: (id: string | null) => void;
   createAgent: (name: string) => Promise<Agent | undefined>;
@@ -30,19 +39,53 @@ interface StoreState {
   attachChildToSelected: (childAgentId: string) => Promise<void>;
 }
 
-export const useStore = create<StoreState>((set, get) => ({
+/** Most recent messages kept per agent in local storage, so history can never grow without bound. */
+const MAX_PERSISTED_MESSAGES_PER_AGENT = 300;
+
+export const CHAT_STORAGE_KEY = "agentforge-chat-v1";
+
+export const useStore = create<StoreState>()(
+  persist(
+    (set, get) => ({
   projects: [],
   project: null,
   agents: [],
   tools: [],
   selectedAgentId: null,
   chatMessages: {},
+  pendingTask: null,
+
+  clearChat: (agentId) => {
+    set((state) => {
+      const next = { ...state.chatMessages };
+      delete next[agentId];
+      return { chatMessages: next };
+    });
+  },
+
+  queueTask: (agentId, text) => set({ pendingTask: { agentId, text } }),
+
+  consumePendingTask: () => {
+    const task = get().pendingTask;
+    if (!task) return null;
+    set({ pendingTask: null });
+    return task.text;
+  },
 
   addChatMessage: (agentId, msg) => {
     set((state) => ({
       chatMessages: {
         ...state.chatMessages,
         [agentId]: [...(state.chatMessages[agentId] || []), msg],
+      },
+    }));
+  },
+
+  setChatMessages: (agentId, messages) => {
+    set((state) => ({
+      chatMessages: {
+        ...state.chatMessages,
+        [agentId]: messages.slice(-MAX_PERSISTED_MESSAGES_PER_AGENT),
       },
     }));
   },
@@ -92,7 +135,8 @@ export const useStore = create<StoreState>((set, get) => ({
   createAgent: async (name) => {
     const { project, agents } = get();
     if (!project) return;
-    const agent = await api.agents.create({ project_id: project.id, name });
+    const provider = "anthropic";
+    const agent = await api.agents.create({ project_id: project.id, name, provider, model: DEFAULT_MODELS[provider] });
     set({ agents: [...agents, agent], selectedAgentId: agent.id });
     return agent;
   },
@@ -195,4 +239,20 @@ export const useStore = create<StoreState>((set, get) => ({
       await attachChildToAgent(selectedAgentId, childAgentId);
     }
   },
-}));
+}),
+    {
+      name: CHAT_STORAGE_KEY,
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      // Only conversations are persisted; projects/agents/tools live in the backend database.
+      partialize: (state) => ({
+        chatMessages: Object.fromEntries(
+          Object.entries(state.chatMessages).map(([agentId, messages]) => [
+            agentId,
+            messages.slice(-MAX_PERSISTED_MESSAGES_PER_AGENT),
+          ]),
+        ),
+      }),
+    },
+  ),
+);

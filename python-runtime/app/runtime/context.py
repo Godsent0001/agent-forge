@@ -44,6 +44,7 @@ class ExecutionContext:
     depth: int = 0
     visited_agent_ids: tuple[str, ...] = ()
     sink: EventSink = _noop_sink
+    workspace: Any | None = None
 
     async def emit(self, type: str, *, agent_name: str | None = None,
                     tool_name: str | None = None, data: dict[str, Any] | None = None) -> None:
@@ -67,4 +68,5 @@ class ExecutionContext:
             depth=self.depth + 1,
             visited_agent_ids=self.visited_agent_ids + (agent_id,),
             sink=self.sink,
+            workspace=self.workspace,
         )
