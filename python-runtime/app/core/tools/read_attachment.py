@@ -1,4 +1,5 @@
 """Read bounded text excerpts from clean attachments copied into a run workspace."""
+# ruff: noqa: I001 — keep the project-local Tool contract import grouped with other app imports.
 from pathlib import Path
 from typing import Any, ClassVar
 
