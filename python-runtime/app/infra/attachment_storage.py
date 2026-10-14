@@ -250,8 +250,6 @@ def _verify_image(path: Path, expected_format: str) -> None:
 
 def _find_windows_defender_scanner() -> str | None:
     """Locate Microsoft's installed scanner without assuming a versioned path."""
-    if os.name != "nt":
-        return None
     program_data = Path(os.environ.get("PROGRAMDATA", r"C:\\ProgramData"))
     program_files = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files"))
     candidates: list[Path] = []
