@@ -1,6 +1,4 @@
 """Read bounded text excerpts from clean attachments copied into a run workspace."""
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any, ClassVar
 
