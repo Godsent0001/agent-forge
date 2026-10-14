@@ -24,7 +24,7 @@ class Workspace:
 async def test_reads_text_attachment_in_bounded_chunks(tmp_path: Path):
     attachment_dir = tmp_path / "attachments"
     attachment_dir.mkdir()
-    (attachment_dir / "brief.txt").write_text("Project requirements\n + ("x" * 300), encoding="utf-8")
+    (attachment_dir / "brief.txt").write_text("Project requirements\n" + ("x" * 300), encoding="utf-8")
     tool = ReadAttachmentTool()
     ctx = SimpleNamespace(workspace=Workspace(tmp_path))
 
