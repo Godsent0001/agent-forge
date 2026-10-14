@@ -39,12 +39,13 @@ The shared artifact and capability contracts can represent any modality. Actual 
 
 ## Application integration status
 
-The developer application layer and this runtime foundation are connected through the v2 execution path:
+The application and general-purpose runtime use one execution engine: `RunnerCore`, managed by `app/services/executions.py`.
 
-- `POST /v2/executions` loads the persisted project/agent graph into `AgentGraph`, preserves configured tool bindings, and starts the selected runner.
-- `AGENTFORGE_RUNNER=v2` selects `RunnerCore`; the default remains `fake` so a fresh development install does not unexpectedly make paid provider calls. Real-provider execution still requires valid provider configuration.
-- `RunnerCore` persists final answers, tool results, and tool-declared output files into the project-scoped, versioned artifact store. Artifact persistence and verification outcomes are recorded in the existing sequenced execution event stream.
+- Both `POST /executions` and `POST /v2/executions` create persisted execution records and delegate graph loading, tool execution, memory, approvals, cancellation, budgets, event sequencing, and result persistence to the shared core execution manager.
+- The established `/executions` request/response contract remains available. RunnerCore trace events are bridged to the legacy WebSocket event names/payload shape so existing clients can continue to consume live events.
+- RunnerCore is the default selected runner. `AGENTFORGE_RUNNER=fake` is an explicit development/test override; real-provider execution requires valid provider configuration.
+- `RunnerCore` persists final answers, tool results, and tool-declared output files into the project-scoped, versioned artifact store. Artifact persistence and verification outcomes are recorded in the sequenced execution event stream.
 - `GET /v2/executions/{execution_id}/artifacts` lists that execution's artifacts from the persistent project store, and `GET /v2/executions/{execution_id}/artifacts/{artifact_id}?version=N` downloads a specific version. The UI displays registered artifacts alongside legacy workspace-file links.
 - Each model-issued tool batch is recorded in the durable task-plan store before execution. On application startup, in-flight tasks for interrupted runs are reconciled as uncertain and are not automatically replayed.
 
-The legacy `/executions` endpoint intentionally remains on `ExecutionEngine` for compatibility; this integration does not silently change its semantics. Remaining release work includes validating real-provider execution with configured credentials, verifying recovery under an actual process interruption, and confirming packaged Windows/Electron behavior. Do not mark this integration ready until the latest CI and end-to-end checks pass.
+The legacy `ExecutionEngine` remains in the repository as historical/compatibility implementation code but is no longer called by the legacy `/executions` route. Release work still includes validating real-provider execution with configured credentials, recovery under an actual process interruption, and packaged Windows/Electron behavior. Do not mark this integration ready until the latest CI and end-to-end checks pass.
