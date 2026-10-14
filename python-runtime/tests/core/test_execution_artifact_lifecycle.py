@@ -8,10 +8,10 @@ from app.contracts.tools import Tool, ToolResult
 from app.core.artifact_store import SQLiteArtifactStore
 from app.core.durable_scheduler import SQLiteTaskPlanStore
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
-from app.infra.paths import project_dir
 from app.core.llm.fake import FakeLLM
 from app.core.llm.types import LLMTurn, ToolCall
 from app.core.runner import RunnerCore
+from app.infra.paths import project_dir
 
 
 class Workspace:
