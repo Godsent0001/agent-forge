@@ -9,6 +9,13 @@ from app.deps import get_db
 from main import app
 
 
+@pytest.fixture(autouse=True)
+def use_fake_runner_for_tests(monkeypatch):
+    # Unit/API tests must be deterministic and must never call paid providers.
+    # Individual runner-factory tests can explicitly unset/override this value.
+    monkeypatch.setenv("AGENTFORGE_RUNNER", "fake")
+
+
 @pytest.fixture()
 def db_session():
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
