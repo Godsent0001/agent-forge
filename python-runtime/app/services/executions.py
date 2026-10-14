@@ -114,27 +114,39 @@ class Hub:
             await queue.put(event)
 
 
-def _legacy_event_type(event: RunEvent) -> str:
-    """Translate core trace events to established websocket event names."""
+def legacy_event_payload(event) -> dict:
+    """Map a core event to the established legacy API/WebSocket payload."""
     if event.type == "execution_started":
-        return "ExecutionStarted"
-    if event.type == "execution_ended":
-        return "ExecutionCompleted"
-    if event.type == "approval_requested":
-        return "ApprovalRequested"
-    if event.type == "approval_resolved":
-        return "ApprovalResolved"
-    if event.type == "artifact_persisted":
-        return "ArtifactPersisted"
-    if event.type == "artifact_verification":
-        return "ArtifactVerification"
-    if event.type == "span_started":
-        return {"agent": "AgentStarted", "tool_call": "ToolStarted", "llm_call": "LLMCallStarted"}.get(event.kind or "", "SpanStarted")
-    if event.type == "span_ended":
+        event_type = "ExecutionStarted"
+    elif event.type == "execution_ended":
+        event_type = "ExecutionCompleted"
+    elif event.type == "approval_requested":
+        event_type = "ApprovalRequested"
+    elif event.type == "approval_resolved":
+        event_type = "ApprovalResolved"
+    elif event.type == "artifact_persisted":
+        event_type = "ArtifactPersisted"
+    elif event.type == "artifact_verification":
+        event_type = "ArtifactVerification"
+    elif event.type == "span_started":
+        event_type = {"agent": "AgentStarted", "tool_call": "ToolStarted", "llm_call": "LLMCallStarted"}.get(event.kind or "", "SpanStarted")
+    elif event.type == "span_ended":
         suffix = "Failed" if event.status == "error" else "Completed"
         prefix = {"agent": "Agent", "tool_call": "Tool", "llm_call": "LLMCall"}.get(event.kind or "", "Span")
-        return prefix + suffix
-    return event.type
+        event_type = prefix + suffix
+    else:
+        event_type = event.type
+
+    data = dict(event.data or {})
+    if event.type == "execution_ended":
+        data.setdefault("final", data.get("final_output", ""))
+    return {
+        "type": event_type,
+        "agent_name": event.name if event.kind == "agent" else getattr(event, "agent_name", None),
+        "tool_name": event.name if event.kind == "tool_call" else getattr(event, "tool_name", None),
+        "depth": data.get("depth", getattr(event, "depth", 0)),
+        "data": data,
+    }
 
 
 class Emitter:
@@ -162,13 +174,9 @@ class Emitter:
             await asyncio.to_thread(self._persist, event)
             await self.hub.publish(event)
             # Preserve the existing websocket payload while both APIs share RunnerCore.
-            await legacy_ws_manager.broadcast(event.execution_id, {
-                "type": _legacy_event_type(event),
-                "agent_name": event.name if event.kind == "agent" else None,
-                "tool_name": event.name if event.kind == "tool_call" else None,
-                "depth": event.data.get("depth", 0),
-                "data": event.data,
-            })
+            await legacy_ws_manager.broadcast(
+                event.execution_id, legacy_event_payload(event)
+            )
             return event
 
     def _persist(self, event: RunEvent) -> None:
