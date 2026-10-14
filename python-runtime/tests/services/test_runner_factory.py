@@ -4,13 +4,13 @@ from app.dev.fake_runner import FakeRunner
 from app.services.runner_factory import get_runner
 
 
-def test_runner_factory_defaults_to_fake(monkeypatch):
+def test_runner_factory_defaults_to_runner_core(monkeypatch):
     monkeypatch.delenv("AGENTFORGE_RUNNER", raising=False)
     monkeypatch.delenv("AGENTFORGE_FAKE_LLM", raising=False)
 
     runner = get_runner()
 
-    assert isinstance(runner, FakeRunner)
+    assert isinstance(runner, RunnerCore)
 
 
 def test_runner_factory_builds_v2_with_offline_fake_llm(monkeypatch):
