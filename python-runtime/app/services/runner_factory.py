@@ -4,7 +4,7 @@ from app.contracts.runner import Runner
 
 
 def get_runner() -> Runner:
-    mode = os.environ.get("AGENTFORGE_RUNNER", "fake").lower()
+    mode = os.environ.get("AGENTFORGE_RUNNER", "v2").lower()
 
     if mode == "fake":
         from app.dev.fake_runner import FakeRunner
