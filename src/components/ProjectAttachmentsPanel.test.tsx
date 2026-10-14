@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api/client";
@@ -79,11 +80,17 @@ describe("ProjectAttachmentsPanel", () => {
       .mockResolvedValueOnce({ items: [], next_cursor: null })
       .mockResolvedValueOnce({ items: [cleanAttachment], next_cursor: null });
     vi.mocked(api.attachments.upload).mockResolvedValue(cleanAttachment);
-    const selectedUpdates: string[][] = [];
-    const onSelectedIdsChange = vi.fn((update: string[] | ((current: string[]) => string[])) => {
-      selectedUpdates.push(typeof update === "function" ? update([]) : update);
-    });
-    renderPanel(onSelectedIdsChange);
+    function ControlledPanel() {
+      const [selectedIds, setSelectedIds] = useState<string[]>([]);
+      return (
+        <ProjectAttachmentsPanel
+          projectId="project-1"
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+        />
+      );
+    }
+    render(<ControlledPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: /files/i }));
     // The file control is visually hidden but remains label-accessible.
@@ -94,7 +101,6 @@ describe("ProjectAttachmentsPanel", () => {
 
     expect(await screen.findByText("brief.txt")).toBeTruthy();
     expect(api.attachments.upload).toHaveBeenCalledWith("project-1", file);
-    expect(selectedUpdates).toContainEqual(["clean-attachment"]);
     expect(screen.getByRole("checkbox", { name: "Attach brief.txt to the next run" })).toBeChecked();
   });
 });
