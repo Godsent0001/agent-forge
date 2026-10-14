@@ -135,7 +135,7 @@ export function ProjectAttachmentsPanel({
       }
       if (autoSelectedIds.length > 0) {
         onSelectedIdsChange((current) => [...current, ...autoSelectedIds.filter((id) => !current.includes(id))]);
-        setNotice(`${autoSelectedCount} clean file${autoSelectedCount === 1 ? "" : "s"} scanned and automatically attached to the next run.`);
+        setNotice(`${autoSelectedCount} clean file${autoSelectedCount === 1 ? "" : "s"} scanned and auto-selected for the next run. Automatic reading currently supports TXT, MD, CSV, and JSON; PDF, image, audio, and video uploads still need a dedicated processing tool.`);
       }
       await refresh();
       if (uploaded > 0 && autoSelectedIds.length === 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
