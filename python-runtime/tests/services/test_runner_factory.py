@@ -1,6 +1,5 @@
 from app.core.llm.fake import FakeLLM
 from app.core.runner import RunnerCore
-from app.dev.fake_runner import FakeRunner
 from app.services.runner_factory import get_runner
 
 
