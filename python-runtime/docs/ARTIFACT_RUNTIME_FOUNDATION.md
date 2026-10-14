@@ -41,7 +41,7 @@ The store is framework-independent and does not modify the existing SQLAlchemy a
 
 ## Integration boundary
 
-The v2 execution path is now wired to `RunnerCore` through the developer's `ExecutionManager`, graph loader, legacy-tool adapter, workspace, approval gate, and persisted event emitter. The legacy `/executions` path remains on `ExecutionEngine` to preserve compatibility. Artifact listing/download endpoints and UI artifact cards are part of the v2 integration.
+Both `/executions` and `/v2/executions` are wired to `RunnerCore` through the shared execution manager, graph loader, legacy-tool adapter, workspace, approval gate, and persisted event emitter. The legacy route keeps its established request/response contract and receives a compatibility mapping for live WebSocket event names. Artifact listing/download endpoints and UI artifact cards are part of the v2 integration.
 
 ## Next steps
 
