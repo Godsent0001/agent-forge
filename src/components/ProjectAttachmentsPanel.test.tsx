@@ -74,12 +74,15 @@ describe("ProjectAttachmentsPanel", () => {
     expect(onSelectedIdsChange).toHaveBeenCalledWith(["clean-attachment"]);
   });
 
-  it("uploads a file and lets the user select it explicitly after scanning", async () => {
+  it("automatically selects a clean-scanned upload for the next task", async () => {
     vi.mocked(api.attachments.list)
       .mockResolvedValueOnce({ items: [], next_cursor: null })
       .mockResolvedValueOnce({ items: [cleanAttachment], next_cursor: null });
     vi.mocked(api.attachments.upload).mockResolvedValue(cleanAttachment);
-    const onSelectedIdsChange = vi.fn();
+    const selectedUpdates: string[][] = [];
+    const onSelectedIdsChange = vi.fn((update: string[] | ((current: string[]) => string[])) => {
+      selectedUpdates.push(typeof update === "function" ? update([]) : update);
+    });
     renderPanel(onSelectedIdsChange);
 
     fireEvent.click(screen.getByRole("button", { name: /files/i }));
@@ -91,7 +94,7 @@ describe("ProjectAttachmentsPanel", () => {
 
     expect(await screen.findByText("brief.txt")).toBeTruthy();
     expect(api.attachments.upload).toHaveBeenCalledWith("project-1", file);
-    expect(onSelectedIdsChange).not.toHaveBeenCalledWith(["clean-attachment"]);
-    expect(screen.getByRole("checkbox", { name: "Attach brief.txt to the next run" })).not.toBeDisabled();
+    expect(selectedUpdates).toContainEqual(["clean-attachment"]);
+    expect(screen.getByRole("checkbox", { name: "Attach brief.txt to the next run" })).toBeChecked();
   });
 });
