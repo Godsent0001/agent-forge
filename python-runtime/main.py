@@ -107,8 +107,8 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    # "fake" = built-in test runner (placeholder replies); "v2" = real models via LiteLLM.
-    return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "fake")}
+    # "fake" is an explicit test/development override; RunnerCore is the production default.
+    return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "v2")}
 
 
 def _watch_parent_exit() -> None:
