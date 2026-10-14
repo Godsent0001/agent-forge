@@ -21,6 +21,7 @@ from app.services.graph_loader import load_agent_graph
 from app.services.memory_store import SqlLessonStore, SqlMemoryStore
 from app.services.runner_factory import get_runner
 from app.tools.registry import DefaultToolFactory
+from app.ws import manager as legacy_ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,29 @@ class Hub:
             await queue.put(event)
 
 
+def _legacy_event_type(event: RunEvent) -> str:
+    """Translate core trace events to established websocket event names."""
+    if event.type == "execution_started":
+        return "ExecutionStarted"
+    if event.type == "execution_ended":
+        return "ExecutionCompleted"
+    if event.type == "approval_requested":
+        return "ApprovalRequested"
+    if event.type == "approval_resolved":
+        return "ApprovalResolved"
+    if event.type == "artifact_persisted":
+        return "ArtifactPersisted"
+    if event.type == "artifact_verification":
+        return "ArtifactVerification"
+    if event.type == "span_started":
+        return {"agent": "AgentStarted", "tool_call": "ToolStarted", "llm_call": "LLMCallStarted"}.get(event.kind or "", "SpanStarted")
+    if event.type == "span_ended":
+        suffix = "Failed" if event.status == "error" else "Completed"
+        prefix = {"agent": "Agent", "tool_call": "Tool", "llm_call": "LLMCall"}.get(event.kind or "", "Span")
+        return prefix + suffix
+    return event.type
+
+
 class Emitter:
     def __init__(self, execution_id: str, hub: Hub, start_seq: int = 0) -> None:
         self.execution_id = execution_id
@@ -137,6 +161,14 @@ class Emitter:
             )
             await asyncio.to_thread(self._persist, event)
             await self.hub.publish(event)
+            # Preserve the existing websocket payload while both APIs share RunnerCore.
+            await legacy_ws_manager.broadcast(event.execution_id, {
+                "type": _legacy_event_type(event),
+                "agent_name": event.name if event.kind == "agent" else None,
+                "tool_name": event.name if event.kind == "tool_call" else None,
+                "depth": event.data.get("depth", 0),
+                "data": event.data,
+            })
             return event
 
     def _persist(self, event: RunEvent) -> None:
