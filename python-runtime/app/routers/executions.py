@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.contracts.run import RunRequest as CoreRunRequest
-from app.db import SessionLocal
 from app.deps import get_db
-from app.services.executions import legacy_event_payload, manager as core_execution_manager
+from app.services.executions import legacy_event_payload
+from app.services.executions import manager as core_execution_manager
 from app.ws import manager as legacy_ws_manager
 
 router = APIRouter(prefix="/executions", tags=["executions"])
