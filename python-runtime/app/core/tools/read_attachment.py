@@ -61,12 +61,12 @@ class ReadAttachmentTool(Tool):
         excerpt = text[args.start_char : args.start_char + args.max_chars]
         has_more = args.start_char + len(excerpt) < len(text)
         next_char = args.start_char + len(excerpt)
-        line_number = text.count("\\n", 0, args.start_char) + 1
-        suffix = f"\\n[Excerpt truncated; continue with start_char={next_char}.]" if has_more else ""
+        line_number = text.count("\n", 0, args.start_char) + 1
+        suffix = f"\n[Excerpt truncated; continue with start_char={next_char}.]" if has_more else ""
 
         return ToolResult(
             ok=True,
-            content=f"Attachment excerpt: {raw_path} (lines {start + 1}–{start + len(excerpt.splitlines())})\n{excerpt}{suffix}",
+            content=f"Attachment excerpt: {raw_path} (starts at line {line_number})\n{excerpt}{suffix}",
             truncated=has_more,
             next_offset=next_char if has_more else None,
         )
