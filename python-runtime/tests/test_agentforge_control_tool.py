@@ -11,6 +11,7 @@ def test_system_engineer_management_tool_exposes_project_actions():
     assert "create_custom_http_tool" in schema["properties"]["operation"]["enum"]
     assert "attach_child_agent" in schema["properties"]["operation"]["enum"]
     assert "save_skill" in schema["properties"]["operation"]["enum"]
+    assert "start_verification_run" in schema["properties"]["operation"]["enum"]
     assert "verify_execution" in schema["properties"]["operation"]["enum"]
 
 
