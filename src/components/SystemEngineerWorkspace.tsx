@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type React from "react";
 import { api, type ExecutionSummary, type SystemCheck } from "../api/client";
 import { useStore } from "../store/useStore";
 import { Button } from "./ui/Button";
