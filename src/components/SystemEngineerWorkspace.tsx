@@ -25,6 +25,14 @@ const skillList = (settings: Record<string, unknown> | undefined): Skill[] => {
 };
 
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `skill-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const SYSTEM_ENGINEER_DESCRIPTION = "Managed by AgentForge System Engineer workspace.";
+const SYSTEM_ENGINEER_PROMPT = [
+  "You are AgentForge's System Engineer: an experienced agent-systems architect and workflow debugging assistant.",
+  "Help the user design reliable multi-step workflows and agent configurations. Produce actionable, implementation-aware plans.",
+  "For workflow requests, include objective and assumptions; ordered steps and dependencies; required agents, skills, and tools; inputs and outputs; branching, retries, and failure handling; security and approval boundaries; and a concrete verification plan.",
+  "For debugging requests, separate observed evidence from hypotheses, identify the most likely root cause, and recommend the smallest testable correction.",
+  "You may only perform actions exposed by your available tools. Never claim to have created resources, edited files, changed settings, or run tests unless the execution trace confirms it. If you lack the tools to perform a requested change, say so and provide the exact next implementation step.",
+].join("\\n");
 
 export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   onOpenToolCatalog: () => void;
@@ -35,7 +43,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const tools = useStore((s) => s.tools);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const updateProjectSettings = useStore((s) => s.updateProjectSettings);
-  const queueTask = useStore((s) => s.queueTask);
+  const selectAgent = useStore((s) => s.selectAgent);
   const [tab, setTab] = useState<WorkspaceTab>("home");
   const [goal, setGoal] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -50,6 +58,10 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const [checks, setChecks] = useState<SystemCheck[]>([]);
   const [executions, setExecutions] = useState<ExecutionSummary[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
+  const [engineerRunning, setEngineerRunning] = useState(false);
+  const [engineerResult, setEngineerResult] = useState<string | null>(null);
+  const [engineerExecutionId, setEngineerExecutionId] = useState<string | null>(null);
+  const [engineerStatus, setEngineerStatus] = useState<string | null>(null);
   const [customToolName, setCustomToolName] = useState("");
   const [customToolDescription, setCustomToolDescription] = useState("");
   const [customToolUrl, setCustomToolUrl] = useState("");
@@ -134,21 +146,60 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
     }
   };
 
-  const startWithGoal = () => {
-    if (!goal.trim() || !selectedAgent) {
-      setError(selectedAgent ? "Describe what you want to build first." : "Create or select an agent first.");
+  const startWithGoal = async () => {
+    if (!goal.trim() || !project || !selectedAgent || engineerRunning) {
+      setError(!goal.trim() ? "Describe what you want to build first." : !selectedAgent ? "Create or select an agent to provide model settings." : "The System Engineer is already running.");
       return;
     }
-    const task = [
-      "Act as a careful systems engineer helping design an AgentForge workflow.",
-      "First clarify assumptions if essential information is missing. Otherwise provide a concrete plan with numbered steps, required agents, skills and tools, dependencies, failure handling, and a test plan.",
-      "Do not claim to have changed the application, created resources, or run tests unless the available tools actually did so.",
-      "",
-      "User request:",
-      goal.trim(),
-    ].join("\n");
-    queueTask(selectedAgent.id, task);
-    onOpenChat();
+    setEngineerRunning(true);
+    setEngineerResult(null);
+    setEngineerExecutionId(null);
+    setEngineerStatus("Preparing the System Engineer…");
+    setError(null);
+    try {
+      let engineer = agents.find((agent) => agent.description === SYSTEM_ENGINEER_DESCRIPTION);
+      if (!engineer) {
+        engineer = await api.agents.create({
+          project_id: project.id,
+          name: "System Engineer",
+          description: SYSTEM_ENGINEER_DESCRIPTION,
+          provider: selectedAgent.provider,
+          model: selectedAgent.model,
+          system_prompt: SYSTEM_ENGINEER_PROMPT,
+          memory_enabled: false,
+        });
+        await useStore.getState().loadProject(project);
+        useStore.getState().selectAgent(engineer.id);
+      }
+      selectAgent(engineer.id);
+      setEngineerStatus("Planning with RunnerCore…");
+      const task = [
+        "Create a practical engineering plan for the user's request.",
+        "Return a clear, structured Markdown response with objective, assumptions, ordered workflow steps, agent/skill/tool requirements, dependencies, failure handling, security/approval considerations, and tests.",
+        "Do not claim to have changed the app or created resources. This run is for planning and diagnosis only.",
+        "",
+        "User request:",
+        goal.trim(),
+      ].join("\\n");
+      const started = await api.executions.run(project.id, engineer.id, task);
+      setEngineerExecutionId(started.id);
+      setEngineerStatus("System Engineer is working…");
+      for (let attempt = 0; attempt < 80; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const result = await api.executions.get(started.id);
+        if (result.status !== "running" && result.status !== "idle") {
+          setEngineerResult(result.final_output || result.error || "Execution ended without a response.");
+          setEngineerStatus(result.status === "completed" ? "Plan ready" : "Execution ended: " + result.status);
+          return;
+        }
+      }
+      setEngineerStatus("Still running. Use the execution ID below to inspect the live trace.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The System Engineer could not complete this request.");
+      setEngineerStatus("Could not complete the plan.");
+    } finally {
+      setEngineerRunning(false);
+    }
   };
 
   const createCustomTool = async (event: React.FormEvent) => {
@@ -265,7 +316,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
         <div className="mt-auto rounded-lg border border-studio-700 bg-studio-950/70 p-3">
           <div className="text-xs font-medium text-studio-200">Current agent</div>
           <div className="mt-1 truncate text-sm text-accent-300">{selectedAgent?.name ?? "No agent selected"}</div>
-          <p className="mt-1 text-[11px] leading-relaxed text-studio-500">Plans are sent to this agent through the existing execution flow.</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-studio-500">Model settings are borrowed from this agent. Planning runs through a dedicated System Engineer agent.</p>
         </div>
       </aside>
 
@@ -296,16 +347,21 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
               <div className="max-w-2xl">
                 <span className="rounded-full border border-accent-500/30 bg-accent-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-300">Guided workflow design</span>
                 <h3 className="mt-4 text-2xl font-semibold leading-tight text-studio-100 md:text-3xl">What are you trying to build?</h3>
-                <p className="mt-2 text-sm leading-relaxed text-studio-400">Describe the outcome. The selected agent will help draft a plan, including steps, dependencies, tools, failure handling, and tests.</p>
+                <p className="mt-2 text-sm leading-relaxed text-studio-400">Describe the outcome. A dedicated System Engineer agent will draft a plan with steps, dependencies, tools, failure handling, and tests using RunnerCore.</p>
               </div>
               <textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows={5}
                 placeholder="Example: Build a research workflow that searches the web, reads uploaded reports, verifies claims, and produces a cited brief…"
                 className="mt-6 w-full resize-y rounded-xl border border-studio-700 bg-studio-950 p-4 text-sm text-studio-100 outline-none placeholder:text-studio-600 focus:border-accent-500" />
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-studio-500">{selectedAgent ? `Plan will run through ${selectedAgent.name}.` : "Select or create an agent before planning."}</p>
-                <Button onClick={startWithGoal} disabled={!goal.trim() || !selectedAgent}>Draft a plan <span className="ml-2">→</span></Button>
+                <p className="text-xs text-studio-500">{selectedAgent ? "Model/provider settings: " + selectedAgent.name + "." : "Select or create an agent before planning."}</p>
+                <Button onClick={() => void startWithGoal()} disabled={!goal.trim() || !selectedAgent || engineerRunning}>{engineerRunning ? "Working…" : "Draft a plan"} <span className="ml-2">→</span></Button>
               </div>
             </div>
+            {(engineerStatus || engineerResult || engineerExecutionId) && <section className="rounded-xl border border-studio-800 bg-studio-900/60 p-5" aria-live="polite">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-studio-100">System Engineer response</h3><p className="mt-1 text-xs text-studio-400">{engineerStatus}</p></div>{engineerExecutionId && <Button size="sm" variant="secondary" onClick={() => { const engineer = agents.find((agent) => agent.description === SYSTEM_ENGINEER_DESCRIPTION); if (engineer) selectAgent(engineer.id); onOpenChat(); }}>Open chat</Button>}</div>
+              {engineerExecutionId && <p className="mt-3 break-all font-mono text-[10px] text-studio-600">Execution: {engineerExecutionId}</p>}
+              {engineerResult && <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-studio-200">{engineerResult}</div>}
+            </section>}
             <div className="grid gap-3 md:grid-cols-3">
               {[
                 { title: "Reusable skills", text: "Save procedures once and assign them to the agents that need them.", action: "Manage skills", tab: "skills" as const },
