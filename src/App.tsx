@@ -215,7 +215,6 @@ export default function App() {
         {activeTab === "engineer" ? (
           <SystemEngineerWorkspace
             onOpenToolCatalog={() => setShowToolCatalogModal(true)}
-            onOpenChat={() => setActiveTab("chat")}
           />
         ) : activeTab === "canvas" ? (
           <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
