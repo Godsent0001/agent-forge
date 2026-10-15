@@ -270,6 +270,9 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
           {tab === "debug" && <Button size="sm" variant="secondary" onClick={() => void loadDebugInfo()} disabled={debugLoading}>{debugLoading ? "Checking…" : "Refresh checks"}</Button>}
         </header>
 
+        <nav className="flex gap-2 overflow-x-auto border-b border-studio-800 px-4 py-2 md:hidden" aria-label="System Engineer sections">
+          {navItems.map((item) => <button key={item.id} onClick={() => { setTab(item.id); setNotice(null); setError(null); if (item.id === "debug") void loadDebugInfo(); }} className={`shrink-0 rounded-md border px-3 py-2 text-xs ${tab === item.id ? "border-accent-500/40 bg-accent-500/10 text-accent-200" : "border-studio-800 text-studio-400"}`}>{item.label}</button>)}
+        </nav>
         <div className="mx-auto max-w-5xl space-y-5 p-5 md:p-7">
           {notice && <div role="status" className="rounded-lg border border-emerald-800/70 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">{notice}</div>}
           {error && <div role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-300">{error}</div>}
