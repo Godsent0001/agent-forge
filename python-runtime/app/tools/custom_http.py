@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from urllib.parse import urlencode, urlsplit, urlunsplit
 
+import httpx
 from pydantic import BaseModel, Field, create_model
 
 from app.contracts.graph import ToolBinding
@@ -76,13 +76,11 @@ class CustomHttpTool(Tool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
         payload = args.model_dump(exclude_none=True)
         if self.method == "GET":
-            parsed = urlsplit(self.url)
-            query = urlencode(
-                {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
-                 for key, value in payload.items()},
-                doseq=False,
-            )
-            url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "&".join(part for part in (parsed.query, query) if part), parsed.fragment))
+            query_args = {
+                key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                for key, value in payload.items()
+            }
+            url = str(httpx.URL(self.url).copy_merge_params(query_args))
             result = await HttpRequestTool().execute(f"GET {url}", context=ctx)
         else:
             result = await HttpRequestTool().execute(
