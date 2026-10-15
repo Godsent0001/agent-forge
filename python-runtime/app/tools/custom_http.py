@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
 from pydantic import BaseModel, Field, create_model
 
 from app.contracts.graph import ToolBinding
@@ -25,6 +24,18 @@ _JSON_TYPES: dict[str, type] = {
     "object": dict,
     "array": list,
 }
+
+
+def _http_url(value: str):
+    import httpx
+
+    return httpx.URL(value)
+
+
+def _merge_query(url: str, params: dict[str, str]) -> str:
+    import httpx
+
+    return str(httpx.URL(url).copy_merge_params(params))
 
 
 def _input_model(schema: Any) -> type[BaseModel]:
@@ -65,7 +76,7 @@ class CustomHttpTool(Tool):
         if method not in {"GET", "POST"}:
             raise ValueError("Custom HTTP tool method must be GET or POST")
         try:
-            parsed = httpx.URL(url.strip())
+            parsed = _http_url(url.strip())
         except Exception as exc:
             raise ValueError("Custom HTTP tool URL must be an absolute HTTP(S) URL") from exc
         if parsed.scheme not in {"http", "https"} or not parsed.host or parsed.username or parsed.password:
@@ -83,7 +94,7 @@ class CustomHttpTool(Tool):
                 key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
                 for key, value in payload.items()
             }
-            url = str(httpx.URL(self.url).copy_merge_params(query_args))
+            url = _merge_query(self.url, query_args)
             result = await HttpRequestTool().execute(f"GET {url}", context=ctx)
         else:
             result = await HttpRequestTool().execute(
