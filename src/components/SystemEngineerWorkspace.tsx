@@ -49,6 +49,11 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const [checks, setChecks] = useState<SystemCheck[]>([]);
   const [executions, setExecutions] = useState<ExecutionSummary[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
+  const [customToolName, setCustomToolName] = useState("");
+  const [customToolDescription, setCustomToolDescription] = useState("");
+  const [customToolUrl, setCustomToolUrl] = useState("");
+  const [customToolMethod, setCustomToolMethod] = useState<"GET" | "POST">("POST");
+  const [customToolSchema, setCustomToolSchema] = useState("{\n  \"type\": \"object\",\n  \"properties\": {\n    \"query\": { \"type\": \"string\", \"description\": \"The value to send to the endpoint\" }\n  },\n  \"required\": [\"query\"]\n}");
 
   useEffect(() => setSkills(skillList(project?.settings)), [project?.id, project?.settings]);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
@@ -143,6 +148,47 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
     ].join("\n");
     queueTask(selectedAgent.id, task);
     onOpenChat();
+  };
+
+  const createCustomTool = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !customToolName.trim() || !customToolDescription.trim() || !customToolUrl.trim()) {
+      setError("Name, description, and endpoint URL are required.");
+      return;
+    }
+    let schema: Record<string, unknown>;
+    try {
+      schema = JSON.parse(customToolSchema) as Record<string, unknown>;
+      if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object") {
+        throw new Error("The schema must be a JSON Schema object with type 'object' and a properties object.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Input schema JSON is invalid.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.tools.create({
+        project_id: project.id,
+        name: customToolName.trim(),
+        kind: "custom_http",
+        description: customToolDescription.trim(),
+        input_schema: schema,
+        config: { url: customToolUrl.trim(), method: customToolMethod, input_schema: schema },
+      });
+      if (selectedAgentId) await api.agents.attachTool(selectedAgentId, created.id);
+      await useStore.getState().loadProject(project);
+      setCustomToolName("");
+      setCustomToolDescription("");
+      setCustomToolUrl("");
+      setCustomToolMethod("POST");
+      setNotice(selectedAgent ? `Created and attached "${created.name}" to ${selectedAgent.name}.` : `Created "${created.name}" in the project tool library.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create the custom HTTP tool.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const exportSkills = () => {
