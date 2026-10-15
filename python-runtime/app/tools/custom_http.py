@@ -4,7 +4,7 @@ Only GET and POST to public URLs are supported. The existing HTTP tool enforces
 SSRF protections, redirect validation, response bounds, and request timeouts.
 Credentials/custom headers are intentionally not accepted by this first version.
 """
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import json
 from typing import Any
