@@ -36,6 +36,17 @@ export function FloatingSystemEngineer() {
   }, [messages, busy, open]);
 
   useEffect(() => {
+    const receiveDiagnosis = (event: Event) => {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail;
+      if (!detail?.prompt) return;
+      setInput(detail.prompt);
+      setOpen(true);
+    };
+    window.addEventListener("agentforge:system-engineer-prompt", receiveDiagnosis);
+    return () => window.removeEventListener("agentforge:system-engineer-prompt", receiveDiagnosis);
+  }, []);
+
+  useEffect(() => {
     setEngineerId(null);
     setConversationId(null);
     setMessages([]);
