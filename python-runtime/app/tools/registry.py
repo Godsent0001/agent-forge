@@ -54,6 +54,7 @@ from app.tools.graphics import (
     VisualAssetManagerTool,
 )
 from app.tools.http_request import HttpRequestTool
+from app.tools.custom_http import CustomHttpTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.qc import (
@@ -175,6 +176,8 @@ class DefaultToolFactory:
     """Build a native v2 tool when available, otherwise adapt the legacy tool."""
 
     def build(self, binding: ToolBinding) -> V2Tool:
+        if binding.kind == "custom_http":
+            return CustomHttpTool(binding)
         native = NATIVE_TOOLS.get(binding.kind)
         if native is not None:
             return native()
