@@ -43,6 +43,7 @@ from app.tools.character import (
     LipSyncTool,
 )
 from app.tools.composition import CompositionEngineTool, EffectsEngineTool
+from app.tools.custom_http import CustomHttpTool
 from app.tools.filesystem import FileSystemTool
 from app.tools.graphics import (
     CaptionEngineTool,
@@ -54,7 +55,6 @@ from app.tools.graphics import (
     VisualAssetManagerTool,
 )
 from app.tools.http_request import HttpRequestTool
-from app.tools.custom_http import CustomHttpTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.qc import (
