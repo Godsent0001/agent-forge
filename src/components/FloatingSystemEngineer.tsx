@@ -35,6 +35,12 @@ export function FloatingSystemEngineer() {
   }, [messages, busy, open]);
 
   useEffect(() => {
+    setEngineerId(null);
+    setConversationId(null);
+    setMessages([]);
+  }, [project?.id]);
+
+  useEffect(() => {
     if (!open || !project || engineerId) return;
     let cancelled = false;
     setInitializing(true);
@@ -81,7 +87,6 @@ export function FloatingSystemEngineer() {
         }
         if (cancelled) return;
         useStore.setState({ agents: allAgents, tools: allTools });
-        setEngineerId(engineer.id);
 
         let conversations = await api.conversations.list(project.id, engineer.id, 10);
         if (!conversations.length) {
@@ -90,6 +95,7 @@ export function FloatingSystemEngineer() {
         if (cancelled) return;
         setConversationId(conversations[0].id);
         setMessages(await api.conversations.messages(conversations[0].id));
+        setEngineerId(engineer.id);
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not initialize the System Engineer.");
       } finally {
