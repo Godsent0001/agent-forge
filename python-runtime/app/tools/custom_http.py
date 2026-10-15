@@ -7,8 +7,8 @@ Credentials/custom headers are intentionally not accepted by this first version.
 from __future__ import annotations
 
 import json
-import urllib.parse
 from typing import Any
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, create_model
 
@@ -64,7 +64,7 @@ class CustomHttpTool(Tool):
             raise ValueError("Custom HTTP tool requires a URL")
         if method not in {"GET", "POST"}:
             raise ValueError("Custom HTTP tool method must be GET or POST")
-        parsed = urllib.parse.urlsplit(url.strip())
+        parsed = urlsplit(url.strip())
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Custom HTTP tool URL must be an absolute HTTP(S) URL")
         self.url = url.strip()
@@ -77,12 +77,12 @@ class CustomHttpTool(Tool):
         payload = args.model_dump(exclude_none=True)
         if self.method == "GET":
             parsed = urlsplit(self.url)
-            query = urllib.parse.urlencode(
+            query = urlencode(
                 {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
                  for key, value in payload.items()},
                 doseq=False,
             )
-            url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "&".join(part for part in (parsed.query, query) if part), parsed.fragment))
+            url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "&".join(part for part in (parsed.query, query) if part), parsed.fragment))
             result = await HttpRequestTool().execute(f"GET {url}", context=ctx)
         else:
             result = await HttpRequestTool().execute(
