@@ -26,7 +26,7 @@ hiddenimports = [
     "app.llm",
     "app.models",
     "app.ws",
-] + litellm_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
+] + litellm_hiddenimports + ["tiktoken_ext.openai_public"] + collect_submodules("tiktoken_ext") + collect_submodules("app") + collect_submodules("alembic")
 
 a = Analysis(
     ["main.py"],
