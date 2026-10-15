@@ -8,13 +8,12 @@ It never deletes resources or accesses another project.
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timezone
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
 from app import models
-from app.contracts.graph import ToolBinding
 from app.contracts.tools import Tool, ToolContext, ToolResult
 from app.db import SessionLocal
 from app.graph import GraphValidationError, validate_new_link
@@ -213,7 +212,7 @@ class AgentForgeControlTool(Tool):
                 skill_id = values.get("skill_id")
                 skill = next((item for item in skills if item.get("id") == skill_id), None) if skill_id else None
                 if skill is None:
-                    skill_id = f"skill-{__import__('uuid').uuid4()}"
+                    skill_id = f"skill-{uuid.uuid4()}"
                     skill = {"id": skill_id, "created_at": __import__("datetime").datetime.now().astimezone().isoformat()}
                     skills.append(skill)
                 assigned = values.get("assigned_agent_ids", [])
