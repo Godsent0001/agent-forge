@@ -28,6 +28,7 @@ class AgentForgeControlInput(BaseModel):
         "attach_tool",
         "attach_child_agent",
         "save_skill",
+        "start_verification_run",
         "verify_execution",
     ] = Field(description="The project-management operation to perform.")
     agent_id: str | None = Field(default=None, description="Existing agent ID for update/attachment.")
@@ -45,6 +46,7 @@ class AgentForgeControlInput(BaseModel):
     skill_instructions: str | None = Field(default=None, description="Reusable procedure/instructions for a skill.")
     assigned_agent_ids: list[str] | None = Field(default=None, description="Agent IDs that should receive this skill.")
     execution_id: str | None = Field(default=None, description="Execution ID to inspect and verify.")
+    task: str | None = Field(default=None, description="Task to run when testing a target agent.")
     memory_enabled: bool | None = Field(default=None, description="Whether agent memory is enabled.")
     lessons_enabled: bool | None = Field(default=None, description="Whether agent lessons are enabled.")
     params: dict | None = Field(default=None, description="Agent runtime parameters.")
@@ -233,6 +235,31 @@ class AgentForgeControlTool(Tool):
                 project.settings = settings
                 db.commit()
                 result = {"saved": True, "skill_id": skill_id, "name": name, "assigned_agent_ids": assigned}
+            elif operation == "start_verification_run":
+                agent = self._agent_in_project(db, project.id, values.get("agent_id"))
+                task = str(values.get("task", "")).strip()
+                if agent is None or not task:
+                    return ToolResult(ok=False, content="start_verification_run requires an agent_id in the current project and a non-empty task.")
+                if agent.description == "Managed by AgentForge System Engineer workspace.":
+                    return ToolResult(ok=False, content="Run verification against a target agent, not the System Engineer itself.")
+                from uuid import uuid4
+                from app.contracts.run import RunRequest as CoreRunRequest
+                from app.services.executions import manager as core_execution_manager
+
+                execution_id = str(uuid4())
+                try:
+                    core_execution_manager.start(CoreRunRequest(
+                        execution_id=execution_id,
+                        project_id=project.id,
+                        root_agent_id=agent.id,
+                        task=task[:12000],
+                    ))
+                except ValueError as exc:
+                    return ToolResult(ok=False, content=f"Could not start verification run: {exc}")
+                result = {"started": True, "execution_id": execution_id,
+                          "agent_id": agent.id, "agent_name": agent.name,
+                          "status": "running",
+                          "next_step": "Call verify_execution with this execution_id after the run finishes."}
             elif operation == "verify_execution":
                 execution = db.get(models.Execution, values.get("execution_id", ""))
                 if execution is None or execution.project_id != project.id:
