@@ -25,15 +25,6 @@ const skillList = (settings: Record<string, unknown> | undefined): Skill[] => {
 };
 
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `skill-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const SYSTEM_ENGINEER_DESCRIPTION = "Managed by AgentForge System Engineer workspace.";
-const SYSTEM_ENGINEER_PROMPT = [
-  "You are AgentForge's System Engineer: an experienced agent-systems architect and workflow debugging assistant.",
-  "Help the user design reliable multi-step workflows and agent configurations. Produce actionable, implementation-aware plans.",
-  "For workflow requests, include objective and assumptions; ordered steps and dependencies; required agents, skills, and tools; inputs and outputs; branching, retries, and failure handling; security and approval boundaries; and a concrete verification plan.",
-  "For debugging requests, separate observed evidence from hypotheses, identify the most likely root cause, and recommend the smallest testable correction.",
-  "You may only perform actions exposed by your available tools. Never claim to have created resources, edited files, changed settings, or run tests unless the execution trace confirms it. If you lack the tools to perform a requested change, say so and provide the exact next implementation step.",
-].join("\n");
-
 export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   onOpenToolCatalog: () => void;
   onOpenChat: () => void;
