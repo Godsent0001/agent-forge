@@ -25,16 +25,12 @@ const skillList = (settings: Record<string, unknown> | undefined): Skill[] => {
 };
 
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `skill-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
-  onOpenToolCatalog: () => void;
-  onOpenChat: () => void;
-}) {
+export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatalog: () => void }) {
   const project = useStore((s) => s.project);
   const agents = useStore((s) => s.agents);
   const tools = useStore((s) => s.tools);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const updateProjectSettings = useStore((s) => s.updateProjectSettings);
-  const selectAgent = useStore((s) => s.selectAgent);
   const [tab, setTab] = useState<WorkspaceTab>("home");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
