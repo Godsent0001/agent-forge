@@ -111,6 +111,50 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
     resetSkillForm();
   };
 
+  const createCustomTool = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !customToolName.trim() || !customToolDescription.trim() || !customToolUrl.trim()) {
+      setError("Tool name, description, and endpoint URL are required.");
+      return;
+    }
+    let inputSchema: Record<string, unknown>;
+    try {
+      inputSchema = JSON.parse(customToolSchema) as Record<string, unknown>;
+    } catch {
+      setError("Input JSON Schema is not valid JSON.");
+      return;
+    }
+    if (inputSchema.type !== "object" || !inputSchema.properties || typeof inputSchema.properties !== "object") {
+      setError('Input JSON Schema must be an object with type "object" and a properties object.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.tools.create({
+        project_id: project.id,
+        name: customToolName.trim(),
+        description: customToolDescription.trim(),
+        kind: "custom_http",
+        input_schema: inputSchema,
+        config: { url: customToolUrl.trim(), method: customToolMethod, input_schema: inputSchema },
+      });
+      if (selectedAgent) await api.agents.attachTool(selectedAgent.id, created.id);
+      const refreshedTools = await api.tools.list(project.id);
+      useStore.setState({ tools: refreshedTools });
+      setCustomToolName("");
+      setCustomToolDescription("");
+      setCustomToolUrl("");
+      setNotice(selectedAgent
+        ? `Custom tool created and attached to ${selectedAgent.name}.`
+        : "Custom tool created. Select an agent to attach it.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create the custom HTTP tool.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadDebugInfo = async () => {
     if (!project) return;
     setDebugLoading(true);
