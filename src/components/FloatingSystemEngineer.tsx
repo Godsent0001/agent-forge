@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
+import { DEFAULT_MODELS } from "../config/models";
 import type { ConversationMessageRecord } from "../types";
 
 const ENGINEER_DESCRIPTION = "Managed by AgentForge System Engineer workspace.";
@@ -51,13 +52,14 @@ export function FloatingSystemEngineer() {
         let engineer = allAgents.find((agent) => agent.description === ENGINEER_DESCRIPTION);
         if (!engineer) {
           const source = selectedAgent ?? allAgents[0];
-          if (!source) throw new Error("Create an agent first so the System Engineer has a configured model.");
+          const provider = source?.provider ?? "anthropic";
+          const model = source?.model || DEFAULT_MODELS[provider] || DEFAULT_MODELS.anthropic;
           engineer = await api.agents.create({
             project_id: project.id,
             name: "System Engineer",
             description: ENGINEER_DESCRIPTION,
-            provider: source.provider,
-            model: source.model,
+            provider,
+            model,
             system_prompt: ENGINEER_PROMPT,
             memory_enabled: true,
             lessons_enabled: true,
