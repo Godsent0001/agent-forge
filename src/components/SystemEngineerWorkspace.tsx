@@ -162,6 +162,19 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
       if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object") {
         throw new Error("The schema must be a JSON Schema object with type 'object' and a properties object.");
       }
+      const properties = schema.properties as Record<string, { type?: string }>;
+      const supportedTypes = new Set(["string", "integer", "number", "boolean", "object", "array"]);
+      for (const [fieldName, fieldSchema] of Object.entries(properties)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fieldName)) {
+          throw new Error(`Input field "${fieldName}" must use letters, numbers, and underscores and cannot start with a number.`);
+        }
+        if (!fieldSchema || !supportedTypes.has(fieldSchema.type ?? "string")) {
+          throw new Error(`Input field "${fieldName}" uses an unsupported type. Use string, integer, number, boolean, object, or array.`);
+        }
+      }
+      if (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.some((field) => typeof field !== "string" || !(field in properties)))) {
+        throw new Error("The required array must contain only names defined in properties.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Input schema JSON is invalid.");
       return;
