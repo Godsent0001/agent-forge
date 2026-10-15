@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 from app import models
 from app.contracts.tools import Tool, ToolContext, ToolResult
 from app.db import SessionLocal
@@ -217,7 +218,7 @@ class AgentForgeControlTool(Tool):
                 skill = next((item for item in skills if item.get("id") == skill_id), None) if skill_id else None
                 if skill is None:
                     skill_id = f"skill-{uuid.uuid4()}"
-                    skill = {"id": skill_id, "created_at": __import__("datetime").datetime.now().astimezone().isoformat()}
+                    skill = {"id": skill_id, "created_at": datetime.now(timezone.utc).isoformat()}
                     skills.append(skill)
                 assigned = values.get("assigned_agent_ids", [])
                 valid_agents = {a.id for a in db.query(models.Agent.id).filter_by(project_id=project.id).all()}
@@ -243,6 +244,7 @@ class AgentForgeControlTool(Tool):
                 if agent.description == "Managed by AgentForge System Engineer workspace.":
                     return ToolResult(ok=False, content="Run verification against a target agent, not the System Engineer itself.")
                 from uuid import uuid4
+
                 from app.contracts.run import RunRequest as CoreRunRequest
                 from app.services.executions import manager as core_execution_manager
 
