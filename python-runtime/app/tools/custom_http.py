@@ -64,9 +64,12 @@ class CustomHttpTool(Tool):
             raise ValueError("Custom HTTP tool requires a URL")
         if method not in {"GET", "POST"}:
             raise ValueError("Custom HTTP tool method must be GET or POST")
-        parsed = urlsplit(url.strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError("Custom HTTP tool URL must be an absolute HTTP(S) URL")
+        try:
+            parsed = httpx.URL(url.strip())
+        except Exception as exc:
+            raise ValueError("Custom HTTP tool URL must be an absolute HTTP(S) URL") from exc
+        if parsed.scheme not in {"http", "https"} or not parsed.host or parsed.username or parsed.password:
+            raise ValueError("Custom HTTP tool URL must be an absolute HTTP(S) URL without embedded credentials")
         self.url = url.strip()
         self.method = method
         self.name = binding.name
