@@ -54,6 +54,8 @@ class AgentForgeControlTool(Tool):
     """Safe, project-scoped mutations for the System Engineer agent."""
 
     kind: ClassVar[str] = "agentforge_control"
+    name: ClassVar[str] = "agentforge_control"
+    description: ClassVar[str] = "Manage project-scoped AgentForge resources safely."
     default_description: ClassVar[str] = (
         "Inspect and manage AgentForge resources in the current project. Use this tool "
         "to create/update agents, configure public HTTP tools, connect agents/tools into "
