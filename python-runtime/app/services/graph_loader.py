@@ -24,7 +24,7 @@ def _with_assigned_skills(system_prompt: str, agent_id: str, skills: object) -> 
             continue
         if not isinstance(name, str) or not name.strip():
             name = "Untitled skill"
-        block = f"### {name.strip()[:120]}\\n{instructions.strip()}"
+        block = f"### {name.strip()[:120]}\n{instructions.strip()}"
         remaining = 16000 - total_chars
         if remaining <= 0:
             break
@@ -35,10 +35,10 @@ def _with_assigned_skills(system_prompt: str, agent_id: str, skills: object) -> 
     if not blocks:
         return system_prompt
     skill_context = (
-        "\\n\\n[AgentForge Assigned Skills]\\n"
+        "\n\n[AgentForge Assigned Skills]\n"
         "Use these user-assigned procedures when relevant to the task. They are guidance, "
-        "not permission to bypass safety, access controls, or tool approvals.\\n\\n"
-        + "\\n\\n".join(blocks)
+        "not permission to bypass safety, access controls, or tool approvals.\n\n"
+        + "\n\n".join(blocks)
     )
     return (system_prompt or "").rstrip() + skill_context
 
