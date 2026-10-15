@@ -391,7 +391,19 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
           {notice && <div role="status" className="rounded-lg border border-emerald-800/70 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">{notice}</div>}
           {error && <div role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-300">{error}</div>}
 
-          {tab === "home" && <>
+          {tab === "home" && <div className="space-y-5">
+            <div className="rounded-2xl border border-studio-700 bg-studio-900/70 p-6">
+              <h3 className="text-xl font-semibold text-studio-100">Project tools and skills</h3>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-studio-400">Use the floating System Engineer button to ask for changes in natural language. This workspace is for reviewing reusable skills, configuring custom tools, and inspecting execution failures.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onClick={() => setTab("skills")}>Manage skills</Button>
+                <Button variant="secondary" onClick={() => setTab("tools")}>Manage tools</Button>
+                <Button variant="secondary" onClick={() => { setTab("debug"); void loadDebugInfo(); }}>Inspect failures</Button>
+              </div>
+            </div>
+          </div>}
+
+          {false && tab === "home" && <>
             <div className="rounded-2xl border border-studio-700 bg-gradient-to-br from-studio-900 to-studio-950 p-6 md:p-8">
               <div className="max-w-2xl">
                 <span className="rounded-full border border-accent-500/30 bg-accent-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-300">Guided workflow design</span>
