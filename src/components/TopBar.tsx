@@ -8,7 +8,7 @@ import { ProjectSettings } from "./ProjectSettings";
 interface TopBarProps {
   onRun?: (executionId: string) => void;
   activeTab?: "canvas" | "chat" | "config" | "engineer";
-  onTabChange?: (tab: "canvas" | "chat" | "config") => void;
+  onTabChange?: (tab: "canvas" | "chat" | "config" | "engineer") => void;
   onTriggerQuickRun?: () => void;
   isRunning?: boolean;
 }
