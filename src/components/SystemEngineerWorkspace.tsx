@@ -295,7 +295,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
         "Separate observed facts from hypotheses. Identify the likely failure point, explain why, and recommend the smallest corrective action and a regression test. Do not claim to have changed anything.",
         "Execution evidence (sensitive-looking fields were redacted):",
         JSON.stringify(evidence, null, 2).slice(0, 12000),
-      ].join("\\n"));
+      ].join("\n"));
       setTab("home");
       setNotice("Execution evidence loaded. Review the request, then run the System Engineer to diagnose it.");
     } catch (e) {
