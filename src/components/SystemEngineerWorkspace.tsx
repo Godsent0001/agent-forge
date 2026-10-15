@@ -45,7 +45,6 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const updateProjectSettings = useStore((s) => s.updateProjectSettings);
   const selectAgent = useStore((s) => s.selectAgent);
   const [tab, setTab] = useState<WorkspaceTab>("home");
-  const [goal, setGoal] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [skillName, setSkillName] = useState("");
@@ -58,10 +57,6 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const [checks, setChecks] = useState<SystemCheck[]>([]);
   const [executions, setExecutions] = useState<ExecutionSummary[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
-  const [engineerRunning, setEngineerRunning] = useState(false);
-  const [engineerResult, setEngineerResult] = useState<string | null>(null);
-  const [engineerExecutionId, setEngineerExecutionId] = useState<string | null>(null);
-  const [engineerStatus, setEngineerStatus] = useState<string | null>(null);
   const [diagnosingId, setDiagnosingId] = useState<string | null>(null);
   const [customToolName, setCustomToolName] = useState("");
   const [customToolDescription, setCustomToolDescription] = useState("");
@@ -147,118 +142,8 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
     }
   };
 
-  const startWithGoal = async () => {
-    if (!goal.trim() || !project || !selectedAgent || engineerRunning) {
-      setError(!goal.trim() ? "Describe what you want to build first." : !selectedAgent ? "Create or select an agent to provide model settings." : "The System Engineer is already running.");
-      return;
-    }
-    setEngineerRunning(true);
-    setEngineerResult(null);
-    setEngineerExecutionId(null);
-    setEngineerStatus("Preparing the System Engineer…");
-    setError(null);
-    try {
-      let engineer = agents.find((agent) => agent.description === SYSTEM_ENGINEER_DESCRIPTION);
-      if (!engineer) {
-        engineer = await api.agents.create({
-          project_id: project.id,
-          name: "System Engineer",
-          description: SYSTEM_ENGINEER_DESCRIPTION,
-          provider: selectedAgent.provider,
-          model: selectedAgent.model,
-          system_prompt: SYSTEM_ENGINEER_PROMPT,
-          memory_enabled: false,
-        });
-        await useStore.getState().loadProject(project);
-        useStore.getState().selectAgent(engineer.id);
-      }
-      selectAgent(engineer.id);
-      setEngineerStatus("Planning with RunnerCore…");
-      const task = [
-        "Create a practical engineering plan for the user's request.",
-        "Return a clear, structured Markdown response with objective, assumptions, ordered workflow steps, agent/skill/tool requirements, dependencies, failure handling, security/approval considerations, and tests.",
-        "Do not claim to have changed the app or created resources. This run is for planning and diagnosis only.",
-        "",
-        "User request:",
-        goal.trim(),
-      ].join("\n");
-      const started = await api.executions.run(project.id, engineer.id, task);
-      setEngineerExecutionId(started.id);
-      setEngineerStatus("System Engineer is working…");
-      for (let attempt = 0; attempt < 80; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const result = await api.executions.get(started.id);
-        if (result.status !== "running" && result.status !== "idle") {
-          setEngineerResult(result.final_output || result.error || "Execution ended without a response.");
-          setEngineerStatus(result.status === "completed" ? "Plan ready" : "Execution ended: " + result.status);
-          return;
-        }
-      }
-      setEngineerStatus("Still running. Use the execution ID below to inspect the live trace.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "The System Engineer could not complete this request.");
-      setEngineerStatus("Could not complete the plan.");
-    } finally {
-      setEngineerRunning(false);
-    }
-  };
-
-  const createCustomTool = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!project || !customToolName.trim() || !customToolDescription.trim() || !customToolUrl.trim()) {
-      setError("Name, description, and endpoint URL are required.");
-      return;
-    }
-    let schema: Record<string, unknown>;
-    try {
-      schema = JSON.parse(customToolSchema) as Record<string, unknown>;
-      if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object") {
-        throw new Error("The schema must be a JSON Schema object with type 'object' and a properties object.");
-      }
-      const properties = schema.properties as Record<string, { type?: string }>;
-      const supportedTypes = new Set(["string", "integer", "number", "boolean", "object", "array"]);
-      for (const [fieldName, fieldSchema] of Object.entries(properties)) {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fieldName)) {
-          throw new Error(`Input field "${fieldName}" must use letters, numbers, and underscores and cannot start with a number.`);
-        }
-        if (!fieldSchema || !supportedTypes.has(fieldSchema.type ?? "string")) {
-          throw new Error(`Input field "${fieldName}" uses an unsupported type. Use string, integer, number, boolean, object, or array.`);
-        }
-      }
-      if (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.some((field) => typeof field !== "string" || !(field in properties)))) {
-        throw new Error("The required array must contain only names defined in properties.");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Input schema JSON is invalid.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const created = await api.tools.create({
-        project_id: project.id,
-        name: customToolName.trim(),
-        kind: "custom_http",
-        description: customToolDescription.trim(),
-        input_schema: schema,
-        config: { url: customToolUrl.trim(), method: customToolMethod, input_schema: schema },
-      });
-      if (selectedAgentId) await api.agents.attachTool(selectedAgentId, created.id);
-      await useStore.getState().loadProject(project);
-      setCustomToolName("");
-      setCustomToolDescription("");
-      setCustomToolUrl("");
-      setCustomToolMethod("POST");
-      setNotice(selectedAgent ? `Created and attached "${created.name}" to ${selectedAgent.name}.` : `Created "${created.name}" in the project tool library.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the custom HTTP tool.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const prepareDiagnosis = async (run: ExecutionSummary) => {
-    if (diagnosingId || engineerRunning) return;
+    if (diagnosingId) return;
     setDiagnosingId(run.id);
     setError(null);
     setNotice("Loading execution evidence…");
@@ -290,14 +175,17 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
           data: redact(event.data),
         })),
       };
-      setGoal([
-        "Diagnose this existing AgentForge execution using the evidence below.",
-        "Separate observed facts from hypotheses. Identify the likely failure point, explain why, and recommend the smallest corrective action and a regression test. Do not claim to have changed anything.",
-        "Execution evidence (sensitive-looking fields were redacted):",
-        JSON.stringify(evidence, null, 2).slice(0, 12000),
-      ].join("\n"));
-      setTab("home");
-      setNotice("Execution evidence loaded. Review the request, then run the System Engineer to diagnose it.");
+      window.dispatchEvent(new CustomEvent("agentforge:system-engineer-prompt", {
+        detail: {
+          prompt: [
+            "Diagnose this existing AgentForge execution using the evidence below.",
+            "Separate observed facts from hypotheses. Identify the likely failure point, explain why, and use the agentforge_control tool to inspect or make a safe project-level correction if appropriate. Verify any changes.",
+            "Execution evidence (sensitive-looking fields were redacted):",
+            JSON.stringify(evidence, null, 2).slice(0, 12000),
+          ].join("\n"),
+        },
+      }));
+      setNotice("Execution evidence sent to the floating System Engineer.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load execution evidence.");
     } finally {
@@ -403,39 +291,6 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
             </div>
           </div>}
 
-          {false && tab === "home" && <>
-            <div className="rounded-2xl border border-studio-700 bg-gradient-to-br from-studio-900 to-studio-950 p-6 md:p-8">
-              <div className="max-w-2xl">
-                <span className="rounded-full border border-accent-500/30 bg-accent-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-300">Guided workflow design</span>
-                <h3 className="mt-4 text-2xl font-semibold leading-tight text-studio-100 md:text-3xl">What are you trying to build?</h3>
-                <p className="mt-2 text-sm leading-relaxed text-studio-400">Describe the outcome. A dedicated System Engineer agent will draft a plan with steps, dependencies, tools, failure handling, and tests using RunnerCore.</p>
-              </div>
-              <textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows={5}
-                placeholder="Example: Build a research workflow that searches the web, reads uploaded reports, verifies claims, and produces a cited brief…"
-                className="mt-6 w-full resize-y rounded-xl border border-studio-700 bg-studio-950 p-4 text-sm text-studio-100 outline-none placeholder:text-studio-600 focus:border-accent-500" />
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-studio-500">{selectedAgent ? "Model/provider settings: " + selectedAgent.name + "." : "Select or create an agent before planning."}</p>
-                <Button onClick={() => void startWithGoal()} disabled={!goal.trim() || !selectedAgent || engineerRunning}>{engineerRunning ? "Working…" : "Draft a plan"} <span className="ml-2">→</span></Button>
-              </div>
-            </div>
-            {(engineerStatus || engineerResult || engineerExecutionId) && <section className="rounded-xl border border-studio-800 bg-studio-900/60 p-5" aria-live="polite">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-studio-100">System Engineer response</h3><p className="mt-1 text-xs text-studio-400">{engineerStatus}</p></div>{engineerExecutionId && <Button size="sm" variant="secondary" onClick={() => { const engineer = agents.find((agent) => agent.description === SYSTEM_ENGINEER_DESCRIPTION); if (engineer) selectAgent(engineer.id); onOpenChat(); }}>Open chat</Button>}</div>
-              {engineerExecutionId && <p className="mt-3 break-all font-mono text-[10px] text-studio-600">Execution: {engineerExecutionId}</p>}
-              {engineerResult && <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-studio-200">{engineerResult}</div>}
-            </section>}
-            <div className="grid gap-3 md:grid-cols-3">
-              {[
-                { title: "Reusable skills", text: "Save procedures once and assign them to the agents that need them.", action: "Manage skills", tab: "skills" as const },
-                { title: "Tools", text: "Review the tools already available and attach catalog tools to agents.", action: "Manage tools", tab: "tools" as const },
-                { title: "Debug failures", text: "Check runtime health and inspect recent failed executions.", action: "Open diagnostics", tab: "debug" as const },
-              ].map((card) => <button key={card.tab} onClick={() => { setTab(card.tab); if (card.tab === "debug") void loadDebugInfo(); }}
-                className="rounded-xl border border-studio-800 bg-studio-900/60 p-4 text-left hover:border-studio-600 hover:bg-studio-900">
-                <h4 className="text-sm font-semibold text-studio-100">{card.title}</h4><p className="mt-2 min-h-10 text-xs leading-relaxed text-studio-400">{card.text}</p>
-                <span className="mt-4 inline-block text-xs font-medium text-accent-300">{card.action} →</span>
-              </button>)}
-            </div>
-          </>}
-
           {tab === "skills" && <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]">
             <div className="space-y-3">
               <div><h3 className="text-base font-semibold text-studio-100">Skill library</h3><p className="mt-1 text-xs text-studio-400">A skill is reusable instructions for how an agent should perform a procedure.</p></div>
@@ -483,7 +338,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
             {!debugLoading && checks.length === 0 && <div className="rounded-xl border border-dashed border-studio-700 p-5"><p className="text-sm text-studio-300">Run diagnostics to inspect the runtime.</p><Button className="mt-3" size="sm" onClick={() => void loadDebugInfo()}>Run checks</Button></div>}
             {checks.map((check) => <article key={check.name} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${check.ok ? "bg-emerald-400" : "bg-red-400"}`} /><h4 className="text-sm font-medium text-studio-100">{check.name}</h4><span className={`ml-auto text-[11px] ${check.ok ? "text-emerald-300" : "text-red-300"}`}>{check.ok ? "OK" : "Needs attention"}</span></div><p className="mt-2 text-xs text-studio-400">{check.detail}</p>{check.fix && <p className="mt-2 text-xs text-accent-300">Suggested fix: {check.fix}</p>}</article>)}
             <div><h3 className="text-base font-semibold text-studio-100">Recent executions</h3><p className="mt-1 text-xs text-studio-400">Failed runs are shown first in the list below when available.</p></div>
-            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p><div className="mt-3"><Button size="sm" variant="secondary" disabled={Boolean(diagnosingId) || engineerRunning} onClick={() => void prepareDiagnosis(run)}>{diagnosingId === run.id ? "Loading evidence…" : "Prepare diagnosis"}</Button></div></article>)}
+            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p><div className="mt-3"><Button size="sm" variant="secondary" disabled={Boolean(diagnosingId)} onClick={() => void prepareDiagnosis(run)}>{diagnosingId === run.id ? "Loading evidence…" : "Prepare diagnosis"}</Button></div></article>)}
             {!debugLoading && checks.length > 0 && executions.length === 0 && <p className="text-xs text-studio-500">No executions found for this project.</p>}
           </div>}
         </div>
