@@ -120,7 +120,7 @@ export function TopBar({
               { value: "canvas", label: "Editor" },
               { value: "chat", label: "Chat" },
               { value: "config", label: "Agent" },
-              { value: "engineer", label: "Engineer" },
+              { value: "engineer", label: "Skills & Tools" },
             ]}
             value={activeTab}
             onChange={(val) => onTabChange?.(val)}
