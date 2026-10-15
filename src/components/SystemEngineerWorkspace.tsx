@@ -62,6 +62,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
   const [engineerResult, setEngineerResult] = useState<string | null>(null);
   const [engineerExecutionId, setEngineerExecutionId] = useState<string | null>(null);
   const [engineerStatus, setEngineerStatus] = useState<string | null>(null);
+  const [diagnosingId, setDiagnosingId] = useState<string | null>(null);
   const [customToolName, setCustomToolName] = useState("");
   const [customToolDescription, setCustomToolDescription] = useState("");
   const [customToolUrl, setCustomToolUrl] = useState("");
@@ -256,6 +257,54 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
     }
   };
 
+  const prepareDiagnosis = async (run: ExecutionSummary) => {
+    if (diagnosingId || engineerRunning) return;
+    setDiagnosingId(run.id);
+    setError(null);
+    setNotice("Loading execution evidence…");
+    try {
+      const [detail, events] = await Promise.all([
+        api.executions.get(run.id),
+        api.executions.getEvents(run.id),
+      ]);
+      const redact = (value: unknown, key = ""): unknown => {
+        if (/api.?key|token|secret|password|authorization|credential/i.test(key)) return "[REDACTED]";
+        if (typeof value === "string") return value.slice(0, 1200);
+        if (Array.isArray(value)) return value.slice(0, 30).map((item) => redact(item));
+        if (value && typeof value === "object") return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([childKey, child]) => [childKey, redact(child, childKey)]),
+        );
+        return value;
+      };
+      const evidence = {
+        execution_id: run.id,
+        status: detail.status,
+        task: (detail.input_task ?? run.task_preview).slice(0, 2000),
+        error: (detail.error ?? "").slice(0, 2000),
+        final_output: (detail.final_output ?? "").slice(0, 3000),
+        recent_events: events.slice(-30).map((event) => ({
+          seq: event.seq,
+          type: event.type,
+          name: event.name,
+          status: event.status,
+          data: redact(event.data),
+        })),
+      };
+      setGoal([
+        "Diagnose this existing AgentForge execution using the evidence below.",
+        "Separate observed facts from hypotheses. Identify the likely failure point, explain why, and recommend the smallest corrective action and a regression test. Do not claim to have changed anything.",
+        "Execution evidence (sensitive-looking fields were redacted):",
+        JSON.stringify(evidence, null, 2).slice(0, 12000),
+      ].join("\\n"));
+      setTab("home");
+      setNotice("Execution evidence loaded. Review the request, then run the System Engineer to diagnose it.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load execution evidence.");
+    } finally {
+      setDiagnosingId(null);
+    }
+  };
+
   const exportSkills = () => {
     const blob = new Blob([JSON.stringify({ version: 1, skills }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -422,7 +471,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog, onOpenChat }: {
             {!debugLoading && checks.length === 0 && <div className="rounded-xl border border-dashed border-studio-700 p-5"><p className="text-sm text-studio-300">Run diagnostics to inspect the runtime.</p><Button className="mt-3" size="sm" onClick={() => void loadDebugInfo()}>Run checks</Button></div>}
             {checks.map((check) => <article key={check.name} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${check.ok ? "bg-emerald-400" : "bg-red-400"}`} /><h4 className="text-sm font-medium text-studio-100">{check.name}</h4><span className={`ml-auto text-[11px] ${check.ok ? "text-emerald-300" : "text-red-300"}`}>{check.ok ? "OK" : "Needs attention"}</span></div><p className="mt-2 text-xs text-studio-400">{check.detail}</p>{check.fix && <p className="mt-2 text-xs text-accent-300">Suggested fix: {check.fix}</p>}</article>)}
             <div><h3 className="text-base font-semibold text-studio-100">Recent executions</h3><p className="mt-1 text-xs text-studio-400">Failed runs are shown first in the list below when available.</p></div>
-            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p></article>)}
+            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p><div className="mt-3"><Button size="sm" variant="secondary" disabled={Boolean(diagnosingId) || engineerRunning} onClick={() => void prepareDiagnosis(run)}>{diagnosingId === run.id ? "Loading evidence…" : "Prepare diagnosis"}</Button></div></article>)}
             {!debugLoading && checks.length > 0 && executions.length === 0 && <p className="text-xs text-studio-500">No executions found for this project.</p>}
           </div>}
         </div>
