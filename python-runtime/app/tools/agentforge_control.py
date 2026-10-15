@@ -230,7 +230,7 @@ class AgentForgeControlTool(Tool):
                     "instructions": instructions[:16000],
                     "assigned_agent_ids": assigned,
                     "enabled": True,
-                    "updated_at": __import__("datetime").datetime.now().astimezone().isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
                 settings["skills"] = skills
                 project.settings = settings
