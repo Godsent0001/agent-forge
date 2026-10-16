@@ -42,6 +42,21 @@ def test_calculator_schema_exposes_structured_numeric_arguments():
 
 
 @pytest.mark.asyncio
+async def test_decimal_inputs_are_formatted_after_strict_schema_validation():
+    result = await CalculatorTool().run(
+        CalculatorInput(operation="add", a=0.1, b=0.2),
+        ctx=None,
+    )
+    assert result.content == "0.1 + 0.2 = 0.3"
+    assert result.data == {
+        "operation": "add",
+        "a": "0.1",
+        "b": "0.2",
+        "result": "0.3",
+    }
+
+
+@pytest.mark.asyncio
 async def test_division_by_zero_is_a_reportable_tool_error():
     with pytest.raises(ToolError, match="Division by zero"):
         await CalculatorTool().run(

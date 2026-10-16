@@ -71,7 +71,10 @@ def _calculate(operation: str, a: int | float | Decimal, b: int | float | Decima
     return result
 
 
-def _format_number(value: Decimal) -> str:
+def _format_number(value: int | float | Decimal) -> str:
+    # Input models intentionally preserve strict int/float types for schema validation.
+    # Convert them only at the arithmetic/formatting boundary, avoiding float arithmetic.
+    value = _as_decimal(value)
     if value == 0:
         return "0"
     rendered = format(value.normalize(), "f")
