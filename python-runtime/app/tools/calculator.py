@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import json
+import math
 from decimal import Decimal, DecimalException
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, ValidationError, field_validator
 
 from app.contracts.tools import Tool as V2Tool
 from app.contracts.tools import ToolContext, ToolError, ToolResult
@@ -25,23 +26,33 @@ class CalculatorInput(BaseModel):
     operation: Operation = Field(
         description="Arithmetic operation to perform: add, subtract, multiply, or divide."
     )
-    a: Decimal = Field(description="First finite numeric operand.")
-    b: Decimal = Field(description="Second finite numeric operand.")
+    a: StrictInt | StrictFloat = Field(description="First finite numeric operand.")
+    b: StrictInt | StrictFloat = Field(description="Second finite numeric operand.")
 
     @field_validator("a", "b")
     @classmethod
-    def require_finite_operand(cls, value: Decimal) -> Decimal:
-        if not value.is_finite():
+    def require_finite_operand(cls, value: int | float) -> int | float:
+        if isinstance(value, float) and not math.isfinite(value):
             raise ValueError("Operands must be finite numbers.")
         return value
 
 
-def _calculate(operation: str, a: Decimal, b: Decimal) -> Decimal:
+def _as_decimal(value: int | float | Decimal) -> Decimal:
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (DecimalException, ValueError) as exc:
+        raise ValueError("Operands must be finite numbers.") from exc
+    if not result.is_finite():
+        raise ValueError("Operands must be finite numbers.")
+    return result
+
+
+def _calculate(operation: str, a: int | float | Decimal, b: int | float | Decimal) -> Decimal:
     """Compute without eval or an LLM-generated expression."""
     if operation not in _SYMBOLS:
         raise ValueError("Unsupported operation. Use add, subtract, multiply, or divide.")
-    if not a.is_finite() or not b.is_finite():
-        raise ValueError("Operands must be finite numbers.")
+    a = _as_decimal(a)
+    b = _as_decimal(b)
     if operation == "divide" and b == 0:
         raise ValueError("Division by zero is not allowed.")
     try:

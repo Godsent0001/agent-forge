@@ -33,8 +33,9 @@ async def test_calculator_uses_deterministic_decimal_arithmetic(operation, a, b,
 def test_calculator_schema_exposes_structured_numeric_arguments():
     schema = CalculatorInput.model_json_schema()
     properties = schema["properties"]
-    assert properties["a"]["type"] == "number"
-    assert properties["b"]["type"] == "number"
+    assert {item["type"] for item in properties["a"]["anyOf"]} == {"integer", "number"}
+    assert {item["type"] for item in properties["b"]["anyOf"]} == {"integer", "number"}
+    assert all(item["type"] not in {"string", "boolean"} for item in properties["a"]["anyOf"])
     assert properties["operation"]["enum"] == ["add", "subtract", "multiply", "divide"]
     assert set(schema["required"]) == {"operation", "a", "b"}
     assert schema["additionalProperties"] is False
@@ -52,6 +53,12 @@ async def test_division_by_zero_is_a_reportable_tool_error():
 def test_invalid_operation_is_rejected_by_the_input_schema():
     with pytest.raises(ValidationError):
         CalculatorInput(operation="square_root", a=4, b=0)
+    with pytest.raises(ValidationError):
+        CalculatorInput(operation="add", a="4", b=3)
+    with pytest.raises(ValidationError):
+        CalculatorInput(operation="add", a=True, b=3)
+    with pytest.raises(ValidationError):
+        CalculatorInput(operation="add", a=float("inf"), b=3)
 
 
 def test_v2_factory_builds_native_calculator_with_numeric_schema():
@@ -60,7 +67,9 @@ def test_v2_factory_builds_native_calculator_with_numeric_schema():
     )
     assert isinstance(tool, CalculatorTool)
     assert tool.Input is CalculatorInput
-    assert tool.Input.model_json_schema()["properties"]["a"]["type"] == "number"
+    assert tool.Input.model_json_schema()["properties"]["a"]["anyOf"] == [
+        {"type": "integer"}, {"type": "number"}
+    ]
 
 
 @pytest.mark.asyncio
