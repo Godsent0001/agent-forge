@@ -1,15 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_submodules,
+    copy_metadata,
+)
 
 block_cipher = None
 
 # LiteLLM loads providers dynamically; collect its package resources and hidden imports.
 litellm_datas, litellm_binaries, litellm_hiddenimports = collect_all("litellm")
+
+# tiktoken discovers encoding plugins through distribution entry-point metadata.
+# PyInstaller does not reliably include this metadata or the dynamically imported
+# plugin modules unless they are collected explicitly.
+tiktoken_metadata = copy_metadata("tiktoken")
+tiktoken_hiddenimports = collect_submodules("tiktoken") + collect_submodules("tiktoken_ext")
+
 datas = [
     ("alembic.ini", "."),
     ("alembic", "alembic"),
-] + collect_data_files("alembic") + litellm_datas
+] + collect_data_files("alembic") + litellm_datas + tiktoken_metadata
 
 hiddenimports = [
     "uvicorn.logging",
@@ -26,7 +38,7 @@ hiddenimports = [
     "app.llm",
     "app.models",
     "app.ws",
-] + litellm_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
+] + litellm_hiddenimports + tiktoken_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
 
 a = Analysis(
     ["main.py"],
