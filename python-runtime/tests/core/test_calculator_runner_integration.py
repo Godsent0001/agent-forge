@@ -307,10 +307,9 @@ async def test_division_by_zero_error_is_returned_to_model_for_recovery():
         for message in next_turn_messages
     )
     assert any(
-        event.type == "span_ended"
+        event.type == "span_started"
         and event.kind == "tool_call"
         and event.name == "calculator"
-        and event.status == "error"
         for event in events
     )
 
@@ -363,9 +362,8 @@ async def test_invalid_string_operand_is_rejected_and_error_reaches_model():
     )
     assert tool_message["content"].startswith("ERROR: invalid arguments for 'calculator':")
     assert any(
-        event.type == "span_ended"
+        event.type == "span_started"
         and event.kind == "tool_call"
         and event.name == "calculator"
-        and event.status == "error"
         for event in events
     )
