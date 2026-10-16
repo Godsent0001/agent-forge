@@ -17,6 +17,7 @@ from app.contracts.tools import Tool as V2Tool
 from app.infra.workspace import data_dir
 from app.tools.adapter import LegacyToolAdapter
 from app.tools.agentforge_control import AgentForgeControlTool
+from app.tools.calculator import CalculatorTool, LegacyCalculatorTool
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
     CacheEngineTool,
@@ -85,6 +86,7 @@ from app.tools.web_search import WebSearchTool
 # in the branches below build_tool() for clarity.
 _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     # General-purpose
+    "calculator": LegacyCalculatorTool,
     "web_search": WebSearchTool,
     "python": PythonExecTool,
     "http_request": HttpRequestTool,
@@ -172,6 +174,7 @@ def build_tool(kind: str, config: dict) -> Tool:
 # engine calls it directly and must retain its historical behavior.
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "agentforge_control": AgentForgeControlTool,
+    "calculator": CalculatorTool,
   }
 
 

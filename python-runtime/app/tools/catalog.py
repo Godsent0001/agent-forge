@@ -47,11 +47,15 @@ SHELVES: dict[str, str] = {
     "asset_cache": "Asset & Cache",
     "qc": "Quality Control",
     "orchestration": "Orchestration",
+    "utilities": "Utilities",
     "video": "Video Sources",
 }
 
 
 CATALOG: list[CatalogEntry] = [
+    CatalogEntry("calculator", "Calculator", "utilities",
+                 "Performs deterministic decimal addition, subtraction, multiplication, and division from structured numeric arguments. Rejects division by zero.",
+                 "real", pack=None),
     # --- Audio ---------------------------------------------------------
     CatalogEntry("voice_generator", "Voice Generator", "audio",
                  "Converts character dialogue into speech using Piper TTS "

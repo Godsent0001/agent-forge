@@ -11,10 +11,18 @@ export const SHELVES = {
   "asset_cache": "Asset & Cache",
   "qc": "Quality Control",
   "orchestration": "Orchestration",
+  "utilities": "Utilities",
   "video": "Video Sources"
 } as const;
 
 export const CATALOG = [
+  {
+    "kind": "calculator",
+    "name": "Calculator",
+    "shelf": "utilities",
+    "description": "Performs deterministic decimal addition, subtraction, multiplication, and division from structured numeric arguments. Rejects division by zero.",
+    "status": "real"
+  },
   {
     "kind": "voice_generator",
     "name": "Voice Generator",
