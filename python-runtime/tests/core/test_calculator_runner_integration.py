@@ -256,3 +256,116 @@ async def test_manager_delegates_to_child_agent_that_calls_calculator():
         and event.name == "calculator_agent"
     )
     assert child_span.parent_span_id == delegation_span.span_id
+
+
+@pytest.mark.asyncio
+async def test_division_by_zero_error_is_returned_to_model_for_recovery():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="I'll check the division with the calculator.",
+            tool_calls=[
+                ToolCall(
+                    id="calculator-divide-zero",
+                    name="calculator",
+                    arguments={"operation": "divide", "a": 1, "b": 0},
+                )
+            ],
+        ),
+        LLMTurn(text="The calculator rejected division by zero, so no numeric answer is returned."),
+    ])
+    graph = AgentGraph(
+        root_id="math_agent",
+        agents={
+            "math_agent": AgentSpec(
+                id="math_agent",
+                name="Math Agent",
+                provider="fake",
+                model="fake/model",
+                tools=[
+                    ToolBinding(
+                        id="calculator-binding",
+                        kind="calculator",
+                        name="calculator",
+                        config={},
+                    )
+                ],
+            )
+        },
+    )
+
+    result, events = await _run(
+        fake_llm, graph, "math_agent", "Calculate 1 divided by 0 using the calculator."
+    )
+
+    assert result.status == "completed"
+    assert "no numeric answer" in result.final_output
+    assert result.totals.tool_calls == 1
+    next_turn_messages = fake_llm.received_calls[1]["messages"]
+    assert any(
+        message.get("role") == "tool"
+        and message.get("content") == "ERROR: Division by zero is not allowed."
+        for message in next_turn_messages
+    )
+    assert any(
+        event.type == "span_ended"
+        and event.kind == "tool_call"
+        and event.name == "calculator"
+        and event.status == "error"
+        for event in events
+    )
+
+
+@pytest.mark.asyncio
+async def test_invalid_string_operand_is_rejected_and_error_reaches_model():
+    fake_llm = FakeLLM([
+        LLMTurn(
+            text="I'll call the calculator with structured numeric arguments.",
+            tool_calls=[
+                ToolCall(
+                    id="calculator-invalid-operand",
+                    name="calculator",
+                    arguments={"operation": "add", "a": "12", "b": 3},
+                )
+            ],
+        ),
+        LLMTurn(text="The calculator rejected the string operand; numeric arguments are required."),
+    ])
+    graph = AgentGraph(
+        root_id="math_agent",
+        agents={
+            "math_agent": AgentSpec(
+                id="math_agent",
+                name="Math Agent",
+                provider="fake",
+                model="fake/model",
+                tools=[
+                    ToolBinding(
+                        id="calculator-binding",
+                        kind="calculator",
+                        name="calculator",
+                        config={},
+                    )
+                ],
+            )
+        },
+    )
+
+    result, events = await _run(
+        fake_llm, graph, "math_agent", "Add twelve and three with numeric calculator arguments."
+    )
+
+    assert result.status == "completed"
+    assert "numeric arguments are required" in result.final_output
+    assert result.totals.tool_calls == 1
+    next_turn_messages = fake_llm.received_calls[1]["messages"]
+    tool_message = next(
+        message for message in next_turn_messages if message.get("role") == "tool"
+    )
+    assert tool_message["content"].startswith("ERROR: invalid arguments for 'calculator':")
+    assert any(
+        event.type == "span_ended"
+        and event.kind == "tool_call"
+        and event.name == "calculator"
+        and event.status == "error"
+        for event in events
+    )
