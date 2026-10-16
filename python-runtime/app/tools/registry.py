@@ -16,6 +16,7 @@ from app.contracts.graph import ToolBinding
 from app.contracts.tools import Tool as V2Tool
 from app.infra.workspace import data_dir
 from app.tools.adapter import LegacyToolAdapter
+from app.tools.agentforge_control import AgentForgeControlTool
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
     CacheEngineTool,
@@ -43,6 +44,7 @@ from app.tools.character import (
     LipSyncTool,
 )
 from app.tools.composition import CompositionEngineTool, EffectsEngineTool
+from app.tools.custom_http import CustomHttpTool
 from app.tools.filesystem import FileSystemTool
 from app.tools.graphics import (
     CaptionEngineTool,
@@ -168,13 +170,17 @@ def build_tool(kind: str, config: dict) -> Tool:
 
 # v2 registry contract (D-08). Keep build_tool() above unchanged: the legacy
 # engine calls it directly and must retain its historical behavior.
-NATIVE_TOOLS: dict[str, type[V2Tool]] = {}
+NATIVE_TOOLS: dict[str, type[V2Tool]] = {
+    "agentforge_control": AgentForgeControlTool,
+  }
 
 
 class DefaultToolFactory:
     """Build a native v2 tool when available, otherwise adapt the legacy tool."""
 
     def build(self, binding: ToolBinding) -> V2Tool:
+        if binding.kind == "custom_http":
+            return CustomHttpTool(binding)
         native = NATIVE_TOOLS.get(binding.kind)
         if native is not None:
             return native()

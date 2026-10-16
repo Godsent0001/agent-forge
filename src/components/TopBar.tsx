@@ -7,8 +7,8 @@ import { ProjectSettings } from "./ProjectSettings";
 
 interface TopBarProps {
   onRun?: (executionId: string) => void;
-  activeTab?: "canvas" | "chat" | "config";
-  onTabChange?: (tab: "canvas" | "chat" | "config") => void;
+  activeTab?: "canvas" | "chat" | "config" | "engineer";
+  onTabChange?: (tab: "canvas" | "chat" | "config" | "engineer") => void;
   onTriggerQuickRun?: () => void;
   isRunning?: boolean;
 }
@@ -120,6 +120,7 @@ export function TopBar({
               { value: "canvas", label: "Editor" },
               { value: "chat", label: "Chat" },
               { value: "config", label: "Agent" },
+              { value: "engineer", label: "Skills & Tools" },
             ]}
             value={activeTab}
             onChange={(val) => onTabChange?.(val)}

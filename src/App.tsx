@@ -10,6 +10,8 @@ import { RunTaskModal } from "./components/RunTaskModal";
 import { WorkflowCanvas } from "./components/WorkflowCanvas";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ToolCatalogModal } from "./components/ToolCatalogModal";
+import { SystemEngineerWorkspace } from "./components/SystemEngineerWorkspace";
+import { FloatingSystemEngineer } from "./components/FloatingSystemEngineer";
 import { useStore } from "./store/useStore";
 import { Icon } from "./components/ui/Icon";
 
@@ -31,7 +33,7 @@ export default function App() {
   const project = useStore((s) => s.project);
 
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config">("chat");
+  const [activeTab, setActiveTab] = useState<"canvas" | "chat" | "config" | "engineer">("chat");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(248);
   const [inspectorWidth, setInspectorWidth] = useState(320);
@@ -210,7 +212,11 @@ export default function App() {
           )}
         </div>
 
-        {activeTab === "canvas" ? (
+        {activeTab === "engineer" ? (
+          <SystemEngineerWorkspace
+            onOpenToolCatalog={() => setShowToolCatalogModal(true)}
+          />
+        ) : activeTab === "canvas" ? (
           <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
         ) : activeTab === "chat" ? (
           <div className="flex-1 flex min-w-0 h-full overflow-hidden"><AgentChat onRunExecution={handleChatRunStarted} /></div>
@@ -218,7 +224,7 @@ export default function App() {
           <div className="flex-1 min-w-0 h-full overflow-hidden"><AgentEditor /></div>
         )}
 
-        {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && (
+        {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && activeTab !== "engineer" && (
           <div className={`relative h-full shrink-0 bg-studio-900 border-l border-studio-700/80 ${isCompactViewport ? "absolute inset-y-0 right-11 z-40 shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
             {!isCompactViewport && (
               <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
@@ -232,7 +238,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab !== "config" && (
+        {activeTab !== "config" && activeTab !== "engineer" && (
           <aside aria-label="Workspace panels" className="z-30 flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-studio-800 bg-studio-900 py-2">
             <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
               className={`rounded-md p-2 transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
@@ -254,6 +260,7 @@ export default function App() {
           onSubmit={handleTriggerRun}
         />
       )}
+      <FloatingSystemEngineer />
     </div>
   );
 }

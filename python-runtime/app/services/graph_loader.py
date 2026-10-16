@@ -6,7 +6,47 @@ from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
 from app.contracts.naming import dedupe_names, sanitize_tool_name
 
 
+def _with_assigned_skills(system_prompt: str, agent_id: str, skills: object) -> str:
+    """Append bounded, project-persisted skill instructions for this agent only."""
+    if not isinstance(skills, list):
+        return system_prompt
+    blocks: list[str] = []
+    total_chars = 0
+    for skill in skills:
+        if not isinstance(skill, dict) or skill.get("enabled", True) is not True:
+            continue
+        assigned = skill.get("assigned_agent_ids", [])
+        instructions = skill.get("instructions")
+        name = skill.get("name")
+        if not isinstance(assigned, list) or agent_id not in assigned:
+            continue
+        if not isinstance(instructions, str) or not instructions.strip():
+            continue
+        if not isinstance(name, str) or not name.strip():
+            name = "Untitled skill"
+        block = f"### {name.strip()[:120]}\n{instructions.strip()}"
+        remaining = 16000 - total_chars
+        if remaining <= 0:
+            break
+        blocks.append(block[:remaining])
+        total_chars += min(len(block), remaining)
+        if len(blocks) >= 10:
+            break
+    if not blocks:
+        return system_prompt
+    skill_context = (
+        "\n\n[AgentForge Assigned Skills]\n"
+        "Use these user-assigned procedures when relevant to the task. They are guidance, "
+        "not permission to bypass safety, access controls, or tool approvals.\n\n"
+        + "\n\n".join(blocks)
+    )
+    return (system_prompt or "").rstrip() + skill_context
+
+
 def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentGraph:
+    project = db.get(models.Project, project_id)
+    project_settings = project.settings if project is not None and isinstance(project.settings, dict) else {}
+    skills = project_settings.get("skills", [])
     rows = db.execute(
         select(models.Agent)
         .where(models.Agent.project_id == project_id)
@@ -57,7 +97,7 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
             description=row.description,
             provider=row.provider,
             model=row.model,
-            system_prompt=row.system_prompt,
+            system_prompt=_with_assigned_skills(row.system_prompt, row.id, skills),
             tool_guidance=row.tool_use_schema,
             memory_enabled=row.memory_enabled,
             lessons_enabled=row.lessons_enabled,
