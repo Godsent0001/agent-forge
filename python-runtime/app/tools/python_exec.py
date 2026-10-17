@@ -90,7 +90,7 @@ async def _read_bounded(stream: asyncio.StreamReader, limit: int = MAX_CAPTURE_B
 
 
 def _decode_bounded(raw: bytes, truncated: bool) -> str:
-    value = raw.decode("utf-8", errors="replace")
+    value = raw.decode("utf-8", errors="replace").replace("\r\n", "\n")
     if len(value) > MAX_OUTPUT_CHARS:
         value = value[:MAX_OUTPUT_CHARS]
         truncated = True
