@@ -6,7 +6,15 @@ import math
 from decimal import Decimal, DecimalException
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictFloat,
+    StrictInt,
+    ValidationError,
+    field_validator,
+)
 
 from app.contracts.tools import Tool as V2Tool
 from app.contracts.tools import ToolContext, ToolError, ToolResult

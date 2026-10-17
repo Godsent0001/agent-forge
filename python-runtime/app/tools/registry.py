@@ -32,6 +32,7 @@ from app.tools.audio import (
     VoiceGeneratorTool,
 )
 from app.tools.base import Tool
+from app.tools.calculator import CalculatorTool, LegacyCalculatorTool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
 from app.tools.character import (
     BodyPoseTool,
