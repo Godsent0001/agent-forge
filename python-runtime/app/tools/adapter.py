@@ -111,6 +111,12 @@ def _redact_host_paths(content: str, ctx: ToolContext) -> str:
         root_text = str(root)
         content = content.replace(root_text, ".")
         content = content.replace(root_text.replace("/", "\\"), ".")
+    # Keep redacted relative paths platform-independent in model/tool output.
+    content = re.sub(
+        r"\.\\([^\s;,'\"]+)",
+        lambda match: "./" + match.group(1).replace("\\", "/"),
+        content,
+    )
     return content
 
 
