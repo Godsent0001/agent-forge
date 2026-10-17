@@ -539,6 +539,12 @@ class RunnerCore:
         budget: BudgetTracker,
         active_agent_ids: set[str],
     ) -> str:
+        tool_end_data: dict[str, Any] = {
+            "result_preview": "",
+            "is_error": False,
+            "artifacts": [],
+        }
+
         async with span(
             emit,
             kind="tool_call",
@@ -548,7 +554,18 @@ class RunnerCore:
                 "tool_name": tc.name,
                 "tool_call_id": tc.id,
                 "args": json.dumps(tc.arguments)[:2000],
-            }) as tool_span_id:
+            },
+            end_data=tool_end_data,
+        ) as tool_span_id:
+            def error_result(message: str) -> str:
+                tool_end_data["result_preview"] = message[:2000]
+                tool_end_data["is_error"] = True
+                return message
+
+            def success_result(message: str) -> str:
+                tool_end_data["result_preview"] = message[:2000]
+                return message
+
             budget.record_tool_call()
 
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
@@ -576,18 +593,18 @@ class RunnerCore:
                         budget=budget,
                         active_agent_ids=active_agent_ids,
                     )
-                    return res
+                    return success_result(res)
                 except AgentCycleError:
                     raise
                 except Exception as exc:
-                    return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
+                    return error_result(f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}")
 
             tool_obj = tool_instances.get(tc.name)
             if not tool_obj:
-                return f"ERROR: unknown tool '{tc.name}'. Available: {', '.join(tool_instances.keys())}"
+                return error_result(f"ERROR: unknown tool '{tc.name}'. Available: {', '.join(tool_instances.keys())}")
 
             if tc.arguments_error:
-                return f"ERROR: invalid arguments for '{tc.name}': {tc.arguments_error}"
+                return error_result(f"ERROR: invalid arguments for '{tc.name}': {tc.arguments_error}")
 
             needed_perms = getattr(tool_obj, "permissions", set())
             allowed = await approvals.check(
@@ -597,7 +614,7 @@ class RunnerCore:
                 span_id=tool_span_id,
             )
             if not allowed:
-                return "ERROR: the user denied this action"
+                return error_result("ERROR: the user denied this action")
 
             ctx = DummyToolContext(
                 execution_id=req.execution_id,
@@ -615,7 +632,7 @@ class RunnerCore:
                     try:
                         args_inst = input_cls(**tc.arguments)
                     except Exception as exc:
-                        return f"ERROR: invalid arguments for '{tc.name}': {exc}"
+                        return error_result(f"ERROR: invalid arguments for '{tc.name}': {exc}")
                 else:
                     args_inst = tc.arguments
 
@@ -638,6 +655,10 @@ class RunnerCore:
                         }))
                         await emit(EventDraft(type="artifact_verification", data=report.model_dump(mode="json")))
                 content = res.content
+                if not res.ok:
+                    return error_result(
+                        content if content.startswith("ERROR:") else f"ERROR: {content}"
+                    )
 
                 saved_ref = None
                 if len(content) > 1000 and hasattr(workspace, "write_result"):
@@ -647,12 +668,12 @@ class RunnerCore:
                     head = content[:6000]
                     content = f"{head}\n...[truncated {len(content) - 6000} chars; full result saved at {saved_ref.path if saved_ref else '.results/' + tc.id + '.txt'}]"
 
-                return content
+                return success_result(content)
 
             except ToolError as te:
-                return f"ERROR: {te.message}"
+                return error_result(f"ERROR: {te.message}")
             except Exception as exc:
-                return f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+                return error_result(f"ERROR: tool crashed ({type(exc).__name__}: {exc})")
 
     def _assemble_tools(
         self,

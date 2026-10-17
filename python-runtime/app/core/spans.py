@@ -45,6 +45,11 @@ async def span(
         final_data["error"] = str(exc)
         raise
     finally:
+        # Some callers must return an ERROR tool message to the model instead of
+        # raising through the runner. Respect their structured error flag in trace status.
+        if status == "ok" and final_data.get("is_error") is True:
+            status = "error"
+
         await emit(
             EventDraft(
                 type="span_ended",
