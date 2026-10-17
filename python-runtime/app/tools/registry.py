@@ -17,7 +17,6 @@ from app.contracts.tools import Tool as V2Tool
 from app.infra.workspace import data_dir
 from app.tools.adapter import LegacyToolAdapter
 from app.tools.agentforge_control import AgentForgeControlTool
-from app.tools.calculator import CalculatorTool, LegacyCalculatorTool
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
     CacheEngineTool,
