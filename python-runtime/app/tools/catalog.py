@@ -247,6 +247,18 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry("video_source", "Video Source", "video",
                  "Searches yt-dlp-supported video hosts and returns source metadata for clip selection.",
                  "real"),
+    CatalogEntry("video_transcript", "Video Transcript", "video",
+                 "Gets a timestamped transcript + chapters for a video URL or file from its captions "
+                 "(local Whisper fallback) without watching it. Cached; ~12k tokens per hour if read.",
+                 "real"),
+    CatalogEntry("clip_finder", "Clip Finder", "video",
+                 "Finds the start/end of moments matching a description by searching the transcript "
+                 "locally — no video tokens. Returns ranked clips with excerpts.",
+                 "real"),
+    CatalogEntry("clip_extractor", "Clip Extractor", "video",
+                 "Cuts clips by timestamp into MP4s, downloading only those sections (yt-dlp) or "
+                 "trimming a local file (ffmpeg). Optional per-clip subtitles.",
+                 "real"),
 
     CatalogEntry("pipeline_orchestrator", "Pipeline Orchestrator", "orchestration",
                  "Coordinates the full script-to-mp4 pipeline stage by stage: "

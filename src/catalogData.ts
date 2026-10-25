@@ -331,6 +331,27 @@ export const CATALOG = [
     "status": "real"
   },
   {
+    "kind": "video_transcript",
+    "name": "Video Transcript",
+    "shelf": "video",
+    "description": "Gets a timestamped transcript + chapters for a video URL or file from its captions (local Whisper fallback) without watching it. Cached; ~12k tokens per hour if read.",
+    "status": "real"
+  },
+  {
+    "kind": "clip_finder",
+    "name": "Clip Finder",
+    "shelf": "video",
+    "description": "Finds the start/end of moments matching a description by searching the transcript locally — no video tokens. Returns ranked clips with excerpts.",
+    "status": "real"
+  },
+  {
+    "kind": "clip_extractor",
+    "name": "Clip Extractor",
+    "shelf": "video",
+    "description": "Cuts clips by timestamp into MP4s, downloading only those sections (yt-dlp) or trimming a local file (ffmpeg). Optional per-clip subtitles.",
+    "status": "real"
+  },
+  {
     "kind": "pipeline_orchestrator",
     "name": "Pipeline Orchestrator",
     "shelf": "orchestration",

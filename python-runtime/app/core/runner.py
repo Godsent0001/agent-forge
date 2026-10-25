@@ -606,7 +606,7 @@ class RunnerCore:
                 agent_id=spec.id,
                 workspace=workspace,
                 cancel=cancel,
-                config={},
+                config=dict(getattr(tool_obj, "binding_config", None) or {}),
             )
 
             try:

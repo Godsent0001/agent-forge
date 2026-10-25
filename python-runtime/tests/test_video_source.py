@@ -123,9 +123,11 @@ def test_yt_dlp_backend_accepts_direct_urls(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=FakeYoutubeDL))
 
-    from app.tools.video_source import _yt_dlp_search
+    from app.tools import video_source
 
-    result = _yt_dlp_search("https://example.com/video", 1)
+    # Resolve the public test hostname without real DNS, so the test is hermetic.
+    monkeypatch.setattr(video_source, "assert_public_url", lambda url, app_port=None: None)
+    result = video_source._yt_dlp_search("https://example.com/video", 1)
 
     assert calls["target"] == "https://example.com/video"
     assert result[0]["id"] == "direct-1"

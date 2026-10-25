@@ -17,6 +17,10 @@ dependencies = [
     "yt-dlp>=2026.8.19",
 ]
 
+[project.optional-dependencies]
+# Local speech-to-text for videos that have no captions (clip_finder fallback).
+transcribe = ["faster-whisper>=1.1.0"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -18,6 +18,9 @@ litellm_datas, litellm_binaries, litellm_hiddenimports = collect_all("litellm")
 tiktoken_metadata = copy_metadata("tiktoken")
 tiktoken_hiddenimports = collect_submodules("tiktoken") + collect_submodules("tiktoken_ext")
 
+# yt-dlp registers its site extractors and networking handlers by dynamic import.
+yt_dlp_hiddenimports = collect_submodules("yt_dlp")
+
 datas = [
     ("alembic.ini", "."),
     ("alembic", "alembic"),
@@ -38,7 +41,7 @@ hiddenimports = [
     "app.llm",
     "app.models",
     "app.ws",
-] + litellm_hiddenimports + tiktoken_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
+] + litellm_hiddenimports + tiktoken_hiddenimports + yt_dlp_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
 
 a = Analysis(
     ["main.py"],

@@ -84,6 +84,15 @@ Produces the installer / application bundle inside `dist-electron/`.
 
 See [`docs/`](docs/) for project plans, contracts, task cards, and testing guidance.
 
+### Video clips without watching the video
+
+The Video pack includes `video_transcript`, `clip_finder` and `clip_extractor`. Together
+they find moments in long videos from timestamped captions (local Whisper fallback), then
+download only those sections. That costs a few thousand tokens per video instead of about
+1M per hour of footage. See [`docs/VIDEO-CLIPS.md`](docs/VIDEO-CLIPS.md). Requires
+`ffmpeg` on PATH for cutting; `uv sync --extra transcribe` enables speech-to-text for
+videos that have no captions.
+
 ## RunnerCore and model configuration
 
 The application uses **RunnerCore by default** for both the established `/executions` API and `/v2/executions`. Normal startup therefore uses the selected agent's configured model and requires valid provider credentials before real model calls can succeed.

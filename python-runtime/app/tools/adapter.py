@@ -33,6 +33,7 @@ _PERMISSION_MAP: dict[str, set[Permission]] = {
     "python": {"subprocess"},
     "http_request": {"net"},
     "web_search": {"net"},
+    "video_source": {"net"},
     "file_system": {"fs_write"},
     # These tools mutate shared, persistent state outside the disposable run workspace.
     # Require explicit user approval by default; project policy can still deny/allow them.

@@ -78,6 +78,7 @@ from app.tools.scene import (
     SceneTemplateManagerTool,
 )
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
+from app.tools.video_clips import ClipExtractorTool, ClipFinderTool, VideoTranscriptTool
 from app.tools.video_source import VideoSourceTool
 from app.tools.web_search import WebSearchTool
 
@@ -172,7 +173,10 @@ def build_tool(kind: str, config: dict) -> Tool:
 # engine calls it directly and must retain its historical behavior.
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "agentforge_control": AgentForgeControlTool,
-  }
+    "video_transcript": VideoTranscriptTool,
+    "clip_finder": ClipFinderTool,
+    "clip_extractor": ClipExtractorTool,
+}
 
 
 class DefaultToolFactory:
@@ -183,7 +187,10 @@ class DefaultToolFactory:
             return CustomHttpTool(binding)
         native = NATIVE_TOOLS.get(binding.kind)
         if native is not None:
-            return native()
+            tool = native()
+            # The Runner hands this to the tool as ToolContext.config.
+            tool.binding_config = dict(binding.config or {})
+            return tool
 
         # Never let a persisted Tool.config choose arbitrary host directories.
         # Legacy execution still uses build_tool() unchanged; v2 uses fixed data roots.
