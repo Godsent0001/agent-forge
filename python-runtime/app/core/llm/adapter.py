@@ -72,6 +72,12 @@ async def complete(
             category = _classify_error(err)
             if category == "context":
                 raise LLMContextTooLong(f"Context window exceeded for {model}: {err}") from err
+            if category == "auth":
+                provider = model.split("/", 1)[0] if "/" in model else "this provider"
+                raise LLMBadRequest(
+                    f"The API key for {provider} is missing or was rejected. Add or update it in "
+                    f"Provider settings, then retry. ({type(err).__name__})"
+                ) from err
             if category == "bad_request":
                 raise LLMBadRequest(f"Bad request to LLM provider: {err}") from err
             if category == "rate_limit":
@@ -107,13 +113,14 @@ def _classify_error(err: Exception) -> str:
         if isinstance(err, litellm.Timeout):
             return "timeout"
         # Auth, permission, not-found and malformed requests will not succeed on retry.
-        if isinstance(err, (
-            litellm.AuthenticationError, litellm.PermissionDeniedError,
-            litellm.NotFoundError, litellm.BadRequestError,
-        )):
+        if isinstance(err, litellm.AuthenticationError):
+            return "auth"
+        if isinstance(err, (litellm.PermissionDeniedError, litellm.NotFoundError, litellm.BadRequestError)):
             return "bad_request"
 
     status = getattr(err, "status_code", None)
+    if status == 401:
+        return "auth"
     if status == 429:
         return "rate_limit"
     if isinstance(status, int) and 400 <= status < 500 and status not in (408, 409):
