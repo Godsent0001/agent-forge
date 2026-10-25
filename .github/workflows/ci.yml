@@ -51,6 +51,13 @@ jobs:
         run: |
           test -d dist-electron
           find dist-electron -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.deb' \) -print -quit | grep -q .
+          # The bundled ffmpeg/ffprobe must ship inside the app and run.
+          test -x dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg
+          test -x dist-electron/linux-unpacked/resources/ffmpeg/ffprobe
+          dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -version | head -1
+          dist-electron/linux-unpacked/resources/ffmpeg/ffprobe -hide_banner -version | head -1
+          dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -encoders | grep -q libx264
+          test -f dist-electron/linux-unpacked/resources/ffmpeg/LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: agentforge-linux-package

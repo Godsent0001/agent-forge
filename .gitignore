@@ -127,3 +127,6 @@ python-runtime/assets/
 python-runtime/projects/
 python-runtime/files/
 python-runtime/production_config.json
+
+# Downloaded at package time by scripts/fetch-ffmpeg.mjs
+build/ffmpeg/

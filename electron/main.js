@@ -262,12 +262,21 @@ function startPythonBackend() {
     executable = binaryPath;
   }
 
+  // Bundled ffmpeg/ffprobe (scripts/fetch-ffmpeg.mjs) go first on PATH so every media
+  // tool and yt-dlp find them; a system install is still used when none is bundled.
+  const env = { ...process.env };
+  const bundledFfmpeg = isDev ? null : path.join(process.resourcesPath, "ffmpeg");
+  if (bundledFfmpeg && fs.existsSync(bundledFfmpeg)) {
+    const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") || "PATH";
+    env[pathKey] = bundledFfmpeg + path.delimiter + (env[pathKey] || "");
+  }
+
   console.log(`[main] Starting local Python runtime (${isDev ? "development" : "packaged"}).`);
   try {
     pythonProcess = spawn(executable, args, {
       cwd,
       env: {
-        ...process.env,
+        ...env,
         PORT: "0",
         AGENTFORGE_WATCH_PARENT: "1",
         AGENTFORGE_TOKEN: apiToken,
