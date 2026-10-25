@@ -689,6 +689,37 @@ async def test_runner_loop_detection_forces_tool_free_final_turn():
 
 
 @pytest.mark.asyncio
+async def test_runner_loop_detection_answers_every_tool_call_in_the_turn():
+    repeated = {"x": 1}
+    fake_llm = FakeLLM([
+        LLMTurn(text="", tool_calls=[ToolCall(id="a1", name="loop_tool", arguments=repeated)]),
+        LLMTurn(text="", tool_calls=[ToolCall(id="a2", name="loop_tool", arguments=repeated)]),
+        LLMTurn(text="", tool_calls=[
+            ToolCall(id="other", name="loop_tool", arguments={"x": 2}),
+            ToolCall(id="a3", name="loop_tool", arguments=repeated),
+        ]),
+        LLMTurn(text="Done."),
+    ])
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={"root_1": AgentSpec(id="root_1", name="Loop Agent", provider="fake", model="fake-model",
+                                    tools=[ToolBinding(id="tb1", kind="loop_tool", name="loop_tool")])},
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await RunnerCore(fake_llm=fake_llm).run(
+            req=RunRequest(execution_id="exec_loop2", project_id="proj_1", root_agent_id="root_1", task="t"),
+            graph=graph, emit=noop_emit, cancel=MockCancelToken(), approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)), tools=MockToolFactory(),
+            memory=None, lessons=None, intents=None, run_history=None,
+        )
+
+    assert result.final_output == "Done."
+    final_messages = fake_llm.received_calls[-1]["messages"]
+    answered = {m["tool_call_id"] for m in final_messages if m.get("role") == "tool"}
+    assert {"a1", "a2", "other", "a3"} <= answered
+
+
+@pytest.mark.asyncio
 async def test_runner_depth_limit_is_recoverable():
     fake_llm = FakeLLM([
         LLMTurn(

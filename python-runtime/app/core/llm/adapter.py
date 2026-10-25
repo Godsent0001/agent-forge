@@ -69,24 +69,66 @@ async def complete(
 
         except Exception as err:
             attempt += 1
-            err_str = str(err).lower()
-
-            if "context_length_exceeded" in err_str or "maximum context length" in err_str:
+            category = _classify_error(err)
+            if category == "context":
                 raise LLMContextTooLong(f"Context window exceeded for {model}: {err}") from err
-            elif "rate_limit" in err_str or "429" in err_str:
+            if category == "bad_request":
+                raise LLMBadRequest(f"Bad request to LLM provider: {err}") from err
+            if category == "rate_limit":
                 if attempt >= max_retries:
                     raise LLMRateLimit(f"Rate limit exceeded after {attempt} retries: {err}") from err
                 await asyncio.sleep(2**attempt)
-            elif "timeout" in err_str or "timed out" in err_str:
+            elif category == "timeout":
                 if attempt >= max_retries:
                     raise LLMTimeout(f"LLM request timed out after {attempt} retries: {err}") from err
                 await asyncio.sleep(1)
-            elif "invalid_request" in err_str or "400" in err_str:
-                raise LLMBadRequest(f"Bad request to LLM provider: {err}") from err
             else:
                 if attempt >= max_retries:
                     raise LLMError(f"LLM completion failed: {err}") from err
                 await asyncio.sleep(1)
+
+
+def _classify_error(err: Exception) -> str:
+    """Map a provider/LiteLLM exception to a retry category.
+
+    Prefer LiteLLM's typed exceptions (and their HTTP status); substring checks are
+    only a fallback, anchored to phrases rather than bare numbers like "400".
+    """
+    try:
+        import litellm
+    except ImportError:  # pragma: no cover - hard dependency
+        litellm = None
+
+    if litellm is not None:
+        if isinstance(err, litellm.ContextWindowExceededError):
+            return "context"
+        if isinstance(err, litellm.RateLimitError):
+            return "rate_limit"
+        if isinstance(err, litellm.Timeout):
+            return "timeout"
+        # Auth, permission, not-found and malformed requests will not succeed on retry.
+        if isinstance(err, (
+            litellm.AuthenticationError, litellm.PermissionDeniedError,
+            litellm.NotFoundError, litellm.BadRequestError,
+        )):
+            return "bad_request"
+
+    status = getattr(err, "status_code", None)
+    if status == 429:
+        return "rate_limit"
+    if isinstance(status, int) and 400 <= status < 500 and status not in (408, 409):
+        return "bad_request"
+
+    text = str(err).lower()
+    if "context_length_exceeded" in text or "maximum context length" in text or "prompt is too long" in text:
+        return "context"
+    if "rate_limit" in text or "rate limit" in text:
+        return "rate_limit"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if "invalid_request" in text:
+        return "bad_request"
+    return "other"
 
 
 def _parse_response(response: Any, model: str) -> LLMTurn:

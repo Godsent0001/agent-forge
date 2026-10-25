@@ -42,3 +42,45 @@ async def test_fake_llm_scripted_turns():
         await llm.complete([{"role": "user", "content": "Hi again"}])
 
     assert len(llm.received_calls) == 2
+
+
+def _litellm_error(cls_name: str, message: str = "boom"):
+    import litellm
+
+    cls = getattr(litellm, cls_name)
+    return cls(message=message, llm_provider="anthropic", model="anthropic/claude-test")
+
+
+@pytest.mark.parametrize("err_factory,expected", [
+    (lambda: _litellm_error("ContextWindowExceededError", "prompt is too long"), "context"),
+    (lambda: _litellm_error("RateLimitError"), "rate_limit"),
+    (lambda: _litellm_error("AuthenticationError", "invalid x-api-key"), "bad_request"),
+    (lambda: _litellm_error("BadRequestError", "messages: bad"), "bad_request"),
+    # Bare numbers in unrelated errors must not be read as HTTP statuses.
+    (lambda: RuntimeError("connection reset after sending 4000 bytes"), "other"),
+    (lambda: RuntimeError("upstream said 4290 things"), "other"),
+    (lambda: RuntimeError("Request timed out"), "timeout"),
+])
+def test_adapter_classifies_provider_errors(err_factory, expected):
+    from app.core.llm.adapter import _classify_error
+
+    assert _classify_error(err_factory()) == expected
+
+
+@pytest.mark.asyncio
+async def test_adapter_does_not_retry_authentication_errors(monkeypatch):
+    import litellm
+
+    from app.core.llm import adapter
+    from app.core.llm.types import LLMBadRequest
+
+    calls = {"n": 0}
+
+    async def fake_acompletion(**kwargs):
+        calls["n"] += 1
+        raise _litellm_error("AuthenticationError", "invalid x-api-key")
+
+    monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+    with pytest.raises(LLMBadRequest):
+        await adapter.complete([{"role": "user", "content": "hi"}], model="anthropic/claude-test")
+    assert calls["n"] == 1
