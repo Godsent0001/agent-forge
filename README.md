@@ -89,8 +89,9 @@ The Video pack includes `video_transcript`, `clip_finder` and `clip_extractor`. 
 they find moments in long videos from timestamped captions (local Whisper fallback), then
 download only those sections. That costs a few thousand tokens per video instead of about
 1M per hour of footage. See [`docs/VIDEO-CLIPS.md`](docs/VIDEO-CLIPS.md). Installers
-bundle ffmpeg/ffprobe (`npm run fetch:ffmpeg`, run by `npm run dist`; GPL-3, see
-`resources/ffmpeg/NOTICE.txt`); in development a system ffmpeg on PATH is used.
+bundle LGPL ffmpeg/ffprobe on Windows and Linux (`npm run fetch:ffmpeg`, run by
+`npm run dist`; H.264 via openh264, see `resources/ffmpeg/NOTICE.txt`). macOS packages and
+development use the ffmpeg on PATH.
 `uv sync --extra transcribe` enables speech-to-text for videos that have no captions.
 
 ## RunnerCore and model configuration

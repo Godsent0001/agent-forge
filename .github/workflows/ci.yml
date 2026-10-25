@@ -56,8 +56,13 @@ jobs:
           test -x dist-electron/linux-unpacked/resources/ffmpeg/ffprobe
           dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -version | head -1
           dist-electron/linux-unpacked/resources/ffmpeg/ffprobe -hide_banner -version | head -1
-          dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -encoders | grep -q libx264
-          test -f dist-electron/linux-unpacked/resources/ffmpeg/LICENSE
+          # LGPL build: no GPL-only libx264, H.264 via openh264 (what the media tools select).
+          ! dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -encoders | grep -q libx264
+          dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -buildconf | grep -q -- --enable-version3
+          ! dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -buildconf | grep -q -- --enable-gpl
+          dist-electron/linux-unpacked/resources/ffmpeg/ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=25:duration=1 -c:v libopenh264 -b:v 1M -pix_fmt yuv420p "$RUNNER_TEMP/openh264.mp4"
+          dist-electron/linux-unpacked/resources/ffmpeg/ffprobe -v error -show_entries stream=codec_name -of csv=p=0 "$RUNNER_TEMP/openh264.mp4" | grep -qx h264
+          test -f dist-electron/linux-unpacked/resources/ffmpeg/LICENSE.txt
       - uses: actions/upload-artifact@v6
         with:
           name: agentforge-linux-package

@@ -491,7 +491,7 @@ async def test_extractor_cuts_local_file_with_ffmpeg(workspace):
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=6",
         "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
-        "-c:v", "libx264", "-c:a", "aac", "-shortest", str(source),
+        "-c:v", "mpeg4", "-c:a", "aac", "-shortest", str(source),
     ], check=True)
     result = await ClipExtractorTool().run(
         ClipExtractorInput(source="uploads/sample.mp4", clips=[{"start": 1, "end": 3.5}]), _Ctx(workspace))

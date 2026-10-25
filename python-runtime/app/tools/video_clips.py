@@ -41,6 +41,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.contracts.tools import ArtifactRef, Tool, ToolContext, ToolError, ToolResult
 from app.infra.paths import data_dir
 from app.tools.base import ToolExecutionError
+from app.tools.media_codecs import bitrate_for_height, h264_args
 from app.tools.video_source import guard_media_url
 
 # Hard limits keep one tool call from turning into an unbounded download.
@@ -898,7 +899,12 @@ def yt_dlp_download_section(url: str, start: float, end: float, out_stem: Path,
         "merge_output_format": "mp4",
         "outtmpl": str(out_stem) + ".%(ext)s",
         "download_ranges": download_range_func(None, [(start, end)]),
+        # Frame-exact cuts re-encode; name the encoder instead of relying on ffmpeg's
+        # default, which is MPEG-4 Part 2 (unplayable in Chromium) without libx264.
         "force_keyframes_at_cuts": True,
+        "external_downloader_args": {
+            "ffmpeg_o": [*h264_args(bitrate=bitrate_for_height(max_height)), "-c:a", "aac", "-b:a", "160k"],
+        },
         "progress_hooks": [hook],
     }
     try:
@@ -925,7 +931,7 @@ async def ffmpeg_cut(source: Path, start: float, end: float, out_path: Path, can
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{end - start:.3f}",
         "-map", "0:v:0?", "-map", "0:a:0?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        *h264_args(bitrate=bitrate_for_height(720)),
         "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out_path),
     ]
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

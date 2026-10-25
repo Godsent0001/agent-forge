@@ -56,7 +56,7 @@ async def test_agent_cuts_a_clip_from_an_attached_video(monkeypatch, tmp_path):
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=8",
         "-f", "lavfi", "-i", "sine=frequency=330:duration=8",
-        "-c:v", "libx264", "-c:a", "aac", "-shortest", str(source),
+        "-c:v", "mpeg4", "-c:a", "aac", "-shortest", str(source),
     ], check=True)
 
     fake_llm = FakeLLM([
