@@ -28,8 +28,8 @@ export function Input({
       )}
       <input
         id={inputId}
-        className={`w-full bg-studio-800 text-studio-100 border rounded-md px-2.5 py-1.5 text-xs font-sans transition-colors placeholder:text-studio-500 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/50 ${
-          error ? "border-red-500/80" : "border-studio-700 hover:border-studio-600"
+        className={`w-full bg-studio-900 text-studio-100 border rounded-lg px-3 py-2 text-xs font-sans transition-colors placeholder:text-studio-500 focus:outline-none focus:border-accent-500/60 ${
+          error ? "border-red-500/70" : "border-transparent"
         } ${className}`}
         {...props}
       />
@@ -66,8 +66,8 @@ export function Textarea({
       )}
       <textarea
         id={textareaId}
-        className={`w-full bg-studio-800 text-studio-100 border rounded-md p-2.5 text-xs font-mono transition-colors placeholder:text-studio-500 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/50 resize-none ${
-          error ? "border-red-500/80" : "border-studio-700 hover:border-studio-600"
+        className={`w-full bg-studio-900 text-studio-100 border rounded-lg p-3 text-xs font-mono transition-colors placeholder:text-studio-500 focus:outline-none focus:border-accent-500/60 resize-none ${
+          error ? "border-red-500/70" : "border-transparent"
         } ${className}`}
         {...props}
       />

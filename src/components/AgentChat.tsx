@@ -13,6 +13,13 @@ import { isSimulatedText } from "../utils/simulated";
 import { buildRunHistory } from "../utils/chatHistory";
 import { useExecutionStream } from "../hooks/useExecutionStream";
 
+const TERMINAL_RUN_STATUSES = ["completed", "error", "cancelled", "budget_exceeded", "interrupted"] as const;
+type TerminalRunStatus = (typeof TERMINAL_RUN_STATUSES)[number];
+
+function storedRunStatus(status: string | null | undefined): TerminalRunStatus | undefined {
+  return TERMINAL_RUN_STATUSES.find((value) => value === status);
+}
+
 function fromStoredMessage(record: ConversationMessageRecord, agentName: string): ChatMessage {
   const timestamp = new Date(record.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (record.role === "user") {
@@ -25,6 +32,7 @@ function fromStoredMessage(record: ConversationMessageRecord, agentName: string)
     text: record.content,
     timestamp,
     executionId: record.execution_id ?? undefined,
+    executionStatus: storedRunStatus(record.execution_status),
     messageRecordId: record.id,
     feedbackValue: record.feedback_value,
     feedbackNote: record.feedback_note,
@@ -238,9 +246,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         addChatMessage(agentId, persistedAgentMsg);
         if (status === "cancelled") setChatNotice("Run stopped.");
         else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
-        else if (status === "error" || status === "interrupted") {
-          setChatNotice("Run did not complete. See the run log for details.");
-        }
       } catch (error) {
         setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
       } finally {
@@ -343,9 +348,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   if (!selectedAgentId || !agent || !project) {
     const hasAgents = agentCount > 0;
     return (
-      <div className="h-full w-full flex-1 flex items-center justify-center bg-studio-950 p-6 select-none">
+      <div className="h-full w-full flex-1 flex items-center justify-center p-6 select-none">
         <div className="text-center max-w-sm">
-          <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-studio-700 bg-studio-900 text-accent-400">
+          <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-studio-900 neu-raised text-accent-400">
             <Icon name={hasAgents ? "chat" : "agents"} size={20} />
           </div>
           <p className="font-semibold text-studio-100 text-base">
@@ -443,9 +448,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   };
 
   return (
-    <div className="h-full w-full flex-1 flex flex-col bg-studio-950 min-w-0 text-studio-100">
+    <div className="h-full w-full flex-1 flex flex-col min-w-0 text-studio-100">
       {/* Header bar showing active agent */}
-      <div className="px-6 py-4 border-b border-studio-800 bg-studio-900/95 flex items-center justify-between shadow-studio shrink-0 min-w-0 select-none">
+      <div className="px-6 py-4 border-b border-line flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0 min-w-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-md border border-studio-600 bg-studio-800 text-accent-400 flex items-center justify-center shrink-0">
             <Icon name="agents" size={16} />
@@ -457,7 +462,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor="conversation-switcher">Saved conversations</label>
           <select
             id="conversation-switcher"
@@ -465,7 +470,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             value={activeConversationId ?? ""}
             onChange={(event) => setActiveConversationId(event.target.value || null)}
             disabled={conversationLoading || isProcessing || conversations.length === 0}
-            className="max-w-40 rounded border border-studio-700 bg-studio-950 px-2 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
+            className="max-w-40 rounded-lg border border-transparent bg-studio-900 px-2.5 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
           >
             {conversations.map((conversation) => (
               <option key={conversation.id} value={conversation.id}>{conversation.title || "New conversation"}</option>
@@ -475,7 +480,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             type="button"
             onClick={() => void handleNewConversation()}
             disabled={isProcessing || conversationLoading}
-            className="rounded border border-studio-700 px-2 py-1 text-2xs font-mono text-studio-300 transition-colors hover:bg-studio-800 disabled:opacity-50"
+            className="neu-btn px-2.5 py-1 text-2xs font-mono text-studio-300 transition-all disabled:opacity-50"
           >
             New chat
           </button>
@@ -501,12 +506,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             </>
           )}
           {agent.child_agent_ids && agent.child_agent_ids.length > 0 && (
-            <span className="text-2xs font-mono px-2 py-0.5 rounded border border-studio-700 bg-studio-850 text-studio-300 font-medium shrink-0">
+            <span className="text-2xs font-mono px-2 py-0.5 rounded-full bg-studio-900 neu-raised-sm text-studio-300 font-medium shrink-0">
               {agent.child_agent_ids.length} delegated
             </span>
           )}
           {agent.tool_ids && agent.tool_ids.length > 0 && (
-            <span className="text-2xs font-mono px-2 py-0.5 rounded border border-studio-700 bg-studio-850 text-studio-300 font-medium shrink-0">
+            <span className="text-2xs font-mono px-2 py-0.5 rounded-full bg-studio-900 neu-raised-sm text-studio-300 font-medium shrink-0">
               {agent.tool_ids.length} tools
             </span>
           )}
@@ -528,7 +533,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       <div role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {conversationLoading && (
-          <p role="status" className="rounded border border-studio-800 bg-studio-900 px-3 py-2 text-2xs text-studio-400">
+          <p role="status" className="rounded-lg bg-studio-900 neu-raised-sm px-3 py-2 text-2xs text-studio-400">
             Loading saved conversation…
           </p>
         )}
@@ -554,7 +559,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                   key={starter.label}
                   type="button"
                   onClick={() => setPromptInput(starter.prompt)}
-                  className="rounded-md border border-studio-700 bg-studio-900 px-3 py-2 text-xs text-studio-300 transition-colors hover:border-studio-500 hover:bg-studio-800 hover:text-studio-100"
+                  className="rounded-xl bg-studio-900 neu-raised-sm px-3.5 py-2 text-xs text-studio-300 transition-all hover:text-white active:shadow-neu-pressed"
                 >
                   {starter.label}
                 </button>
@@ -603,22 +608,22 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                     <span className="text-studio-500">Input args:</span> {msg.toolInput}
                   </p>
                 )}
-                <pre className="whitespace-pre-wrap break-words text-xs text-emerald-200/90 font-mono leading-relaxed bg-studio-950/60 p-2 rounded border border-studio-800">
+                <pre className="whitespace-pre-wrap break-words text-xs text-emerald-200/90 font-mono leading-relaxed bg-studio-950/50 neu-inset p-2.5 rounded-lg">
                   {msg.toolOutput}
                 </pre>
               </div>
             ) : (
               <div
-                className={`max-w-3xl rounded-2xl px-4 py-3 shadow-studio border ${
+                className={`max-w-3xl rounded-2xl px-4 py-3 border ${
                   msg.sender === "user"
-                    ? "bg-accent-600 text-white border-accent-500/80 rounded-br-md"
+                    ? "neu-accent text-white border-transparent rounded-br-md"
                     : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
-                      ? "bg-red-950/50 text-red-100 border-red-800/80 rounded-bl-md"
+                      ? "bg-red-950/45 neu-raised-sm text-red-100 border-red-500/20 rounded-bl-md"
                       : msg.executionStatus === "budget_exceeded"
-                        ? "bg-amber-950/50 text-amber-100 border-amber-800/80 rounded-bl-md"
+                        ? "bg-amber-950/45 neu-raised-sm text-amber-100 border-amber-500/20 rounded-bl-md"
                         : msg.executionStatus === "cancelled"
-                          ? "bg-studio-850 text-studio-400 border-studio-700 rounded-bl-md"
-                          : "bg-studio-900 text-studio-100 border-studio-750 rounded-bl-md"
+                          ? "bg-studio-900 neu-raised-sm text-studio-400 border-transparent rounded-bl-md"
+                          : "bg-studio-900 neu-raised-sm text-studio-100 border-transparent rounded-bl-md"
                 }`}
               >
                 {msg.sender === "user" ? (
@@ -656,14 +661,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                   aria-label="Mark answer helpful"
                   aria-pressed={msg.feedbackValue === 1}
                   onClick={() => void handleFeedback(msg.id, 1)}
-                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === 1 ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-studio-800 text-studio-400 hover:bg-studio-800"}`}
+                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === 1 ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-line text-studio-400 hover:bg-studio-800"}`}
                 >👍 Yes</button>
                 <button
                   type="button"
                   aria-label="Mark answer not helpful"
                   aria-pressed={msg.feedbackValue === -1}
                   onClick={() => void handleFeedback(msg.id, -1)}
-                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === -1 ? "border-amber-700 bg-amber-950 text-amber-200" : "border-studio-800 text-studio-400 hover:bg-studio-800"}`}
+                  className={`rounded border px-2 py-1 transition-colors ${msg.feedbackValue === -1 ? "border-amber-700 bg-amber-950 text-amber-200" : "border-line text-studio-400 hover:bg-studio-800"}`}
                 >👎 No</button>
               </div>
             )}
@@ -671,13 +676,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 border border-studio-700 rounded-md w-fit font-mono">
+          <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit font-mono">
             <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeSpanName ? `${activeSpanName} is running…` : `${agent.name} is running the task…`}
           </div>
         )}
 
         {chatNotice && (
-          <div role="status" className="rounded-md border border-studio-700 bg-studio-900 px-4 py-3 text-sm text-studio-300">
+          <div role="status" className="rounded-md border border-line-strong bg-studio-900 px-4 py-3 text-sm text-studio-300">
             {chatNotice}
           </div>
         )}
@@ -693,7 +698,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       <ApprovalDialog executionId={activeExecutionId} events={activeExecutionEvents} />
 
       {/* Multi-Line Prompt Bar */}
-      <div className="p-4 border-t border-studio-800 bg-studio-900 shrink-0">
+      <div className="p-4 shrink-0">
         <div className="max-w-4xl mx-auto mb-2">
           <ProjectAttachmentsPanel
             projectId={project.id}
@@ -702,7 +707,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             disabled={isProcessing || conversationLoading}
           />
         </div>
-        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-950 border border-studio-700 rounded-xl p-2.5 shadow-studio focus-within:border-accent-500/70 transition-colors">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-900 neu-inset border border-transparent rounded-2xl p-2.5 focus-within:border-accent-500/50 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
@@ -714,15 +719,15 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             aria-label={`Task for ${agent.name}`}
-            placeholder={`Message ${agent.name}…  (Enter to send, Shift+Enter for a new line)`}
+            placeholder={`Message ${agent.name}…`}
             disabled={isProcessing}
-            className="flex-1 bg-transparent text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
+            className="flex-1 bg-transparent shadow-none focus-visible:shadow-none text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
           />
           {isProcessing ? (
             <button
               onClick={handleCancelExecution}
               disabled={!activeExecutionId || isCancelling}
-              className="bg-red-900 hover:bg-red-800 active:bg-red-950 disabled:opacity-40 text-red-200 text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 border border-red-700 cursor-pointer"
+              className="bg-red-900/80 neu-raised-sm hover:bg-red-800 active:shadow-neu-pressed disabled:opacity-40 text-red-100 text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
               aria-label="Stop execution"
             >
               <span>{isCancelling ? "Stopping…" : "Stop"}</span>
@@ -731,12 +736,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <button
               onClick={handleSendMessage}
               disabled={!promptInput.trim()}
-              className="bg-accent-600 hover:bg-accent-500 active:bg-accent-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1 shrink-0 h-9 shadow-studio cursor-pointer"
+              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
             >
               <span>Send</span> <Icon name="chevron-right" size={14} />
             </button>
           )}
         </div>
+        <p className="mx-auto mt-1.5 max-w-4xl px-2 text-[10px] text-studio-500">Enter to send · Shift+Enter for a new line</p>
       </div>
     </div>
   );

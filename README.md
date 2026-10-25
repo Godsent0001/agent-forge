@@ -16,12 +16,11 @@ verify locally.
 | Phase | What it is | Status |
 |---|---|---|
 | 0 | Electron + React + FastAPI scaffold, sidecar wiring | Built. Needs local `npm run dev` to verify. |
-| 0.5 | Headless recursive-execution spike (`python-runtime/spike/headless_spike.py`) | **Run and passing** — see below. |
 | 1 | Full data model + cycle/depth validation (`app/models.py`, `app/graph.py`) | Schema built; cycle-detection **algorithm unit-tested and passing** (6/6 cases). Full DB/API needs `uv sync` locally (no network here to install SQLAlchemy). |
 | 2 | Tool Library: general-purpose (web/python/fs/http) + 45-tool Tier-1 production catalog (`app/tools/`) | **production tool catalog is implemented and tested locally** (see the Tier-1 catalog section below for the full breakdown). Web search / HTTP use real backends now (per your httpx/DDGS changes); `character_rig` is implemented as part of the current runtime. |
 | 3 | Design system + Agent Tree/Editor/shelved Tool Catalog UI (`src/components/`) | Built, including the new `ToolCatalogModal.tsx` shelf picker. Needs `npm install` + `npm run dev` to verify visually. |
-| 4 | LLM interface, LiteLLM-ready (`app/llm.py`) | Built with a real-provider path (`USE_MOCK = False`) since this sandbox has no network to call a real provider. |
-| 5/6 | Production agent loop + recursive execution engine (`app/runtime/`) | Built on the validated Phase 0.5 logic, wired to real DB config/tools/LLM interface. Needs local deps to run end-to-end. |
+| 4 | LLM adapter over LiteLLM (`app/core/llm/`) | Typed errors, retries, pricing from LiteLLM's model table. |
+| 5/6 | Agent loop + recursive execution (`app/core/runner.py`, RunnerCore) | The only execution engine; the original prototype engine and spike were removed (S-04). |
 | 7 | WebSocket live execution events (`app/ws.py`, `src/hooks/useExecutionStream.ts`) | Built. Needs local run to verify the live tree UI. |
 | 8 | Design polish: fonts, scrollbars, focus states, motion | Built into `src/index.css` and `tailwind.config.js`. |
 | 9 | Packaging: standalone Python sidecar, OS-keychain API key storage | Built (`electron/main.js` using `safeStorage` + `src/components/SettingsModal.tsx`). |
@@ -83,6 +82,17 @@ Produces the installer / application bundle inside `dist-electron/`.
 ## Documentation
 
 See [`docs/`](docs/) for project plans, contracts, task cards, and testing guidance.
+
+### Video clips without watching the video
+
+The Video pack includes `video_transcript`, `clip_finder` and `clip_extractor`. Together
+they find moments in long videos from timestamped captions (local Whisper fallback), then
+download only those sections. That costs a few thousand tokens per video instead of about
+1M per hour of footage. See [`docs/VIDEO-CLIPS.md`](docs/VIDEO-CLIPS.md). Installers
+bundle LGPL ffmpeg/ffprobe on Windows and Linux (`npm run fetch:ffmpeg`, run by
+`npm run dist`; H.264 via openh264, see `resources/ffmpeg/NOTICE.txt`). macOS packages and
+development use the ffmpeg on PATH.
+`uv sync --extra transcribe` enables speech-to-text for videos that have no captions.
 
 ## RunnerCore and model configuration
 

@@ -84,3 +84,41 @@ def test_execution_artifacts_are_project_scoped_and_downloadable(
     assert denied.status_code == 404
     cross_run = client.get(f"/v2/executions/{execution.id}/artifacts/{other_run_record.artifact_id}")
     assert cross_run.status_code == 404
+
+
+def test_large_artifacts_stream_from_disk_and_support_range_requests(
+    client, db_session, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
+    project = models.Project(name="streaming")
+    agent = models.Agent(project=project, name="agent")
+    db_session.add_all([project, agent])
+    db_session.commit()
+    execution = models.Execution(id="stream-run", project_id=project.id, root_agent_id=agent.id,
+                                 input_task="t", status="completed")
+    db_session.add(execution)
+    db_session.commit()
+
+    source = tmp_path / "clip.mp4"
+    content = bytes(range(256)) * 12_000  # ~3 MB, spans several read chunks
+    source.write_bytes(content)
+    store = SQLiteArtifactStore(project_dir(project.id))
+    spec = ArtifactCreate(project_id=project.id, artifact_type="tool_artifact", name="clip.mp4",
+                          media_type="video/mp4", metadata={"execution_id": execution.id})
+    streamed = store.create_from_file(spec, source)
+    in_memory = store.create(spec, content)
+    assert streamed.sha256 == in_memory.sha256 and streamed.size_bytes == len(content)
+
+    url = f"/v2/executions/{execution.id}/artifacts/{streamed.artifact_id}"
+    full = client.get(url)
+    assert full.status_code == 200 and full.content == content
+    assert full.headers["content-type"] == "video/mp4"
+    partial = client.get(url, headers={"Range": "bytes=100-199"})
+    assert partial.status_code == 206 and partial.content == content[100:200]
+
+    # A tampered blob is refused rather than served.
+    _, blob = store.open_verified(streamed.artifact_id)
+    blob.write_bytes(b"tampered")
+    assert client.get(url).status_code == 409
+    assert store.verify_integrity(streamed.artifact_id) is False

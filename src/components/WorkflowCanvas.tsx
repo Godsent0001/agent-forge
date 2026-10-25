@@ -111,8 +111,8 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
     setLayoutReadyKey(positionStorageKey);
   }, [positionStorageKey]);
 
-  const childPositions = Object.fromEntries(otherAgents.map((agent, index) => [`child-${agent.id}`, { x: 790, y: 90 + index * 132 }]));
-  const toolPositions = Object.fromEntries(tools.map((tool, index) => [`tool-${tool.id}`, { x: 1180, y: 90 + index * 116 }]));
+  const childPositions = Object.fromEntries(otherAgents.map((agent, index) => [`child-${agent.id}`, { x: 790, y: 90 + index * 144 }]));
+  const toolPositions = Object.fromEntries(tools.map((tool, index) => [`tool-${tool.id}`, { x: 1180, y: 90 + index * 144 }]));
   const at = (id: string): Point => positions[id] ||
     (activeAgent && id === activeAgent.id ? initialPositions["agent-main"] : null) ||
     childPositions[id] || toolPositions[id] || initialPositions[id] || { x: 830, y: 420 };
@@ -241,19 +241,19 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
   const renderedConnections = connections.filter((edge) => nodeById(edge.source) && nodeById(edge.target));
 
   return (
-    <div ref={canvasRef} data-testid="workflow-canvas" className="workflow-canvas h-full w-full relative overflow-hidden bg-studio-950 bg-grid-pattern"
+    <div ref={canvasRef} data-testid="workflow-canvas" className="workflow-canvas h-full w-full relative overflow-hidden bg-studio-950/60 bg-grid-pattern"
       onWheel={handleWheel} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp}
       onPointerCancel={() => { setConnectionDraft(null); setDrag({ id: null, startX: 0, startY: 0, origin: { x: 0, y: 0 }, moved: false }); setIsPanning(false); }}
       onPointerDown={(event) => { if (event.target === canvasRef.current || (event.target as HTMLElement).dataset.canvasBackground === "true" || event.target instanceof SVGSVGElement) { setIsPanning(true); setPanStart({ x: event.clientX, y: event.clientY, origin: pan }); } }}>
-      <div className="absolute z-20 top-3 left-3 flex items-center gap-1 border border-studio-700/80 bg-studio-900/95 p-1 shadow-studio">
-        <span className="px-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Workflow</span><span className="h-4 w-px bg-studio-700" />
-        <button onClick={fitView} className="px-2 py-1.5 text-xs text-studio-300 hover:bg-studio-800 hover:text-white">Fit view</button>
-        <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} className="px-2 py-1.5 text-sm text-studio-300 hover:bg-studio-800">−</button>
+      <div className="absolute z-20 top-3 left-3 flex items-center gap-1 rounded-xl bg-studio-900/95 neu-raised-sm p-1">
+        <span className="px-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Workflow</span><span className="h-4 w-px bg-line-strong" />
+        <button onClick={fitView} className="rounded-lg px-2 py-1.5 text-xs text-studio-300 transition-all hover:text-white hover:shadow-neu-xs active:shadow-neu-pressed">Fit view</button>
+        <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} className="rounded-lg px-2 py-1.5 text-sm text-studio-300 transition-all hover:text-white hover:shadow-neu-xs active:shadow-neu-pressed">−</button>
         <span className="min-w-10 text-center text-2xs font-mono text-studio-400">{Math.round(zoom * 100)}%</span>
-        <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.65, value + 0.1))} className="px-2 py-1.5 text-sm text-studio-300 hover:bg-studio-800">+</button>
+        <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.65, value + 0.1))} className="rounded-lg px-2 py-1.5 text-sm text-studio-300 transition-all hover:text-white hover:shadow-neu-xs active:shadow-neu-pressed">+</button>
 
       </div>
-      <div className="absolute right-3 top-3 rounded border border-studio-800 bg-studio-900/90 px-2.5 py-1.5 text-2xs text-studio-400"><span className="text-studio-300">{nodes.length} nodes</span><span className="mx-2 text-studio-700">·</span><span className="text-studio-300">{renderedConnections.length} connections</span></div>
+      <div className="absolute right-3 top-3 rounded-xl bg-studio-900/90 neu-raised-sm px-3 py-2 text-2xs text-studio-400"><span className="text-studio-300">{nodes.length} nodes</span><span className="mx-2 text-studio-700">·</span><span className="text-studio-300">{renderedConnections.length} connections</span></div>
       <div data-canvas-background="true" className="absolute inset-0" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", transition: drag.id || isPanning || connectionDraft ? "none" : "transform 100ms ease-out" }}>
         <svg aria-label="Workflow connections" className="absolute overflow-visible" style={{ width: 1800, height: 1400, left: 0, top: 0 }}>
           {renderedConnections.map((edge) => {
@@ -273,38 +273,38 @@ export function WorkflowCanvas({ onOpenToolCatalog, isRunning = false }: Workflo
         {nodes.map((node) => {
           const point = at(node.id), selected = selectedNodeId === node.id || (!!node.agentId && selectedAgentId === node.agentId);
           const tone = node.kind === "trigger" ? "amber" : node.toolId ? "emerald" : "blue";
-          const border = selected ? "border-accent-400 ring-1 ring-accent-500/20" : "border-studio-700 hover:border-studio-500";
+          const border = selected ? "border-accent-400/70 ring-2 ring-accent-500/20" : "border-transparent hover:border-line-strong";
           return (
             <div key={node.id} data-node-id={node.id} role="group" aria-label={node.title} tabIndex={-1}
               onPointerDown={(event) => handlePointerDown(event, node)}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedNodeId(node.id); if (node.agentId) selectAgent?.(node.agentId); } }}
               style={{ position: "absolute", left: point.x, top: point.y, width: node.width, minHeight: node.height, touchAction: "none" }}
-              className={`group border bg-studio-900 shadow-studio transition-[border-color] duration-150 ${border} ${drag.id === node.id ? "z-10 cursor-grabbing" : "cursor-grab"}`}>
-              <div className="flex items-center gap-3 border-b border-studio-800 bg-studio-850 px-3 py-2.5">
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center border ${tone === "amber" ? "border-amber-800/80 bg-amber-950/40 text-amber-300" : tone === "blue" ? "border-blue-800/80 bg-blue-950/40 text-blue-300" : "border-emerald-800/80 bg-emerald-950/30 text-emerald-300"}`}>{node.kind === "trigger" ? "↳" : node.agentId ? <Icon name="agents" size={17} /> : <Icon name="tools" size={17} />}</span>
+              className={`group overflow-visible rounded-node border bg-studio-900 neu-raised transition-[border-color] duration-150 ${border} ${drag.id === node.id ? "z-10 cursor-grabbing" : "cursor-grab"}`}>
+              <div className="flex items-center gap-3 border-b border-line px-3 py-2.5">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-neu-xs ${tone === "amber" ? "border-amber-800/80 bg-amber-950/40 text-amber-300" : tone === "blue" ? "border-blue-800/80 bg-blue-950/40 text-blue-300" : "border-emerald-800/80 bg-emerald-950/30 text-emerald-300"}`}>{node.kind === "trigger" ? "↳" : node.agentId ? <Icon name="agents" size={17} /> : <Icon name="tools" size={17} />}</span>
                 <div className="min-w-0 flex-1"><div className="text-[10px] font-mono uppercase tracking-wider text-studio-500">{node.kind === "trigger" ? "Trigger" : node.kind === "agent" ? "Selected agent" : node.kind === "subagent" ? "Delegated agent" : node.kind === "candidate" ? "Agent" : node.kind === "tool" ? "Tool · attached" : "Tool · available"}</div><h3 className="mt-0.5 truncate text-sm font-semibold text-studio-100">{node.title}</h3></div>
                 {isRunning && <span className="h-1.5 w-1.5 rounded-full bg-amber-300 animate-pulse" />}
               </div>
               <div className="px-3 py-2.5">
                 <p className="text-xs leading-relaxed text-studio-400">{node.subtitle}</p>
                 {node.kind === "agent" && <>
-                  <div className="mt-3 flex items-center justify-between border-t border-studio-800 pt-2 text-xs"><span className="text-studio-400">Attached tools</span><span className="font-mono text-studio-300">{attachedTools.length}</span></div>
+                  <div className="mt-3 flex items-center justify-between border-t border-line pt-2 text-xs"><span className="text-studio-400">Attached tools</span><span className="font-mono text-studio-300">{attachedTools.length}</span></div>
                   <p className="mt-2 text-[11px] leading-relaxed text-studio-500">Connect this agent to another agent to delegate work, or to a tool to add a capability.</p>
-                  <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openCatalog(); }} className="mt-2 flex w-full items-center gap-2 border border-dashed border-studio-700 px-2 py-1.5 text-xs text-studio-300 hover:border-accent-400 hover:text-white"><Icon name="plus" size={14} /> Browse tools</button>
+                  <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openCatalog(); }} className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-line-strong px-2 py-1.5 text-xs text-studio-300 transition-all hover:border-accent-400/60 hover:text-white active:shadow-neu-pressed"><Icon name="plus" size={14} /> Browse tools</button>
                 </>}
                 {node.kind === "candidate" && <div className="mt-2 text-[11px] text-studio-500">Drag an agent output here to delegate</div>}
                 {node.kind === "tool-candidate" && <div className="mt-2 text-[11px] text-studio-500">Drag an agent output here to attach</div>}
                 {node.kind === "tool" && <div className="mt-2 text-[11px] text-emerald-300/80">Connected to one or more agents</div>}
               </div>
-              {node.kind !== "trigger" && <button type="button" data-node-id={node.id} data-port="input" aria-label={`Connect to ${node.title}`} onPointerDown={(event) => event.stopPropagation()} className="absolute -left-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-studio-400 transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Connection input" />}
-              {node.agentId && <button type="button" data-node-id={node.id} data-port="output" aria-label={`Connect from ${node.title}`} onPointerDown={(event) => beginConnection(event, node)} className="absolute -right-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-accent-400 transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Drag to another agent or tool" />}
+              {node.kind !== "trigger" && <button type="button" data-node-id={node.id} data-port="input" aria-label={`Connect to ${node.title}`} onPointerDown={(event) => event.stopPropagation()} className="absolute -left-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-studio-400 shadow-neu-xs transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Connection input" />}
+              {node.agentId && <button type="button" data-node-id={node.id} data-port="output" aria-label={`Connect from ${node.title}`} onPointerDown={(event) => beginConnection(event, node)} className="absolute -right-2 top-8 z-20 h-4 w-4 rounded-full border-2 border-studio-900 bg-accent-400 shadow-neu-xs transition-colors hover:bg-accent-300 hover:ring-2 hover:ring-accent-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-300" title="Drag to another agent or tool" />}
             </div>
           );
         })}
       </div>
-      <div className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] border border-studio-800 bg-studio-900/95 px-3 py-2 text-[11px] leading-5 text-studio-500">Drag nodes to move · Connect an agent to another agent to delegate, or to a tool to attach it · Click an editable wire to remove it · Ctrl/⌘ + scroll to zoom</div>
-      {connectionNotice && <div role="status" className="absolute bottom-3 right-3 flex max-w-sm items-start gap-3 border border-studio-700 bg-studio-900 px-3 py-2 text-xs text-studio-300 shadow-studio"><span>{connectionNotice}</span><button type="button" aria-label="Dismiss message" onClick={() => setConnectionNotice(null)} className="shrink-0 text-studio-500 hover:text-studio-100"><Icon name="close" size={14} /></button></div>}
-      {selectedAgent && <div className="absolute bottom-16 right-3 max-w-xs border border-studio-800 bg-studio-900 px-3 py-2 text-xs text-studio-300"><span className="text-studio-500">Selected</span><span className="ml-2 font-semibold text-studio-100">{selectedAgent.name}</span></div>}
+      <div className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] rounded-xl bg-studio-900/95 neu-raised-sm px-3 py-2 text-[11px] leading-5 text-studio-500">Drag nodes to move · Connect an agent to another agent to delegate, or to a tool to attach it · Click an editable wire to remove it · Ctrl/⌘ + scroll to zoom</div>
+      {connectionNotice && <div role="status" className="absolute bottom-3 right-3 flex max-w-sm items-start gap-3 rounded-xl bg-studio-900 neu-raised-sm px-3 py-2 text-xs text-studio-300"><span>{connectionNotice}</span><button type="button" aria-label="Dismiss message" onClick={() => setConnectionNotice(null)} className="shrink-0 text-studio-500 hover:text-studio-100"><Icon name="close" size={14} /></button></div>}
+      {selectedAgent && <div className="absolute bottom-16 right-3 max-w-xs rounded-xl bg-studio-900 neu-raised-sm px-3 py-2 text-xs text-studio-300"><span className="text-studio-500">Selected</span><span className="ml-2 font-semibold text-studio-100">{selectedAgent.name}</span></div>}
       {catalogModalOpen && <ToolCatalogModal onClose={() => setCatalogModalOpen(false)} />}
     </div>
   );

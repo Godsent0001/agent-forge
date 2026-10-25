@@ -6,7 +6,7 @@ import { useDraft } from "../hooks/useDraft";
 const CUSTOM = "__custom__";
 
 const selectClass =
-  "w-full bg-studio-800 text-studio-100 border border-studio-700 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent-500 transition-colors";
+  "w-full bg-studio-800 text-studio-100 border border-line-strong rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent-500 transition-colors";
 const labelClass = "block text-2xs font-mono uppercase tracking-wider text-studio-400";
 
 interface ModelPickerProps {

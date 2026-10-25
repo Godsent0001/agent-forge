@@ -24,7 +24,7 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   return (
     <div
-      className={`inline-flex items-center p-0.5 bg-studio-900 border border-studio-700/80 rounded-md select-none ${className}`}
+      className={`inline-flex items-center gap-0.5 p-1 bg-studio-900 neu-inset rounded-xl select-none ${className}`}
       role="tablist"
     >
       {options.map((opt) => {
@@ -36,12 +36,12 @@ export function SegmentedControl<T extends string>({
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(opt.value)}
-            className={`inline-flex items-center gap-1.5 transition-all font-medium rounded cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`inline-flex items-center gap-1.5 transition-all font-medium rounded-lg cursor-pointer whitespace-nowrap shrink-0 ${
               size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-xs"
             } ${
               isActive
-                ? "bg-accent-600/90 text-white shadow-studio border border-accent-400/20"
-                : "text-studio-400 hover:text-studio-200 hover:bg-studio-800/60"
+                ? "neu-accent text-white"
+                : "text-studio-400 hover:text-studio-100 hover:bg-studio-850 hover:shadow-neu-xs"
             }`}
           >
             {opt.icon && <span className="shrink-0">{opt.icon}</span>}

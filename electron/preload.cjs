@@ -7,4 +7,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveApiKey: (provider, key) => ipcRenderer.invoke("save-api-key", provider, key),
   deleteApiKey: (provider) => ipcRenderer.invoke("delete-api-key", provider),
   syncApiKeys: () => ipcRenderer.invoke("sync-api-keys"),
+  onBackendRestarted: (callback) => {
+    const listener = (_event, port) => callback(port);
+    ipcRenderer.on("backend-restarted", listener);
+    return () => ipcRenderer.removeListener("backend-restarted", listener);
+  },
 });

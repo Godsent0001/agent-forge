@@ -43,7 +43,7 @@ export function SystemCheckPanel() {
         </p>
       )}
 
-      <div className="divide-y divide-studio-800 rounded-lg border border-studio-800">
+      <div className="divide-y divide-line rounded-lg border border-line">
         {loading && checks.length === 0 && <p className="p-3 text-2xs text-studio-400">Checking local dependencies, storage, and provider configuration…</p>}
         {checks.map((check) => (
           <div key={check.name} className="flex items-start gap-3 p-3">

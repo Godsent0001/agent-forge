@@ -3,24 +3,31 @@
 @import "tailwindcss";
 
 @theme {
-  --color-studio-950: #0b0f17;
-  --color-studio-900: #111827;
-  --color-studio-850: #161f30;
-  --color-studio-800: #1f293d;
-  --color-studio-750: #263249;
-  --color-studio-700: #2d3a54;
-  --color-studio-600: #475569;
-  --color-studio-500: #64748b;
-  --color-studio-400: #94a3b8;
-  --color-studio-300: #cbd5e1;
-  --color-studio-200: #e2e8f0;
-  --color-studio-100: #f1f5f9;
+  /* Soft UI palette: background and surfaces share one tone so depth comes from
+     light/dark shadow pairs (neumorphism) rather than borders. Text steps are
+     tuned for >= 4.5:1 contrast on the base surface. */
+  --color-studio-950: #171c27;
+  --color-studio-900: #1a202c;
+  --color-studio-850: #1d2431;
+  --color-studio-800: #222a39;
+  --color-studio-750: #283143;
+  --color-studio-700: #2f394d;
+  --color-studio-600: #4a5670;
+  --color-studio-500: #8391a7;
+  --color-studio-400: #a3afc2;
+  --color-studio-300: #cdd5e1;
+  --color-studio-200: #e3e8ef;
+  --color-studio-100: #f3f6fa;
 
-  --color-surface-950: #0b0f17;
-  --color-surface-900: #111827;
-  --color-surface-800: #1f293d;
-  --color-surface-700: #2d3a54;
-  --color-surface-600: #475569;
+  --color-surface-950: #171c27;
+  --color-surface-900: #1a202c;
+  --color-surface-800: #222a39;
+  --color-surface-700: #2f394d;
+  --color-surface-600: #4a5670;
+
+  /* Hairlines that read as an edge, not a box. */
+  --color-line: rgb(255 255 255 / 0.05);
+  --color-line-strong: rgb(255 255 255 / 0.085);
 
   --color-accent-700: #1d4ed8;
   --color-accent-600: #2563eb;
@@ -47,12 +54,22 @@
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.875rem;
 
-  --radius-panel: 0.5rem;
-  --radius-node: 0.375rem;
+  --radius-panel: 0.875rem;
+  --radius-node: 0.625rem;
 
-  --shadow-studio: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  /* Light source top-left: a faint highlight above, a deep shadow below. */
+  --shadow-neu-xs: -1px -1px 2px rgb(255 255 255 / 0.035), 1px 1px 3px rgb(0 0 0 / 0.45);
+  --shadow-neu-sm: -2px -2px 5px rgb(255 255 255 / 0.04), 3px 3px 7px rgb(0 0 0 / 0.5);
+  --shadow-neu: -4px -4px 10px rgb(255 255 255 / 0.04), 6px 6px 14px rgb(0 0 0 / 0.55);
+  --shadow-neu-lg: -8px -8px 22px rgb(255 255 255 / 0.035), 14px 14px 32px rgb(0 0 0 / 0.6);
+  --shadow-neu-inset: inset 2px 2px 5px rgb(0 0 0 / 0.5), inset -2px -2px 5px rgb(255 255 255 / 0.035);
+  --shadow-neu-pressed: inset 3px 3px 7px rgb(0 0 0 / 0.55), inset -3px -3px 7px rgb(255 255 255 / 0.035);
+  --shadow-glow: 0 0 0 1px rgb(147 197 253 / 0.18), 0 8px 20px -6px rgb(37 99 235 / 0.65);
+
+  /* Legacy names now resolve to the soft scale so existing usages follow. */
+  --shadow-studio: var(--shadow-neu-xs);
+  --shadow-card: var(--shadow-neu-sm);
+  --shadow-elevated: var(--shadow-neu-lg);
 }
 
 html, body, #root {
@@ -61,8 +78,8 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0b0f17;
-  color: #f1f5f9;
+  background-color: var(--color-studio-950);
+  color: var(--color-studio-100);
 }
 
 body {
@@ -97,6 +114,71 @@ body {
   outline-offset: 1px;
 }
 
+/* ---------------------------------------------------------------------------
+   Soft UI building blocks
+   --------------------------------------------------------------------------- */
+
+/* Raised surface: catches light on its top-left edge. */
+@utility neu-raised {
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 0.03), rgb(255 255 255 / 0) 60%);
+  box-shadow: var(--shadow-neu);
+}
+@utility neu-raised-sm {
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 0.03), rgb(255 255 255 / 0) 60%);
+  box-shadow: var(--shadow-neu-sm);
+}
+/* Standard soft button for hand-rolled controls: raised, lifts on hover,
+   presses in when clicked. Pair with padding and text classes. */
+@utility neu-btn {
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background-color: var(--color-studio-900);
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 0.03), rgb(255 255 255 / 0) 60%);
+  box-shadow: var(--shadow-neu-sm);
+  &:hover:not(:disabled) {
+    color: var(--color-studio-100);
+    box-shadow: var(--shadow-neu);
+  }
+  &:active:not(:disabled) {
+    box-shadow: var(--shadow-neu-pressed);
+  }
+}
+/* Selected item in a list: pressed into the surface, accent text. */
+@utility neu-selected {
+  background-color: var(--color-studio-900);
+  box-shadow: var(--shadow-neu-pressed);
+  color: var(--color-studio-100);
+}
+/* Recessed well for inputs, tracks and code. */
+@utility neu-inset {
+  box-shadow: var(--shadow-neu-inset);
+}
+/* Accent control that glows instead of casting a grey shadow. */
+@utility neu-accent {
+  background-image: linear-gradient(145deg, #3b82f6, #2563eb 55%, #1e4fd0);
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+@layer base {
+  /* Every text field, select and textarea reads as a recessed well unless a
+     component chooses otherwise. Borders stay as hairlines for focus states. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    box-shadow: var(--shadow-neu-inset);
+    border-radius: 0.5rem;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    box-shadow: var(--shadow-neu-inset), 0 0 0 2px rgb(59 130 246 / 0.45);
+    outline: none;
+  }
+  select option {
+    background-color: var(--color-studio-850);
+  }
+}
+
 .bg-grid-pattern {
   background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
   background-size: 20px 20px;
@@ -122,7 +204,7 @@ button {
 }
 
 button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.995);
 }
 
 button:disabled {
@@ -130,8 +212,9 @@ button:disabled {
 }
 
 .workflow-canvas {
-  background-image: radial-gradient(rgba(148, 163, 184, 0.09) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
   background-size: 22px 22px;
+  box-shadow: var(--shadow-neu-inset);
 }
 
 @media (prefers-reduced-motion: reduce) {

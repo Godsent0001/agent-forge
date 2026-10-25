@@ -1,8 +1,8 @@
 """Video source tool backed by yt-dlp.
 
 Searches supported video hosts for clip candidates and returns stable metadata.
-The tool does not download media; downstream rendering/download steps can use
-the returned webpage URLs.
+The tool does not download media; pass a returned URL to video_transcript /
+clip_finder / clip_extractor (app/tools/video_clips.py) to locate and cut clips.
 """
 
 from __future__ import annotations
@@ -20,19 +20,23 @@ from app.tools.base import Tool, ToolExecutionError
 SearchFn = Callable[[str, int], list[dict[str, Any]]]
 
 
+def guard_media_url(url: str) -> None:
+    """Reject URLs that would make yt-dlp fetch localhost/private services."""
+    try:
+        raw_port = os.environ.get("AGENTFORGE_PORT") or os.environ.get("PORT") or "8000"
+        runtime_port = int(raw_port)
+    except (TypeError, ValueError):
+        runtime_port = 8000
+    try:
+        assert_public_url(url, app_port=runtime_port)
+    except UnsafeURL as exc:
+        raise ToolExecutionError(str(exc)) from exc
+
+
 def _yt_dlp_search(query: str, limit: int) -> list[dict[str, Any]]:
     parsed = urlparse(query)
     if parsed.scheme.lower() in {"http", "https"}:
-        # Direct URL mode can otherwise make yt-dlp fetch localhost/private services.
-        try:
-            raw_port = os.environ.get("AGENTFORGE_PORT") or os.environ.get("PORT") or "8000"
-            runtime_port = int(raw_port)
-        except (TypeError, ValueError):
-            runtime_port = 8000
-        try:
-            assert_public_url(query, app_port=runtime_port)
-        except UnsafeURL as exc:
-            raise ToolExecutionError(str(exc)) from exc
+        guard_media_url(query)
         search_target = query
     else:
         search_target = f"ytsearch{limit}:{query}"
@@ -48,6 +52,7 @@ def _yt_dlp_search(query: str, limit: int) -> list[dict[str, Any]]:
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
+        "socket_timeout": 30,
     }
 
     try:

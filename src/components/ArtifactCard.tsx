@@ -40,7 +40,7 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
   const isAudio = ["wav", "mp3", "ogg"].includes(ext);
 
   return (
-    <div className="bg-studio-850 border border-studio-700 rounded-md p-2.5 shadow-studio space-y-2 text-xs">
+    <div className="bg-studio-850 border border-line-strong rounded-md p-2.5 shadow-studio space-y-2 text-xs">
       <div className="flex items-center justify-between">
         <span className="font-medium text-studio-200 truncate max-w-[180px]" title={filename}>
           {filename}
@@ -60,7 +60,7 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
       </div>
 
       {isImage && fileUrl && (
-        <div className="rounded overflow-hidden bg-studio-900 border border-studio-800 max-h-48 flex items-center justify-center">
+        <div className="rounded overflow-hidden bg-studio-900 border border-line max-h-48 flex items-center justify-center">
           <img src={fileUrl} alt={filename} className="max-h-48 object-contain" />
         </div>
       )}
@@ -78,7 +78,7 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
       )}
 
       {!isImage && !isVideo && !isAudio && (
-        <div className="bg-studio-900 border border-studio-800 rounded p-2 text-2xs font-mono text-studio-300 truncate">
+        <div className="bg-studio-900 border border-line rounded p-2 text-2xs font-mono text-studio-300 truncate">
           {cleanPath}
         </div>
       )}

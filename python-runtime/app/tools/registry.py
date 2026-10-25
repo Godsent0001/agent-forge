@@ -78,6 +78,7 @@ from app.tools.scene import (
     SceneTemplateManagerTool,
 )
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
+from app.tools.video_clips import ClipExtractorTool, ClipFinderTool, VideoTranscriptTool
 from app.tools.video_source import VideoSourceTool
 from app.tools.web_search import WebSearchTool
 
@@ -172,7 +173,26 @@ def build_tool(kind: str, config: dict) -> Tool:
 # engine calls it directly and must retain its historical behavior.
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "agentforge_control": AgentForgeControlTool,
-  }
+    "video_transcript": VideoTranscriptTool,
+    "clip_finder": ClipFinderTool,
+    "clip_extractor": ClipExtractorTool,
+}
+
+
+_CONFIG_DRIVEN_KINDS = frozenset({
+    "file_system", "voice_generator", "character_asset_manager", "scene_template_manager",
+    "visual_asset_manager", "render_queue", "cache_engine", "project_manager",
+    "asset_cache_store", "production_config",
+})
+
+
+def known_tool_kinds() -> frozenset[str]:
+    """Every tool kind the v2 factory can build (used to validate new Tool rows)."""
+    from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
+
+    return frozenset(_SIMPLE_FACTORIES) | _CONFIG_DRIVEN_KINDS | frozenset(NATIVE_TOOLS) | {
+        "custom_http", *WorkspaceCapabilityToolFactory._BUILTINS,
+    }
 
 
 class DefaultToolFactory:
@@ -183,7 +203,10 @@ class DefaultToolFactory:
             return CustomHttpTool(binding)
         native = NATIVE_TOOLS.get(binding.kind)
         if native is not None:
-            return native()
+            tool = native()
+            # The Runner hands this to the tool as ToolContext.config.
+            tool.binding_config = dict(binding.config or {})
+            return tool
 
         # Never let a persisted Tool.config choose arbitrary host directories.
         # Legacy execution still uses build_tool() unchanged; v2 uses fixed data roots.

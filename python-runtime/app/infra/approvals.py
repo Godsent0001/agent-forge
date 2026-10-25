@@ -13,6 +13,11 @@ DEFAULT_POLICIES = {
     "python": "ask",
     "http_request": "ask",
     "web_search": "allow",
+    # Read-only metadata/caption lookups; clip_extractor writes only to the run workspace.
+    "video_source": "allow",
+    "video_transcript": "allow",
+    "clip_finder": "allow",
+    "clip_extractor": "allow",
     "file_system": "allow",
     # Shared-data mutators require approval unless the project explicitly changes policy.
     "scene_template_manager": "ask",

@@ -107,17 +107,17 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="Tool catalog" className="bg-studio-900 border border-studio-700/90 rounded-panel shadow-elevated w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden text-studio-100">
+      <div role="dialog" aria-modal="true" aria-label="Tool catalog" className="bg-studio-900 rounded-panel shadow-elevated w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden text-studio-100">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-studio-800 flex items-center justify-between bg-studio-850 shrink-0">
+        <div className="px-5 py-3.5 border-b border-line flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="w-7 h-7 rounded border border-studio-700 bg-studio-800 text-studio-200 flex items-center justify-center"><Icon name="catalog" size={16} /></span>
+            <span className="w-8 h-8 rounded-lg bg-studio-900 neu-raised-sm text-accent-300 flex items-center justify-center"><Icon name="catalog" size={16} /></span>
             <div><h2 className="text-sm font-semibold text-studio-100">Tool catalog</h2><p className="text-2xs text-studio-400">Browse by category and add tools to the selected agent.</p></div>
           </div>
 
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 whitespace-nowrap text-2xs text-studio-300" title="Video-production tools are disabled by default">
-              <input type="checkbox" checked={videoPackEnabled} onChange={(event) => toggleVideoPack(event.target.checked)} className="h-3.5 w-3.5 accent-indigo-500" />
+              <input type="checkbox" checked={videoPackEnabled} onChange={(event) => toggleVideoPack(event.target.checked)} className="h-3.5 w-3.5 accent-accent-500" />
               Video pack
             </label>
             <input
@@ -125,11 +125,11 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search shelf tools…"
-              className="bg-studio-800 text-studio-100 placeholder:text-studio-500 border border-studio-700 rounded px-2.5 py-1 text-2xs focus:outline-none focus:border-accent-500 w-44"
+              className="bg-studio-900 text-studio-100 placeholder:text-studio-500 border border-transparent rounded-lg px-3 py-1.5 text-2xs focus:outline-none focus:border-accent-500/60 w-44"
             />
             <button
               onClick={onClose}
-              className="p-1.5 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors text-xs cursor-pointer"
+              className="neu-btn p-1.5 text-studio-400 transition-all text-xs cursor-pointer"
               title="Close catalog"
               aria-label="Close catalog"
             >
@@ -139,9 +139,9 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Modal Body: Left Shelves Rail, Right Tools Grid */}
-        <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0 divide-x divide-studio-800">
+        <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0 divide-x divide-line">
           {/* Left: Shelves List */}
-          <div className="overflow-y-auto p-2 bg-studio-950/60 space-y-0.5">
+          <div className="overflow-y-auto p-2.5 space-y-1">
             <span className="text-2xs font-mono uppercase text-studio-500 px-2 py-1 block">
               Domain Shelves ({shelves.length})
             </span>
@@ -151,10 +151,10 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                 <button
                   key={shelf.shelf}
                   onClick={() => setSelectedShelf(shelf.shelf)}
-                  className={`w-full text-left px-2.5 py-2 rounded text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                  className={`w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-all cursor-pointer ${
                     isSelected
-                      ? "bg-studio-800 text-accent-400 border border-studio-700/80 shadow-studio"
-                      : "text-studio-400 hover:bg-studio-850 hover:text-studio-200"
+                      ? "neu-selected !text-accent-300"
+                      : "text-studio-400 hover:bg-studio-850 hover:text-studio-200 hover:shadow-neu-xs"
                   }`}
                 >
                   <span className="truncate">{shelf.label}</span>
@@ -165,18 +165,18 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* Right: Tools in Selected Shelf */}
-          <div className="overflow-y-auto p-5 space-y-4 bg-studio-900">
-            {actionNotice && <div role="status" className="mb-3 border border-studio-700 bg-studio-850 px-3 py-2 text-xs text-studio-300">{actionNotice}</div>}
+          <div className="overflow-y-auto p-5 space-y-4">
+            {actionNotice && <div role="status" className="mb-3 rounded-lg bg-studio-900 neu-raised-sm px-3 py-2 text-xs text-studio-300">{actionNotice}</div>}
             {isLoading ? (
               <p role="status" className="p-3 text-xs text-studio-400">Loading catalog shelves…</p>
             ) : catalogError ? (
-              <div className="border border-status-error/40 bg-studio-950 p-4 text-xs text-studio-300">
+              <div className="rounded-lg border border-status-error/30 bg-red-950/30 neu-inset p-4 text-xs text-studio-300">
                 <p className="mb-3">{catalogError}</p>
                 <Button size="xs" variant="secondary" onClick={() => void loadShelves()}>Retry</Button>
               </div>
             ) : activeShelf ? (
               <>
-                <div className="flex items-center justify-between pb-2 border-b border-studio-800">
+                <div className="flex items-center justify-between pb-2 border-b border-line">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-studio-200 text-xs">
                       {activeShelf.label} Shelf
@@ -201,7 +201,7 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                     return (
                       <div
                         key={`${activeShelf.shelf}:${item.kind}:${item.name}`}
-                        className="p-3.5 border border-studio-800 rounded-md hover:border-studio-700 transition-all bg-studio-950/40 flex flex-col justify-between space-y-3"
+                        className="p-4 rounded-xl bg-studio-900 neu-raised-sm hover:shadow-neu transition-all flex flex-col justify-between space-y-3"
                       >
                         <div>
                           <div className="flex items-start justify-between gap-2">
@@ -218,7 +218,7 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                           </p>
                         </div>
 
-                        <div className="pt-2 border-t border-studio-850 flex items-center justify-between">
+                        <div className="pt-2 border-t border-line flex items-center justify-between">
                           <span className="text-2xs font-mono text-studio-500">
                             Shelf: {activeShelf.shelf}
                           </span>
@@ -244,14 +244,14 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
                   })}
 
                   {filteredTools.length === 0 && (
-                    <div className="col-span-2 p-8 text-center text-studio-500 text-xs border border-dashed border-studio-800 rounded-md">
+                    <div className="col-span-2 p-8 text-center text-studio-500 text-xs border border-dashed border-line rounded-md">
                       No tools match the filter query &ldquo;{searchQuery}&rdquo;.
                     </div>
                   )}
                 </div>
               </>
             ) : (
-              <div className="rounded border border-dashed border-studio-800 p-8 text-center">
+              <div className="rounded border border-dashed border-line p-8 text-center">
                 <p className="text-xs font-medium text-studio-200">Video pack is disabled</p>
                 <p className="mt-1 text-2xs text-studio-400">Enable Video pack above to browse video-production tools. It stays off by default.</p>
               </div>

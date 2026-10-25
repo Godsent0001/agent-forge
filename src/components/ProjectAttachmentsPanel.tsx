@@ -213,7 +213,7 @@ export function ProjectAttachmentsPanel({
           aria-expanded={open}
           aria-controls="project-attachments-panel"
           disabled={disabled && !open}
-          className="inline-flex items-center gap-2 rounded-md border border-studio-700 bg-studio-950 px-3 py-2 text-xs font-medium text-studio-300 transition-colors hover:border-studio-500 hover:text-studio-100 disabled:opacity-50"
+          className="inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"
         >
           <Icon name="paperclip" size={14} />
           Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}
@@ -225,8 +225,8 @@ export function ProjectAttachmentsPanel({
       </div>
 
       {open && (
-        <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-studio-700 bg-studio-950 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-studio-800 pb-3">
+        <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div>
               <h4 className="text-sm font-semibold text-studio-100">Project files</h4>
               <p className="mt-1 max-w-xl text-2xs leading-5 text-studio-400">
@@ -257,7 +257,7 @@ export function ProjectAttachmentsPanel({
 
           {loading && <p role="status" className="py-3 text-xs text-studio-400">Loading project files…</p>}
           {error && <p role="alert" className="mt-3 rounded border border-red-800 bg-red-950/40 px-3 py-2 text-xs text-red-200">{error}</p>}
-          {notice && <p role="status" className="mt-3 rounded border border-studio-700 bg-studio-900 px-3 py-2 text-xs text-studio-300">{notice}</p>}
+          {notice && <p role="status" className="mt-3 rounded border border-line-strong bg-studio-900 px-3 py-2 text-xs text-studio-300">{notice}</p>}
 
           {!loading && items.length === 0 && !error && (
             <div className="py-6 text-center">
@@ -267,7 +267,7 @@ export function ProjectAttachmentsPanel({
             </div>
           )}
 
-          <ul className="mt-2 divide-y divide-studio-800">
+          <ul className="mt-2 divide-y divide-line">
             {items.map((item) => {
               const checked = selectedIds.includes(item.id) && item.status === "clean";
               const busy = uploading || busyId === item.id || disabled;

@@ -62,6 +62,13 @@ function ensurePortInitialized(): Promise<void> {
   }
   return portInitPromise;
 }
+// The runtime listens on a new port after an automatic restart; follow it.
+if (typeof window !== "undefined") {
+  window.electronAPI?.onBackendRestarted?.((port) => {
+    currentApiBase = `http://127.0.0.1:${port}`;
+  });
+}
+
 export function setApiBase(base: string) {
   currentApiBase = base;
 }

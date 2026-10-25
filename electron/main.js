@@ -9,18 +9,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter"]);
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// Only unpackaged builds are dev builds. An inherited NODE_ENV must never make an
+// installed app load (and hand its API token to) whatever serves localhost:5173.
+const isDev = !app.isPackaged;
 
 let mainWindow = null;
 let pythonProcess = null;
 let backendPort = null;
 let stoppingBackend = false;
-let portResolver = null;
-let portRejecter = null;
+let appQuitting = false;
+let restartTimer = null;
+const restartHistory = [];
+const MAX_RESTARTS = 5;
+const RESTART_WINDOW_MS = 5 * 60 * 1000;
 const apiToken = crypto.randomBytes(32).toString("hex");
-const portPromise = new Promise((resolve, reject) => {
-  portResolver = resolve;
-  portRejecter = reject;
-});
+// Callers waiting for the runtime; settled on the next READY line or a fatal failure.
+let portWaiters = [];
+let fatalBackendError = null;
 
 const getKeysFilePath = () => path.join(app.getPath("userData"), "stored_keys.json");
 
@@ -128,14 +133,18 @@ function deleteApiKey(provider, shouldSync = true) {
 
 async function waitForBackendPort(timeoutMs = 15000) {
   if (backendPort !== null) return backendPort;
+  if (fatalBackendError) throw fatalBackendError;
+  let waiter;
   let timer;
   try {
-    return await Promise.race([
-      portPromise,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Runtime startup timed out")), timeoutMs); }),
-    ]);
+    return await new Promise((resolve, reject) => {
+      waiter = { resolve, reject };
+      portWaiters.push(waiter);
+      timer = setTimeout(() => reject(new Error("Runtime startup timed out")), timeoutMs);
+    });
   } finally {
     clearTimeout(timer);
+    portWaiters = portWaiters.filter((item) => item !== waiter);
   }
 }
 
@@ -185,19 +194,41 @@ async function removeAndApplyApiKey(provider) {
 }
 
 function publishBackendPort(port) {
+  const restarted = backendPort === null && restartHistory.length > 0;
   backendPort = port;
-  const resolve = portResolver;
-  portResolver = null;
-  portRejecter = null;
-  if (resolve) resolve(port);
+  fatalBackendError = null;
+  const waiters = portWaiters;
+  portWaiters = [];
+  for (const waiter of waiters) waiter.resolve(port);
   void syncStoredKeysToBackend().catch(() => console.warn("[main] Saved provider keys could not be applied yet."));
+  if (restarted && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("backend-restarted", port);
+  }
 }
 
 function rejectBackendPort(error) {
-  const reject = portRejecter;
-  portResolver = null;
-  portRejecter = null;
-  if (reject) reject(error);
+  fatalBackendError = error;
+  const waiters = portWaiters;
+  portWaiters = [];
+  for (const waiter of waiters) waiter.reject(error);
+}
+
+function scheduleBackendRestart() {
+  if (appQuitting || stoppingBackend || restartTimer) return;
+  const now = Date.now();
+  while (restartHistory.length && now - restartHistory[0] > RESTART_WINDOW_MS) restartHistory.shift();
+  if (restartHistory.length >= MAX_RESTARTS) {
+    console.error("[main] Local runtime keeps exiting; giving up on automatic restarts.");
+    rejectBackendPort(new Error("The local runtime stopped repeatedly. Restart AgentForge."));
+    return;
+  }
+  const delay = Math.min(1000 * 2 ** restartHistory.length, 15000);
+  restartHistory.push(now);
+  console.warn(`[main] Local runtime exited unexpectedly; restarting in ${delay} ms.`);
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    if (!appQuitting) startPythonBackend();
+  }, delay);
 }
 
 function commandExists(command) {
@@ -206,7 +237,6 @@ function commandExists(command) {
 }
 
 function startPythonBackend() {
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   const projectRoot = path.resolve(__dirname, "..");
   const cwd = isDev ? path.join(projectRoot, "python-runtime") : path.join(process.resourcesPath, "python-runtime");
   let executable;
@@ -232,12 +262,21 @@ function startPythonBackend() {
     executable = binaryPath;
   }
 
+  // Bundled ffmpeg/ffprobe (scripts/fetch-ffmpeg.mjs) go first on PATH so every media
+  // tool and yt-dlp find them; a system install is still used when none is bundled.
+  const env = { ...process.env };
+  const bundledFfmpeg = isDev ? null : path.join(process.resourcesPath, "ffmpeg");
+  if (bundledFfmpeg && fs.existsSync(bundledFfmpeg)) {
+    const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") || "PATH";
+    env[pathKey] = bundledFfmpeg + path.delimiter + (env[pathKey] || "");
+  }
+
   console.log(`[main] Starting local Python runtime (${isDev ? "development" : "packaged"}).`);
   try {
     pythonProcess = spawn(executable, args, {
       cwd,
       env: {
-        ...process.env,
+        ...env,
         PORT: "0",
         AGENTFORGE_WATCH_PARENT: "1",
         AGENTFORGE_TOKEN: apiToken,
@@ -266,15 +305,20 @@ function startPythonBackend() {
 
     pythonProcess.stdout?.on("data", handleOutput);
     pythonProcess.stderr?.on("data", handleOutput);
-    pythonProcess.once("error", () => rejectBackendPort(new Error("Could not start local runtime")));
-    pythonProcess.once("exit", (code) => {
-      if (backendPort === null) rejectBackendPort(new Error("Local runtime exited before becoming ready"));
+    const child = pythonProcess;
+    child.once("error", () => {
+      if (pythonProcess === child) pythonProcess = null;
+      scheduleBackendRestart();
+    });
+    child.once("exit", (code) => {
       console.log(`[main] Local runtime exited (${code ?? "unknown"}).`);
-      pythonProcess = null;
+      if (pythonProcess === child) pythonProcess = null;
+      backendPort = null;
+      if (!stoppingBackend && !appQuitting) scheduleBackendRestart();
     });
   } catch {
-    rejectBackendPort(new Error("Could not start local runtime"));
     console.error("[main] Failed to start local runtime.");
+    scheduleBackendRestart();
   }
 }
 
@@ -326,7 +370,6 @@ async function createWindow() {
     },
   });
 
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   const devServerUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
   const allowedDevOrigin = new URL(devServerUrl).origin;
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -398,6 +441,9 @@ ipcMain.handle("sync-api-keys", async (event) => {
 });
 
 app.on("before-quit", (event) => {
+  appQuitting = true;
+  if (restartTimer) clearTimeout(restartTimer);
+  restartTimer = null;
   if (!gotSingleInstanceLock || !pythonProcess || stoppingBackend) return;
   event.preventDefault();
   void stopPythonBackend().finally(() => app.exit(0));

@@ -44,6 +44,7 @@ export interface ConversationMessageRecord {
   role: "user" | "assistant";
   content: string;
   execution_id: string | null;
+  execution_status?: string | null;
   created_at: string;
   feedback_value: -1 | 1 | null;
   feedback_note: string | null;

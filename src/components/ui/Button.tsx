@@ -16,25 +16,26 @@ export function Button({
   ...props
 }: ButtonProps) {
   const baseClasses =
-    "inline-flex items-center justify-center gap-1.5 font-medium transition-colors select-none focus-visible:outline-2 focus-visible:outline-accent-500 whitespace-nowrap shrink-0 disabled:opacity-40 disabled:pointer-events-none cursor-pointer";
+    "inline-flex items-center justify-center gap-1.5 font-medium transition-all select-none focus-visible:outline-2 focus-visible:outline-accent-500 whitespace-nowrap shrink-0 disabled:opacity-40 disabled:pointer-events-none cursor-pointer";
 
   const sizeClasses = {
-    xs: "px-2 py-1 text-2xs rounded",
-    sm: "px-2.5 py-1.5 text-xs rounded-md",
-    md: "px-3.5 py-2 text-sm rounded-md",
+    xs: "px-2 py-1 text-2xs rounded-md",
+    sm: "px-3 py-1.5 text-xs rounded-lg",
+    md: "px-4 py-2 text-sm rounded-xl",
   }[size];
 
+  // Soft UI: controls rise out of the surface and press into it when active.
   const variantClasses = {
     primary:
-      "bg-accent-600 hover:bg-accent-500 active:bg-accent-700 text-white shadow-studio border border-accent-400/30",
+      "neu-accent text-white hover:brightness-110 active:brightness-95 active:shadow-neu-pressed",
     secondary:
-      "bg-studio-800 hover:bg-studio-750 active:bg-studio-700 text-studio-100 border border-studio-700 hover:border-studio-600 shadow-studio",
+      "bg-studio-850 neu-raised-sm text-studio-100 hover:text-white hover:bg-studio-800 active:shadow-neu-pressed",
     outline:
-      "bg-transparent hover:bg-studio-800/80 active:bg-studio-800 text-studio-300 hover:text-studio-100 border border-studio-700",
+      "bg-transparent text-studio-300 hover:text-studio-100 border border-line-strong hover:shadow-neu-xs active:shadow-neu-pressed",
     ghost:
-      "bg-transparent hover:bg-studio-800/60 active:bg-studio-800 text-studio-400 hover:text-studio-100 border border-transparent",
+      "bg-transparent text-studio-400 hover:text-studio-100 hover:bg-studio-850 hover:shadow-neu-xs active:shadow-neu-pressed",
     danger:
-      "bg-red-950/40 hover:bg-red-900/60 active:bg-red-900 text-red-300 border border-red-800/60",
+      "bg-red-950/40 neu-raised-sm text-red-300 hover:text-red-200 hover:bg-red-950/60 active:shadow-neu-pressed",
   }[variant];
 
   return (

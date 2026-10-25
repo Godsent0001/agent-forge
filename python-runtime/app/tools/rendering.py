@@ -16,6 +16,7 @@ from typing import Any
 
 from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
+from app.tools.media_codecs import bitrate_for_height, h264_args
 from app.tools.shared import parse_json_input, to_json_output
 
 
@@ -30,8 +31,8 @@ async def _run_ffmpeg_from_image_and_audio(image_path: str, audio_path: str | No
         # No audio track to bound the duration against — an image loop
         # with no -t/-shortest runs forever. This bit me during testing.
         args += ["-t", str(fallback_duration)]
-    args += ["-vf", f"scale={width}:{height}", "-r", str(fps), "-c:v", "libx264",
-             "-pix_fmt", "yuv420p", out_path]
+    args += ["-vf", f"scale={width}:{height}", "-r", str(fps),
+             *h264_args(bitrate=bitrate_for_height(min(width, height))), out_path]
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)

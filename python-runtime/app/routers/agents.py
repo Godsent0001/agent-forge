@@ -8,8 +8,18 @@ from app.graph import GraphValidationError, validate_new_link
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+def _same_project_agent(db: Session, agent_id: str, project_id: str | None = None) -> models.Agent:
+    agent = db.get(models.Agent, agent_id)
+    if agent is None or (project_id is not None and agent.project_id != project_id):
+        # Agents from another project are indistinguishable from missing ones.
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
 @router.post("", response_model=schemas.AgentOut)
 def create_agent(payload: schemas.AgentCreate, db: Session = Depends(get_db)):
+    if db.get(models.Project, payload.project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     agent = models.Agent(**payload.model_dump())
     db.add(agent)
     db.commit()
@@ -64,6 +74,10 @@ def delete_agent(agent_id: str, db: Session = Depends(get_db)):
 
 @router.post("/attach-tool")
 def attach_tool(payload: schemas.AttachToolRequest, db: Session = Depends(get_db)):
+    agent = _same_project_agent(db, payload.agent_id)
+    tool = db.get(models.Tool, payload.tool_id)
+    if tool is None or tool.project_id != agent.project_id:
+        raise HTTPException(status_code=404, detail="Tool not found")
     existing = db.query(models.AgentToolLink).filter_by(agent_id=payload.agent_id, tool_id=payload.tool_id).first()
     if existing:
         return {"attached": True, "link_id": existing.id}
@@ -90,6 +104,8 @@ def attach_child_agent(payload: schemas.AttachChildAgentRequest, db: Session = D
     if existing:
         return {"attached": True, "link_id": existing.id}
 
+    parent = _same_project_agent(db, payload.parent_agent_id)
+    _same_project_agent(db, payload.child_agent_id, parent.project_id)
     try:
         validate_new_link(db, payload.parent_agent_id, payload.child_agent_id)
     except GraphValidationError as e:

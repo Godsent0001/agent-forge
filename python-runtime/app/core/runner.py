@@ -310,21 +310,26 @@ class RunnerCore:
                         return turn.text or ""
 
                     tool_call_tuples = []
+                    loop_detected = False
                     for tc in turn.tool_calls:
                         tool_key = f"{tc.name}:{json.dumps(tc.arguments, sort_keys=True)}"
                         tool_call_history.append(tool_key)
-
                         if tool_call_history.count(tool_key) >= 3:
+                            loop_detected = True
+                        tool_call_tuples.append(tc)
+
+                    if loop_detected:
+                        # Every tool call in the assistant turn needs a result message, or
+                        # providers reject the follow-up request.
+                        for tc in tool_call_tuples:
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
                                 "content": "ERROR: Loop detected. You have called this exact tool with identical arguments 3 times. Provide a final response without tools.",
                             })
-                            return await self._force_text_turn(
-                                spec, messages, agent_span_id, emit, budget
-                            )
-
-                        tool_call_tuples.append(tc)
+                        return await self._force_text_turn(
+                            spec, messages, agent_span_id, emit, budget
+                        )
 
                     if not tool_call_tuples:
                         continue
@@ -606,7 +611,7 @@ class RunnerCore:
                 agent_id=spec.id,
                 workspace=workspace,
                 cancel=cancel,
-                config={},
+                config=dict(getattr(tool_obj, "binding_config", None) or {}),
             )
 
             try:

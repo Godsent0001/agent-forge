@@ -14,6 +14,8 @@ export interface ElectronAPI {
   saveApiKey: (provider: string, key: string) => Promise<KeyStorageResult>;
   deleteApiKey: (provider: string) => Promise<KeyStorageResult>;
   syncApiKeys: () => Promise<{ status: string }>;
+  /** Fires with the new port after the local runtime crashed and was restarted. */
+  onBackendRestarted?: (callback: (port: number) => void) => () => void;
 }
 
 declare global {

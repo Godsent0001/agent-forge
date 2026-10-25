@@ -43,8 +43,8 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
 
   if (!selectedAgent) {
     return (
-      <aside className="w-full h-full bg-studio-900 border-l border-studio-700/80 flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
-        <div className="w-10 h-10 rounded-full bg-studio-800 border border-studio-700 flex items-center justify-center text-studio-400 mb-2">
+      <aside className="w-full h-full bg-transparent flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
+        <div className="w-10 h-10 rounded-full bg-studio-800 border border-line-strong flex items-center justify-center text-studio-400 mb-2">
           <Icon name="settings" size={18} />
         </div>
         <h3 className="text-xs font-semibold text-studio-200 mb-1">Agent setup</h3>
@@ -79,12 +79,12 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
   const attachedSubAgents = agents.filter((a) => childAgentIds.includes(a.id));
 
   return (
-    <aside className="w-full h-full bg-studio-900 border-l border-studio-700/80 flex flex-col text-xs select-none shrink-0 overflow-hidden min-w-0 z-20">
+    <aside className="w-full h-full bg-transparent flex flex-col text-xs select-none shrink-0 overflow-hidden min-w-0 z-20">
       {/* Properties Header */}
-      <div className="p-3 border-b border-studio-800 bg-studio-850 flex items-center justify-between">
+      <div className="p-3 border-b border-line flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-semibold text-studio-100 text-xs">Agent settings</span>
-          <span className="text-2xs font-mono text-accent-400 bg-studio-800 px-1.5 py-0.5 rounded border border-studio-700 truncate max-w-[120px]">
+          <span className="text-2xs font-mono text-accent-400 bg-studio-800 px-1.5 py-0.5 rounded border border-line-strong truncate max-w-[120px]">
             ID: {selectedAgent.id.replace("agent-", "")}
           </span>
         </div>
@@ -102,7 +102,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
       </div>
 
       {/* Inspector Tabs */}
-      <div role="tablist" aria-label="Agent settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-studio-800 bg-studio-950 px-2">
+      <div role="tablist" aria-label="Agent settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line px-2">
         {([
           { id: "properties", label: "Setup" },
           { id: "prompt", label: "Instructions" },
@@ -198,7 +198,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
             </div>
 
             {attachedTools.length === 0 ? (
-              <div className="p-4 text-center border border-dashed border-studio-800 rounded-md text-studio-500 text-2xs">
+              <div className="p-4 text-center border border-dashed border-line rounded-md text-studio-500 text-2xs">
                 No tools attached yet. Attach tools from the catalog to empower this agent.
               </div>
             ) : (
@@ -206,7 +206,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
                 {attachedTools.map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between p-2 rounded bg-studio-800/80 border border-studio-700/80 group"
+                    className="flex items-center justify-between p-2 rounded bg-studio-800/80 border border-line-strong group"
                   >
                     <div className="min-w-0 pr-2">
                       <span className="font-medium text-studio-200 block truncate">{t.name}</span>
@@ -233,7 +233,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
             </span>
 
             {attachedSubAgents.length === 0 ? (
-              <div className="p-4 text-center border border-dashed border-studio-800 rounded-md text-studio-500 text-2xs">
+              <div className="p-4 text-center border border-dashed border-line rounded-md text-studio-500 text-2xs">
                 No sub-agents attached. Recursive sub-agents allow hierarchical delegation.
               </div>
             ) : (
@@ -241,7 +241,7 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
                 {attachedSubAgents.map((sa) => (
                   <div
                     key={sa.id}
-                    className="flex items-center justify-between p-2 rounded bg-studio-800/80 border border-studio-700/80 group"
+                    className="flex items-center justify-between p-2 rounded bg-studio-800/80 border border-line-strong group"
                   >
                     <div className="min-w-0 pr-2">
                       <span className="font-medium text-studio-200 block truncate">{sa.name}</span>
@@ -260,14 +260,14 @@ export function PropertiesPanel({ onClose, onOpenToolCatalog }: PropertiesPanelP
             )}
 
             {availableSubAgents.length > 0 && (
-              <div className="pt-2 border-t border-studio-800 space-y-1.5">
+              <div className="pt-2 border-t border-line space-y-1.5">
                 <span className="text-2xs font-mono text-studio-500 uppercase block">
                   Attach Available Agent
                 </span>
                 <div className="flex gap-1.5">
                   <select
                     id="subagent-select"
-                    className="flex-1 bg-studio-800 text-studio-100 border border-studio-700 rounded px-2 py-1 text-xs"
+                    className="flex-1 bg-studio-800 text-studio-100 border border-line-strong rounded px-2 py-1 text-xs"
                   >
                     {availableSubAgents.map((a) => (
                       <option key={a.id} value={a.id}>
