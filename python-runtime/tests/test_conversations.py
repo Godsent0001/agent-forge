@@ -61,6 +61,9 @@ def test_conversation_persists_messages_feedback_and_title(client, db_session):
     assert [message["role"] for message in messages.json()] == ["user", "assistant"]
     assert messages.json()[1]["feedback_value"] == -1
     assert messages.json()[1]["feedback_note"] == "Not quite"
+    assert messages.json()[0]["execution_status"] is None
+    assert messages.json()[1]["execution_status"] == "completed"
+    assert assistant.json()["execution_status"] == "completed"
 
     listing = client.get(f"/v2/conversations?project_id={project.id}&agent_id={agent.id}")
     assert listing.status_code == 200

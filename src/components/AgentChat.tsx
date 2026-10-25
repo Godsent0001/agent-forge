@@ -13,6 +13,13 @@ import { isSimulatedText } from "../utils/simulated";
 import { buildRunHistory } from "../utils/chatHistory";
 import { useExecutionStream } from "../hooks/useExecutionStream";
 
+const TERMINAL_RUN_STATUSES = ["completed", "error", "cancelled", "budget_exceeded", "interrupted"] as const;
+type TerminalRunStatus = (typeof TERMINAL_RUN_STATUSES)[number];
+
+function storedRunStatus(status: string | null | undefined): TerminalRunStatus | undefined {
+  return TERMINAL_RUN_STATUSES.find((value) => value === status);
+}
+
 function fromStoredMessage(record: ConversationMessageRecord, agentName: string): ChatMessage {
   const timestamp = new Date(record.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (record.role === "user") {
@@ -25,6 +32,7 @@ function fromStoredMessage(record: ConversationMessageRecord, agentName: string)
     text: record.content,
     timestamp,
     executionId: record.execution_id ?? undefined,
+    executionStatus: storedRunStatus(record.execution_status),
     messageRecordId: record.id,
     feedbackValue: record.feedback_value,
     feedbackNote: record.feedback_note,

@@ -41,6 +41,8 @@ class MessageOut(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     execution_id: str | None
+    # Terminal status of the referenced run, so reloaded chats can still mark failures.
+    execution_status: str | None = None
     created_at: datetime
     feedback_value: Literal[-1, 1] | None = None
     feedback_note: str | None = None
@@ -51,7 +53,7 @@ class FeedbackUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
-def _message_out(message: models.ConversationMessage) -> MessageOut:
+def _message_out(message: models.ConversationMessage, execution_status: str | None = None) -> MessageOut:
     feedback = message.feedback
     return MessageOut(
         id=message.id,
@@ -59,6 +61,7 @@ def _message_out(message: models.ConversationMessage) -> MessageOut:
         role=message.role,
         content=message.content,
         execution_id=message.execution_id,
+        execution_status=execution_status,
         created_at=message.created_at,
         feedback_value=feedback.value if feedback else None,
         feedback_note=feedback.note if feedback else None,
@@ -128,7 +131,13 @@ def list_messages(
         .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id)
         .all()
     )
-    return [_message_out(message) for message in messages]
+    execution_ids = {m.execution_id for m in messages if m.execution_id}
+    statuses = dict(
+        db.query(models.Execution.id, models.Execution.status)
+        .filter(models.Execution.id.in_(execution_ids))
+        .all()
+    ) if execution_ids else {}
+    return [_message_out(message, statuses.get(message.execution_id)) for message in messages]
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageOut)
@@ -165,7 +174,7 @@ def append_message(
         conversation.title = conversation.title or "New conversation"
     db.commit()
     db.refresh(message)
-    return _message_out(message)
+    return _message_out(message, execution.status if payload.execution_id else None)
 
 
 @router.put("/messages/{message_id}/feedback")
