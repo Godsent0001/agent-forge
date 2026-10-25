@@ -9,6 +9,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter"]);
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// Only unpackaged builds are dev builds. An inherited NODE_ENV must never make an
+// installed app load (and hand its API token to) whatever serves localhost:5173.
+const isDev = !app.isPackaged;
 
 let mainWindow = null;
 let pythonProcess = null;
@@ -206,7 +209,6 @@ function commandExists(command) {
 }
 
 function startPythonBackend() {
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   const projectRoot = path.resolve(__dirname, "..");
   const cwd = isDev ? path.join(projectRoot, "python-runtime") : path.join(process.resourcesPath, "python-runtime");
   let executable;
@@ -326,7 +328,6 @@ async function createWindow() {
     },
   });
 
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   const devServerUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
   const allowedDevOrigin = new URL(devServerUrl).origin;
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
