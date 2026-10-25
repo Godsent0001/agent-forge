@@ -65,15 +65,32 @@ class ExecutionArtifactLifecycle:
         target = workspace.resolve(path)
         if not target.is_file():
             raise FileNotFoundError(f"Artifact path does not point to a file: {path}")
-        content = target.read_bytes()
         combined_metadata = dict(metadata or {})
         if description:
             combined_metadata["description"] = description
         combined_metadata["workspace_path"] = workspace.relative(target)
-        return await self.persist(
-            name=target.name,
+        spec = ArtifactCreate(
+            project_id=self.project_id,
             artifact_type="tool_artifact",
-            content=content,
+            name=target.name,
             media_type=media_type or "application/octet-stream",
             metadata=combined_metadata,
         )
+        # Stream into the store: tool files can be large videos.
+        record = self.store.create_from_file(spec, target, actor="runner")
+        if not self.verification.supports(record.artifact_type):
+            return record, VerificationReport(
+                artifact_id=record.artifact_id,
+                artifact_version=record.version,
+                status="skipped",
+                summary=f"No verifier registered for artifact type '{record.artifact_type}'.",
+                verifier="none",
+            )
+        payload = self.store.read(record.artifact_id, record.version)
+        if payload is None:
+            raise RuntimeError(f"Persisted artifact {record.artifact_id} could not be read back.")
+        report = await self.verification.verify(
+            payload,
+            context={"project_id": self.project_id, "workspace_root": str(self.root)},
+        )
+        return record, report

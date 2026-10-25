@@ -42,6 +42,9 @@ class InvalidArtifactDependency(ArtifactStoreError):
     pass
 
 
+_CHUNK_BYTES = 1024 * 1024
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -148,6 +151,43 @@ class SQLiteArtifactStore:
                 os.unlink(temporary)
         return digest
 
+    def _store_blob_file(self, source: Path) -> tuple[str, int]:
+        """Copy a file into content-addressed storage without loading it into memory."""
+        digest = hashlib.sha256()
+        size = 0
+        fd, temporary = tempfile.mkstemp(prefix=".artifact-", dir=str(self.objects_root))
+        try:
+            with open(source, "rb") as src, os.fdopen(fd, "wb") as dst:
+                for chunk in iter(lambda: src.read(_CHUNK_BYTES), b""):
+                    digest.update(chunk)
+                    size += len(chunk)
+                    dst.write(chunk)
+                dst.flush()
+                os.fsync(dst.fileno())
+            hex_digest = digest.hexdigest()
+            target = self._blob_path(hex_digest)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                try:
+                    os.replace(temporary, target)
+                except OSError:
+                    if not target.exists():
+                        raise
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        return hex_digest, size
+
+    def _blob_matches(self, digest: str) -> bool:
+        try:
+            with open(self._blob_path(digest), "rb") as stream:
+                actual = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(_CHUNK_BYTES), b""):
+                    actual.update(chunk)
+        except OSError:
+            return False
+        return actual.hexdigest() == digest
+
     @staticmethod
     def _record(row: sqlite3.Row, version: sqlite3.Row) -> ArtifactRecord:
         return ArtifactRecord(
@@ -227,9 +267,16 @@ class SQLiteArtifactStore:
                     stack.extend(json.loads(row["dependencies_json"]))
 
     def create(self, spec: ArtifactCreate, content: bytes, *, actor: str = "system") -> ArtifactRecord:
+        return self._create(spec, self._store_blob(content), len(content), actor=actor)
+
+    def create_from_file(self, spec: ArtifactCreate, source: str | Path, *, actor: str = "system") -> ArtifactRecord:
+        """Like create(), but streams the content from a file (for large media)."""
+        digest, size = self._store_blob_file(Path(source))
+        return self._create(spec, digest, size, actor=actor)
+
+    def _create(self, spec: ArtifactCreate, digest: str, size: int, *, actor: str) -> ArtifactRecord:
         artifact_id = str(uuid.uuid4())
         now = _now()
-        digest = self._store_blob(content)
         dependencies = list(spec.dependencies)
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -241,7 +288,7 @@ class SQLiteArtifactStore:
             )
             connection.execute(
                 "INSERT INTO artifact_versions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (artifact_id, 1, digest, len(content), spec.media_type, _json(spec.metadata),
+                (artifact_id, 1, digest, size, spec.media_type, _json(spec.metadata),
                  _json(dependencies), "Created", now.isoformat()),
             )
             connection.execute(
@@ -401,9 +448,22 @@ class SQLiteArtifactStore:
             ).fetchone()
             if not version_row:
                 return False
-            path = self._blob_path(version_row["sha256"])
-            try:
-                content = path.read_bytes()
-            except OSError:
-                return False
-            return hashlib.sha256(content).hexdigest() == version_row["sha256"]
+            return self._blob_matches(version_row["sha256"])
+
+    def open_verified(self, artifact_id: str, version: int | None = None) -> tuple[ArtifactRecord, Path] | None:
+        """Return (record, blob path) after a streamed integrity check, for file responses."""
+        with closing(self._connect()) as connection:
+            row = connection.execute("SELECT * FROM artifacts WHERE artifact_id=?", (artifact_id,)).fetchone()
+            if not row:
+                return None
+            requested_version = version if version is not None else row["current_version"]
+            version_row = connection.execute(
+                "SELECT * FROM artifact_versions WHERE artifact_id=? AND version=?",
+                (artifact_id, requested_version),
+            ).fetchone()
+            if not version_row:
+                return None
+            record = self._record(row, version_row)
+        if not self._blob_matches(record.sha256):
+            raise ArtifactStoreError(f"Artifact integrity check failed for {artifact_id} version {requested_version}.")
+        return record, self._blob_path(record.sha256)

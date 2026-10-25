@@ -12,14 +12,14 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import models
 from app.contracts.run import RunOptions, RunRequest
-from app.core.artifact_store import SQLiteArtifactStore
+from app.core.artifact_store import ArtifactStoreError, SQLiteArtifactStore
 from app.db import SessionLocal
 from app.deps import get_db
 from app.infra.approvals import resolve_approval
@@ -260,9 +260,13 @@ def download_execution_artifact(
     ):
         # Do not disclose artifacts belonging to another project or execution.
         raise HTTPException(status_code=404, detail="Artifact not found")
-    payload = store.read(artifact_id, version)
-    if payload is None:
+    try:
+        opened = store.open_verified(artifact_id, version)
+    except ArtifactStoreError as exc:
+        raise HTTPException(status_code=409, detail="Artifact failed its integrity check") from exc
+    if opened is None:
         raise HTTPException(status_code=404, detail="Artifact version not found")
+    _, blob_path = opened
 
     filename = (
         record.name.replace("\\", "_")
@@ -279,8 +283,9 @@ def download_execution_artifact(
         "text/plain",
     }
     allow_inline = stored_media_type in inline_media_types
-    return Response(
-        content=payload.content,
+    # FileResponse streams from disk and honours Range requests, so large clips can seek.
+    return FileResponse(
+        path=blob_path,
         media_type=stored_media_type if allow_inline else "application/octet-stream",
         headers={
             "Content-Disposition": f'{"inline" if allow_inline else "attachment"}; filename="{filename}"',
