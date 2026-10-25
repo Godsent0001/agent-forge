@@ -38,7 +38,6 @@ hiddenimports = [
     "app",
     "app.db",
     "app.graph",
-    "app.llm",
     "app.models",
     "app.ws",
 ] + litellm_hiddenimports + tiktoken_hiddenimports + yt_dlp_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
