@@ -6,7 +6,6 @@ import pytest
 from app.tools import media_codecs, video_clips
 from app.tools.base import ToolExecutionError
 
-
 _REAL_LISTER = media_codecs.available_video_encoders
 
 
