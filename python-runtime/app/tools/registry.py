@@ -179,6 +179,22 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
 }
 
 
+_CONFIG_DRIVEN_KINDS = frozenset({
+    "file_system", "voice_generator", "character_asset_manager", "scene_template_manager",
+    "visual_asset_manager", "render_queue", "cache_engine", "project_manager",
+    "asset_cache_store", "production_config",
+})
+
+
+def known_tool_kinds() -> frozenset[str]:
+    """Every tool kind the v2 factory can build (used to validate new Tool rows)."""
+    from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
+
+    return frozenset(_SIMPLE_FACTORIES) | _CONFIG_DRIVEN_KINDS | frozenset(NATIVE_TOOLS) | {
+        "custom_http", *WorkspaceCapabilityToolFactory._BUILTINS,
+    }
+
+
 class DefaultToolFactory:
     """Build a native v2 tool when available, otherwise adapt the legacy tool."""
 
