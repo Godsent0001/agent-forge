@@ -42,7 +42,7 @@ export function TopBar({
 
   return (
     <>
-      <header className="h-12 bg-studio-900 border-b border-studio-700/80 px-4 flex items-center justify-between text-xs select-none shrink-0 z-30">
+      <header className="relative h-14 bg-studio-950 px-4 flex items-center justify-between text-xs select-none shrink-0 z-30">
         {/* Left: Brand Identity & Breadcrumbs */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2 shrink-0">
@@ -52,7 +52,7 @@ export function TopBar({
             </span>
           </div>
 
-          <div className="h-4 w-px bg-studio-700 hidden sm:block" />
+          <div className="h-5 w-px bg-line-strong hidden sm:block" />
 
           {/* Breadcrumbs with Project Switcher */}
           <div className="flex items-center gap-1.5 text-studio-400 min-w-0">
@@ -67,7 +67,7 @@ export function TopBar({
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
                   placeholder="New project name…"
-                  className="bg-studio-800 text-studio-100 border border-studio-600 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-accent-500"
+                  className="bg-studio-900 text-studio-100 border border-transparent rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent-500/60"
                   autoFocus
                 />
                 <button type="submit" className="text-accent-400 hover:text-accent-300 font-semibold px-1">
@@ -86,7 +86,7 @@ export function TopBar({
                 <select
                   value={project?.id || ""}
                   onChange={(e) => switchProject(e.target.value)}
-                  className="bg-studio-800 text-studio-100 border border-studio-700 rounded px-2 py-1 text-xs font-medium hover:border-studio-600 focus:outline-none focus:border-accent-500 transition-colors max-w-[160px] truncate"
+                  className="bg-studio-900 text-studio-100 border border-transparent rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-accent-500/60 transition-colors max-w-[160px] truncate"
                 >
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -96,7 +96,7 @@ export function TopBar({
                 </select>
                 <button
                   onClick={() => setIsCreatingProject(true)}
-                  className="p-1 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded transition-colors"
+                  className="h-7 w-7 rounded-lg bg-studio-900 neu-raised-sm text-studio-300 hover:text-white active:shadow-neu-pressed transition-all"
                   title="Create new project"
                   aria-label="Create new project"
                 >
@@ -132,7 +132,7 @@ export function TopBar({
         <div className="flex items-center gap-2">
           {project && (
             <button type="button" onClick={() => setShowProjectSettings(true)}
-              className="rounded border border-studio-700 px-2 py-1.5 text-2xs text-studio-300 hover:bg-studio-800 hover:text-studio-100"
+              className="rounded-lg bg-studio-900 neu-raised-sm px-3 py-1.5 text-2xs font-medium text-studio-300 hover:text-white active:shadow-neu-pressed transition-all"
               aria-label="Project execution settings" title="Project execution settings">
               Settings
             </button>

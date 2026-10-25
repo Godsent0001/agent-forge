@@ -58,8 +58,8 @@ export function ApprovalDialog({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <section role="alertdialog" aria-modal="true" aria-labelledby="approval-title" aria-describedby="approval-reason"
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-amber-700/70 bg-studio-900 text-studio-100 shadow-elevated">
-        <header className="border-b border-studio-800 bg-studio-850 px-5 py-4">
+        className="w-full max-w-xl overflow-hidden rounded-panel border border-amber-500/30 bg-studio-900 text-studio-100 shadow-elevated">
+        <header className="border-b border-line bg-studio-850 px-5 py-4">
           <p className="text-2xs font-mono uppercase tracking-widest text-amber-300">Approval required</p>
           <h2 id="approval-title" className="mt-1 text-base font-semibold">Allow this tool action?</h2>
           <p className="mt-1 text-xs text-studio-400">The run is paused until you choose an action.</p>
@@ -79,17 +79,17 @@ export function ApprovalDialog({
             <p className="mb-1.5 text-2xs font-mono uppercase tracking-wider text-studio-500">Requested permissions</p>
             <div className="flex flex-wrap gap-1.5">
               {permissions.length ? permissions.map((permission) => (
-                <span key={permission} className="rounded border border-studio-700 bg-studio-950 px-2 py-1 text-2xs font-mono">{permission}</span>
+                <span key={permission} className="rounded border border-line-strong bg-studio-950 px-2 py-1 text-2xs font-mono">{permission}</span>
               )) : <span className="text-xs text-studio-400">No explicit permissions listed</span>}
             </div>
           </div>
           <div>
             <p className="mb-1.5 text-2xs font-mono uppercase tracking-wider text-studio-500">Arguments preview</p>
-            <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-studio-800 bg-studio-950 p-3 text-2xs font-mono text-studio-200">{argsPreview}</pre>
+            <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-studio-950 p-3 text-2xs font-mono text-studio-200">{argsPreview}</pre>
           </div>
           {error && <p role="alert" className="rounded border border-red-800 bg-red-950/50 p-2 text-xs text-red-300">{error}</p>}
         </div>
-        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-studio-800 bg-studio-950/50 px-5 py-4">
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-studio-950/50 px-5 py-4">
           <button type="button" onClick={() => void decide("deny")} disabled={!!busy}
             className="rounded border border-red-800 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-950/60 disabled:opacity-50">
             {busy === "deny" ? "Denying…" : "Deny"}

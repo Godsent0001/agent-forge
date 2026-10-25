@@ -10,7 +10,7 @@ function cost(value: number | null | undefined): string {
 
 function Stat({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="min-w-0 rounded border border-studio-800 bg-studio-950/60 p-3">
+    <div className="min-w-0 rounded-lg bg-studio-950/50 neu-inset p-3">
       <p className="text-2xs text-studio-400">{label}</p>
       <p className="mt-1 break-words text-lg font-semibold tabular-nums text-studio-100">{value}</p>
       {detail && <p className="mt-1 text-2xs text-studio-500">{detail}</p>}
@@ -28,13 +28,13 @@ function BucketList({ title, items, labelKey }: {
     <section className="space-y-2">
       <h3 className="text-xs font-semibold text-studio-200">{title}</h3>
       {items.length === 0 ? (
-        <p className="rounded border border-dashed border-studio-800 p-3 text-2xs text-studio-500">No runs in this period.</p>
+        <p className="rounded border border-dashed border-line p-3 text-2xs text-studio-500">No runs in this period.</p>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => {
             const label = item[labelKey] || (labelKey === "date" ? "Unknown date" : labelKey === "model" ? "Unknown model" : "Unknown agent");
             return (
-              <div key={`${label}-${index}`} className="rounded border border-studio-800 bg-studio-950/40 p-2.5">
+              <div key={`${label}-${index}`} className="rounded-lg bg-studio-950/50 neu-inset p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <span className="break-all text-2xs text-studio-200">{label}</span>
                   <span className="shrink-0 font-mono text-2xs tabular-nums text-studio-300">{item.runs} runs · {cost(item.cost_usd)}</span>
@@ -89,7 +89,7 @@ export function UsagePanel({ projectId }: { projectId: string | undefined }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <label className="sr-only" htmlFor="usage-period">Reporting period</label>
-          <select id="usage-period" aria-label="Reporting period" value={days} onChange={(event) => setDays(Number(event.target.value))} className="rounded border border-studio-700 bg-studio-950 px-2 py-1.5 text-2xs text-studio-100">
+          <select id="usage-period" aria-label="Reporting period" value={days} onChange={(event) => setDays(Number(event.target.value))} className="rounded border border-line-strong bg-studio-950 px-2 py-1.5 text-2xs text-studio-100">
             <option value={7}>7 days</option>
             <option value={14}>14 days</option>
             <option value={30}>30 days</option>

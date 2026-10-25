@@ -45,9 +45,9 @@ export function RunTaskModal({ agentName, onClose, onSubmit }: RunTaskModalProps
         role="dialog"
         aria-modal="true"
         aria-labelledby="run-task-title"
-        className="w-full max-w-lg space-y-4 rounded-panel border border-studio-700 bg-studio-900 p-5 text-studio-100 shadow-elevated"
+        className="w-full max-w-lg space-y-4 rounded-panel bg-studio-900 p-5 text-studio-100 shadow-elevated"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-studio-800 pb-3">
+        <div className="flex items-start justify-between gap-3 border-b border-line pb-3">
           <div>
             <h2 id="run-task-title" className="text-sm font-semibold">
               Run workflow
@@ -83,7 +83,7 @@ export function RunTaskModal({ agentName, onClose, onSubmit }: RunTaskModalProps
               }
             }}
             placeholder="Describe what you want done, e.g. “Draft a 30-second launch teaser script.”"
-            className="w-full resize-none rounded-md border border-studio-700 bg-studio-800 p-2.5 text-sm text-studio-100 placeholder:text-studio-500 transition-colors hover:border-studio-600 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500/50"
+            className="w-full resize-none rounded-lg border border-transparent bg-studio-900 p-3 text-sm text-studio-100 placeholder:text-studio-500 transition-colors hover:border-studio-600 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500/50"
           />
         </div>
 

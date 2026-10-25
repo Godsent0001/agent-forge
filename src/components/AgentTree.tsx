@@ -62,23 +62,23 @@ export function AgentTree({
 
   if (isCollapsed) {
     return (
-      <aside className="h-full w-full bg-studio-900 border-r border-studio-700/80 flex flex-col items-center py-3 select-none justify-between shrink-0">
+      <aside className="h-full w-full bg-transparent flex flex-col items-center py-3 select-none justify-between shrink-0">
         <div className="flex flex-col items-center gap-2">
-          <button onClick={onToggleCollapse} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Expand explorer" aria-label="Expand explorer"><Icon name="chevron-right" size={18} /></button>
-          <div className="h-px w-6 bg-studio-800 my-1" />
-          <button onClick={() => { setActiveNavSection("workflows"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Agents" aria-label="Agents"><Icon name="agents" /></button>
-          <button onClick={() => { setActiveNavSection("tools"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Tools" aria-label="Tools"><Icon name="tools" /></button>
-          <button onClick={() => setShowCatalogModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Tool catalog" aria-label="Tool catalog"><Icon name="catalog" /></button>
+          <button onClick={onToggleCollapse} className="p-2 text-studio-400 hover:text-studio-100 hover:shadow-neu-sm rounded-lg transition-all" title="Expand explorer" aria-label="Expand explorer"><Icon name="chevron-right" size={18} /></button>
+          <div className="h-px w-6 bg-line-strong my-1" />
+          <button onClick={() => { setActiveNavSection("workflows"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:shadow-neu-sm rounded-lg transition-all" title="Agents" aria-label="Agents"><Icon name="agents" /></button>
+          <button onClick={() => { setActiveNavSection("tools"); onToggleCollapse?.(); }} className="p-2 text-studio-400 hover:text-studio-100 hover:shadow-neu-sm rounded-lg transition-all" title="Tools" aria-label="Tools"><Icon name="tools" /></button>
+          <button onClick={() => setShowCatalogModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:shadow-neu-sm rounded-lg transition-all" title="Tool catalog" aria-label="Tool catalog"><Icon name="catalog" /></button>
         </div>
-        <button onClick={() => setShowSettingsModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:bg-studio-800 rounded-md" title="Provider settings" aria-label="Provider settings"><Icon name="settings" /></button>
+        <button onClick={() => setShowSettingsModal(true)} className="p-2 text-studio-400 hover:text-studio-100 hover:shadow-neu-sm rounded-lg transition-all" title="Provider settings" aria-label="Provider settings"><Icon name="settings" /></button>
       </aside>
     );
   }
 
   return (
-    <aside className="h-full w-full bg-studio-900 border-r border-studio-700/80 flex flex-col text-xs select-none min-w-0">
+    <aside className="h-full w-full bg-transparent flex flex-col text-xs select-none min-w-0">
       {/* Explorer Header */}
-      <div className="px-3.5 py-3 border-b border-studio-800 flex items-center justify-between shrink-0">
+      <div className="px-3.5 py-3 border-b border-line flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Icon name="agents" size={16} className="text-accent-400" />
           <span className="font-semibold text-studio-100 text-xs tracking-tight">
@@ -97,13 +97,13 @@ export function AgentTree({
       </div>
 
       {/* Nav Menu Items (Concept 1 style) */}
-      <div className="p-2 border-b border-studio-800/80 space-y-0.5 shrink-0">
+      <div className="p-2 border-b border-line space-y-0.5 shrink-0">
         <button
           onClick={() => setActiveNavSection("workflows")}
-          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded transition-colors font-medium text-xs ${
+          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-all font-medium text-xs ${
             activeNavSection === "workflows"
-              ? "bg-studio-800 text-white border border-studio-700"
-              : "text-studio-300 hover:bg-studio-850 hover:text-studio-100"
+              ? "neu-selected font-medium"
+              : "text-studio-300 hover:bg-studio-850 hover:text-studio-100 hover:shadow-neu-xs"
           }`}
         >
           <div className="flex items-center gap-2">
@@ -115,10 +115,10 @@ export function AgentTree({
 
         <button
           onClick={() => setActiveNavSection("tools")}
-          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded transition-colors font-medium text-xs ${
+          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-all font-medium text-xs ${
             activeNavSection === "tools"
-              ? "bg-studio-800 text-white border border-studio-700"
-              : "text-studio-300 hover:bg-studio-850 hover:text-studio-100"
+              ? "neu-selected font-medium"
+              : "text-studio-300 hover:bg-studio-850 hover:text-studio-100 hover:shadow-neu-xs"
           }`}
         >
           <div className="flex items-center gap-2">
@@ -146,13 +146,13 @@ export function AgentTree({
       </div>
 
       {/* Filter / Search Bar */}
-      <div className="p-2 border-b border-studio-800 shrink-0">
+      <div className="p-2 border-b border-line shrink-0">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search agents and tools…"
-          className="w-full bg-studio-800 text-studio-100 placeholder:text-studio-500 border border-studio-700 rounded px-2.5 py-1 text-2xs focus:outline-none focus:border-accent-500 transition-colors"
+          className="w-full bg-studio-900 text-studio-100 placeholder:text-studio-500 border border-transparent rounded-lg px-3 py-1.5 text-2xs focus:outline-none focus:border-accent-500/60 transition-colors"
         />
       </div>
 
@@ -173,13 +173,13 @@ export function AgentTree({
             </div>
 
             {isCreatingAgent && (
-              <form onSubmit={handleCreateAgent} className="mb-2 p-2 bg-studio-800 rounded border border-studio-700">
+              <form onSubmit={handleCreateAgent} className="mb-2 p-2 bg-studio-800 rounded border border-line-strong">
                 <input
                   type="text"
                   value={newAgentName}
                   onChange={(e) => setNewAgentName(e.target.value)}
                   placeholder="Agent name…"
-                  className="w-full bg-studio-950 text-studio-100 border border-studio-600 rounded px-2 py-1 text-2xs mb-2 focus:outline-none focus:border-accent-500"
+                  className="w-full bg-studio-900 text-studio-100 border border-transparent rounded-lg px-2.5 py-1.5 text-2xs mb-2 focus:outline-none focus:border-accent-500/60"
                   autoFocus
                 />
                 <div className="flex justify-end gap-1.5">
@@ -201,7 +201,7 @@ export function AgentTree({
             )}
 
             {filteredAgents.length === 0 ? (
-              <div className="p-3 text-center rounded border border-dashed border-studio-800 text-studio-500 text-2xs">
+              <div className="p-3 text-center rounded border border-dashed border-line text-studio-500 text-2xs">
                 No agents created yet.
               </div>
             ) : (
@@ -214,10 +214,10 @@ export function AgentTree({
                     <div
                       key={agent.id}
                       onClick={() => selectAgent(agent.id)}
-                      className={`flex items-center justify-between px-2.5 py-2 rounded cursor-pointer transition-colors group ${
+                      className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-all group ${
                         isSelected
-                          ? "bg-studio-800 text-white font-medium border border-studio-700"
-                          : "text-studio-300 hover:bg-studio-850 hover:text-studio-100"
+                          ? "neu-selected font-medium"
+                          : "text-studio-300 hover:bg-studio-850 hover:text-studio-100 hover:shadow-neu-xs"
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -278,13 +278,13 @@ export function AgentTree({
             </div>
 
             {isCreatingTool && (
-              <form onSubmit={handleCreateTool} className="mb-2 p-2 bg-studio-800 rounded border border-studio-700">
+              <form onSubmit={handleCreateTool} className="mb-2 p-2 bg-studio-800 rounded border border-line-strong">
                 <input
                   type="text"
                   value={newToolName}
                   onChange={(e) => setNewToolName(e.target.value)}
                   placeholder="Tool name…"
-                  className="w-full bg-studio-950 text-studio-100 border border-studio-600 rounded px-2 py-1 text-2xs mb-2 focus:outline-none focus:border-accent-500"
+                  className="w-full bg-studio-900 text-studio-100 border border-transparent rounded-lg px-2.5 py-1.5 text-2xs mb-2 focus:outline-none focus:border-accent-500/60"
                   autoFocus
                 />
                 <div className="flex justify-end gap-1.5">
@@ -306,7 +306,7 @@ export function AgentTree({
             )}
 
             {filteredTools.length === 0 ? (
-              <div className="p-3 text-center rounded border border-dashed border-studio-800 text-studio-500 text-2xs">
+              <div className="p-3 text-center rounded border border-dashed border-line text-studio-500 text-2xs">
                 No tools added.
               </div>
             ) : (
@@ -341,14 +341,14 @@ export function AgentTree({
       </div>
 
       {/* Explorer Footer (Concept 1 style) */}
-      <div className="p-3 border-t border-studio-800 bg-studio-850/60 shrink-0 space-y-2">
+      <div className="p-3 border-t border-line shrink-0 space-y-2">
         <div className="flex items-center justify-between text-2xs text-studio-400">
           <span className="truncate font-mono">{project?.name || "Active Workspace"}</span>
           <span className="text-emerald-400 font-mono">v1.0</span>
         </div>
         <button
           onClick={() => setIsCreatingAgent(true)}
-          className="w-full py-1.5 px-3 bg-accent-600 hover:bg-accent-500 text-white text-xs font-semibold rounded shadow-studio transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+          className="w-full py-2 px-3 neu-accent hover:brightness-110 active:shadow-neu-pressed text-white text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <Icon name="plus" size={15} /> New agent
         </button>

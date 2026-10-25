@@ -75,32 +75,32 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="project-settings-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-studio-700 bg-studio-900 text-studio-100 shadow-elevated">
-        <header className="flex items-start justify-between gap-4 border-b border-studio-800 bg-studio-850 px-5 py-4">
+      <section role="dialog" aria-modal="true" aria-labelledby="project-settings-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-panel bg-studio-900 text-studio-100 shadow-elevated">
+        <header className="flex items-start justify-between gap-4 border-b border-line bg-studio-850 px-5 py-4">
           <div><h2 id="project-settings-title" className="text-sm font-semibold">Project execution settings</h2><p className="mt-1 text-xs text-studio-400">Policies and budgets are enforced by the runtime, not just the UI.</p></div>
           <button type="button" onClick={onClose} aria-label="Close project settings" className="rounded px-2 py-1 text-studio-400 hover:bg-studio-800 hover:text-studio-100">✕</button>
         </header>
         <div className="space-y-6 p-5">
-          <label className="flex items-start justify-between gap-4 rounded border border-studio-800 bg-studio-950/60 p-3">
+          <label className="flex items-start justify-between gap-4 rounded-lg bg-studio-950/50 neu-inset p-3">
             <span><span className="block text-xs font-semibold">Parallel tool calls</span><span className="mt-1 block text-2xs text-studio-400">Allow multiple tool calls from one model turn to execute concurrently.</span></span>
             <input aria-label="Parallel tool calls" type="checkbox" checked={parallelTools} onChange={(event) => setParallelTools(event.target.checked)} className="mt-1 h-4 w-4 accent-indigo-500" />
           </label>
           <div>
             <h3 className="mb-3 text-2xs font-mono uppercase tracking-wider text-studio-400">Run budgets</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <label className="text-xs text-studio-300">Maximum cost (USD)<input value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} inputMode="decimal" placeholder="Blank = no cap" className="mt-1 w-full rounded border border-studio-700 bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
-              <label className="text-xs text-studio-300">Maximum LLM calls<input value={maxLlmCalls} onChange={(event) => setMaxLlmCalls(event.target.value)} inputMode="numeric" className="mt-1 w-full rounded border border-studio-700 bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
-              <label className="text-xs text-studio-300">Maximum seconds<input value={maxSeconds} onChange={(event) => setMaxSeconds(event.target.value)} inputMode="numeric" className="mt-1 w-full rounded border border-studio-700 bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
+              <label className="text-xs text-studio-300">Maximum cost (USD)<input value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} inputMode="decimal" placeholder="Blank = no cap" className="mt-1 w-full rounded border border-line-strong bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
+              <label className="text-xs text-studio-300">Maximum LLM calls<input value={maxLlmCalls} onChange={(event) => setMaxLlmCalls(event.target.value)} inputMode="numeric" className="mt-1 w-full rounded border border-line-strong bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
+              <label className="text-xs text-studio-300">Maximum seconds<input value={maxSeconds} onChange={(event) => setMaxSeconds(event.target.value)} inputMode="numeric" className="mt-1 w-full rounded border border-line-strong bg-studio-950 px-2.5 py-2 text-xs text-studio-100" /></label>
             </div>
           </div>
           <div>
             <h3 className="mb-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Tool policy</h3>
             <p className="mb-3 text-2xs text-studio-500">“Ask” pauses the run until you approve. Shared-state writers default to Ask because they persist changes beyond the current run. “Deny” blocks the tool call; “Allow” skips the prompt.</p>
-            <div className="divide-y divide-studio-800 rounded border border-studio-800">
+            <div className="divide-y divide-line rounded border border-line">
               {Object.keys(POLICY_DEFAULTS).map((kind) => (
                 <label key={kind} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <span className="text-xs font-mono">{kind}</span>
-                  <select aria-label={`Policy for ${kind}`} value={policy[kind]} onChange={(event) => setPolicy((current) => ({ ...current, [kind]: event.target.value as Policy }))} className="rounded border border-studio-700 bg-studio-950 px-2 py-1.5 text-xs">
+                  <select aria-label={`Policy for ${kind}`} value={policy[kind]} onChange={(event) => setPolicy((current) => ({ ...current, [kind]: event.target.value as Policy }))} className="rounded border border-line-strong bg-studio-950 px-2 py-1.5 text-xs">
                     <option value="ask">Ask</option><option value="allow">Allow</option><option value="deny">Deny</option>
                   </select>
                 </label>
@@ -108,9 +108,9 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           {error && <p role="alert" className="rounded border border-red-800 bg-red-950/50 p-2.5 text-xs text-red-300">{error}</p>}
-          {notice && <p role="status" className="rounded border border-studio-700 bg-studio-950 p-2.5 text-xs text-studio-300">{notice}</p>}
+          {notice && <p role="status" className="rounded border border-line-strong bg-studio-950 p-2.5 text-xs text-studio-300">{notice}</p>}
         </div>
-        <footer className="flex justify-end gap-2 border-t border-studio-800 px-5 py-4">
+        <footer className="flex justify-end gap-2 border-t border-line px-5 py-4">
           <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
           <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving || !project}>{saving ? "Saving…" : "Save settings"}</Button>
         </footer>

@@ -17,9 +17,9 @@ export function AgentEditor() {
 
   if (!selectedAgent) {
     return (
-      <div className="h-full flex items-center justify-center p-8 text-center bg-studio-950">
+      <div className="h-full flex items-center justify-center p-8 text-center">
         <div>
-          <div className="w-12 h-12 rounded-full bg-studio-900 border border-studio-700 flex items-center justify-center mx-auto mb-3 text-studio-400 text-lg">
+          <div className="w-12 h-12 rounded-full bg-studio-900 border border-line-strong flex items-center justify-center mx-auto mb-3 text-studio-400 text-lg">
             🔍
           </div>
           <h3 className="text-sm font-semibold text-studio-100 mb-1">No Agent Selected</h3>
@@ -42,20 +42,20 @@ export function AgentEditor() {
   const attachedSubAgents = agents.filter((a) => childAgentIds.includes(a.id));
 
   return (
-    <div className="h-full flex flex-col bg-studio-900 overflow-hidden text-xs">
+    <div className="h-full flex flex-col overflow-hidden text-xs">
       {/* Editor Inspector Header */}
-      <div className="p-3 border-b border-studio-800 bg-studio-850 flex items-center justify-between">
+      <div className="p-3 border-b border-line flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-node-agent shrink-0" />
           <h2 className="font-semibold text-studio-100 text-sm truncate">{selectedAgent.name}</h2>
         </div>
-        <span className="text-2xs font-mono uppercase bg-studio-800 text-studio-400 px-1.5 py-0.5 rounded border border-studio-700">
+        <span className="text-2xs font-mono uppercase bg-studio-800 text-studio-400 px-1.5 py-0.5 rounded border border-line-strong">
           Inspector
         </span>
       </div>
 
       {/* Sub-navigation Tabs */}
-      <div className="flex border-b border-studio-800 bg-studio-950 px-2 gap-1">
+      <div className="flex border-b border-line px-2 gap-1">
         <button
           onClick={() => setActiveTab("general")}
           className={`px-3 py-2 font-medium border-b-2 transition-colors ${
@@ -108,7 +108,7 @@ export function AgentEditor() {
                 type="text"
                 value={selectedAgent.name}
                 onChange={(e) => updateAgent(selectedAgent.id, { name: e.target.value })}
-                className="w-full bg-studio-800 text-studio-100 border border-studio-700 rounded px-3 py-1.5 focus:outline-none focus:border-accent-500"
+                className="w-full bg-studio-800 text-studio-100 border border-line-strong rounded px-3 py-1.5 focus:outline-none focus:border-accent-500"
               />
             </div>
 
@@ -131,7 +131,7 @@ export function AgentEditor() {
               onChange={(e) => updateAgent(selectedAgent.id, { system_prompt: e.target.value })}
               placeholder="Enter system instructions for this agent…"
               rows={12}
-              className="w-full flex-1 bg-studio-800 text-studio-100 border border-studio-700 rounded p-3 font-mono text-xs focus:outline-none focus:border-accent-500 resize-none leading-relaxed"
+              className="w-full flex-1 bg-studio-800 text-studio-100 border border-line-strong rounded p-3 font-mono text-xs focus:outline-none focus:border-accent-500 resize-none leading-relaxed"
             />
           </div>
         )}
@@ -141,7 +141,7 @@ export function AgentEditor() {
             <div>
               <h4 className="text-2xs font-mono uppercase text-studio-400 mb-2">Attached Tools</h4>
               {attachedTools.length === 0 ? (
-                <div className="p-3 text-center border border-dashed border-studio-800 rounded text-studio-500">
+                <div className="p-3 text-center border border-dashed border-line rounded text-studio-500">
                   No tools attached to this agent.
                 </div>
               ) : (
@@ -149,7 +149,7 @@ export function AgentEditor() {
                   {attachedTools.map((t) => (
                     <div
                       key={t.id}
-                      className="flex items-center justify-between p-2 rounded bg-studio-800 border border-studio-700"
+                      className="flex items-center justify-between p-2 rounded bg-studio-800 border border-line-strong"
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-node-tool" />
@@ -169,13 +169,13 @@ export function AgentEditor() {
             </div>
 
             {unattachedTools.length > 0 && (
-              <div className="pt-3 border-t border-studio-800">
+              <div className="pt-3 border-t border-line">
                 <h4 className="text-2xs font-mono uppercase text-studio-400 mb-2">Available Tools</h4>
                 <div className="space-y-1.5">
                   {unattachedTools.map((t) => (
                     <div
                       key={t.id}
-                      className="flex items-center justify-between p-2 rounded bg-studio-850 border border-studio-800"
+                      className="flex items-center justify-between p-2 rounded bg-studio-850 border border-line"
                     >
                       <span className="text-studio-300">{t.name}</span>
                       <button
@@ -197,7 +197,7 @@ export function AgentEditor() {
             <div>
               <h4 className="text-2xs font-mono uppercase text-studio-400 mb-2">Invokable Sub-Agents</h4>
               {attachedSubAgents.length === 0 ? (
-                <div className="p-3 text-center border border-dashed border-studio-800 rounded text-studio-500">
+                <div className="p-3 text-center border border-dashed border-line rounded text-studio-500">
                   No child sub-agents assigned.
                 </div>
               ) : (
@@ -205,7 +205,7 @@ export function AgentEditor() {
                   {attachedSubAgents.map((sa) => (
                     <div
                       key={sa.id}
-                      className="flex items-center justify-between p-2 rounded bg-studio-800 border border-studio-700"
+                      className="flex items-center justify-between p-2 rounded bg-studio-800 border border-line-strong"
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-node-agent" />
@@ -224,13 +224,13 @@ export function AgentEditor() {
             </div>
 
             {availableSubAgents.length > 0 && (
-              <div className="pt-3 border-t border-studio-800">
+              <div className="pt-3 border-t border-line">
                 <h4 className="text-2xs font-mono uppercase text-studio-400 mb-2">Available Sub-Agents</h4>
                 <div className="space-y-1.5">
                   {availableSubAgents.map((sa) => (
                     <div
                       key={sa.id}
-                      className="flex items-center justify-between p-2 rounded bg-studio-850 border border-studio-800"
+                      className="flex items-center justify-between p-2 rounded bg-studio-850 border border-line"
                     >
                       <span className="text-studio-300">{sa.name}</span>
                       <button

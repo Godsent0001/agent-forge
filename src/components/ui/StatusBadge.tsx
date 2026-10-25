@@ -46,14 +46,14 @@ export function StatusBadge({ status, label, className = "" }: StatusBadgeProps)
       dot: "bg-studio-400",
       text: "text-studio-400",
       bg: "bg-studio-800/40",
-      border: "border-studio-700/60",
+      border: "border-line-strong",
       defaultLabel: "Cancelled",
     },
     idle: {
       dot: "bg-studio-500",
       text: "text-studio-400",
       bg: "bg-studio-850",
-      border: "border-studio-700/60",
+      border: "border-line-strong",
       defaultLabel: "Idle",
     },
   };
@@ -63,9 +63,9 @@ export function StatusBadge({ status, label, className = "" }: StatusBadgeProps)
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-2xs font-mono select-none border ${current.bg} ${current.border} ${current.text} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-2xs font-mono select-none border shadow-neu-xs ${current.bg} ${current.border} ${current.text} ${className}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dot}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor] ${current.dot}`} />
       <span>{displayLabel}</span>
     </span>
   );

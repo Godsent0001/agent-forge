@@ -90,9 +90,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-panel border border-studio-700 bg-studio-900 text-studio-100 shadow-elevated"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-panel bg-studio-900 text-studio-100 shadow-elevated"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-studio-800 p-5 pb-3">
+        <div className="flex items-start justify-between gap-3 border-b border-line p-5 pb-3">
           <div>
             <h2 id="settings-title" className="text-sm font-semibold">
               Provider API keys
@@ -111,7 +111,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-studio-800 bg-studio-950 px-4">
+        <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-line bg-studio-950 px-4">
           <button type="button" role="tab" aria-selected={activeSection === "keys"} onClick={() => setActiveSection("keys")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "keys" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Provider keys</button>
           <button type="button" role="tab" aria-selected={activeSection === "system"} onClick={() => setActiveSection("system")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "system" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>System check</button>
           <button type="button" role="tab" aria-selected={activeSection === "usage"} onClick={() => setActiveSection("usage")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "usage" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Usage</button>
@@ -154,7 +154,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   value={drafts[provider.keyId] ?? ""}
                   onChange={(e) => setDrafts((prev) => ({ ...prev, [provider.keyId]: e.target.value }))}
                   placeholder={info?.saved ? "Paste a new key to replace it" : provider.keyPlaceholder}
-                  className="w-full rounded-md border border-studio-700 bg-studio-800 px-3 py-1.5 font-mono text-xs text-studio-100 placeholder:text-studio-500 focus:border-accent-500 focus:outline-none"
+                  className="w-full rounded-md border border-line-strong bg-studio-800 px-3 py-1.5 font-mono text-xs text-studio-100 placeholder:text-studio-500 focus:border-accent-500 focus:outline-none"
                 />
                 {info?.saved && !runtimeKnown && (
                   <p className="mt-1 text-2xs text-amber-300">
@@ -173,7 +173,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {activeSection === "keys" ? (
-        <div className="space-y-3 border-t border-studio-800 p-5 pt-3">
+        <div className="space-y-3 border-t border-line p-5 pt-3">
           {status && (
             <p
               role={status.tone === "error" ? "alert" : "status"}
@@ -203,7 +203,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         ) : (
-          <div className="flex justify-end border-t border-studio-800 p-5 pt-3">
+          <div className="flex justify-end border-t border-line p-5 pt-3">
             <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
           </div>
         )}

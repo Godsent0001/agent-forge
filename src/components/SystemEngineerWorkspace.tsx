@@ -265,8 +265,8 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
   ];
 
   return (
-    <main className="flex h-full min-w-0 flex-1 overflow-hidden bg-studio-950">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-studio-800 bg-studio-900/70 p-3 md:flex">
+    <main className="flex h-full min-w-0 flex-1 overflow-hidden rounded-panel bg-studio-900 neu-raised">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-line p-3 md:flex">
         <div className="mb-5 px-2 pt-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent-300">AgentForge</div>
           <h1 className="mt-2 text-lg font-semibold text-studio-100">System Engineer</h1>
@@ -275,13 +275,13 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
         <nav className="space-y-1" aria-label="System Engineer sections">
           {navItems.map((item) => (
             <button key={item.id} onClick={() => { setTab(item.id); setNotice(null); setError(null); if (item.id === "debug") void loadDebugInfo(); }}
-              className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${tab === item.id ? "border-accent-500/30 bg-accent-500/10 text-studio-100" : "border-transparent text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              className={`w-full rounded-xl border border-transparent px-3 py-2.5 text-left transition-all ${tab === item.id ? "neu-selected" : "text-studio-400 hover:bg-studio-850 hover:text-studio-100 hover:shadow-neu-xs"}`}>
               <span className="block text-sm font-medium">{item.label}</span>
               <span className="mt-0.5 block text-[11px] text-studio-500">{item.hint}</span>
             </button>
           ))}
         </nav>
-        <div className="mt-auto rounded-lg border border-studio-700 bg-studio-950/70 p-3">
+        <div className="mt-auto rounded-lg border border-line-strong bg-studio-950/70 p-3">
           <div className="text-xs font-medium text-studio-200">Current agent</div>
           <div className="mt-1 truncate text-sm text-accent-300">{selectedAgent?.name ?? "No agent selected"}</div>
           <p className="mt-1 text-[11px] leading-relaxed text-studio-500">Model settings are borrowed from this agent. Planning runs through a dedicated System Engineer agent.</p>
@@ -289,13 +289,13 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
       </aside>
 
       <section className="min-w-0 flex-1 overflow-y-auto">
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-studio-800 bg-studio-950/95 px-5 py-4 backdrop-blur">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-studio-900/95 px-5 py-4 backdrop-blur">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-300">Workspace / System Engineer</p>
             <h2 className="mt-1 text-lg font-semibold text-studio-100">{navItems.find((item) => item.id === tab)?.label}</h2>
           </div>
           {tab === "skills" && <div className="flex gap-2">
-            <label className="cursor-pointer rounded-md border border-studio-700 px-3 py-2 text-xs text-studio-300 hover:bg-studio-800">
+            <label className="cursor-pointer neu-btn px-3 py-2 text-xs text-studio-300 transition-all">
               Import JSON<input type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importSkills(event.target.files?.[0]); event.currentTarget.value = ""; }} />
             </label>
             <Button size="sm" variant="secondary" onClick={exportSkills}>Export</Button>
@@ -303,15 +303,15 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
           {tab === "debug" && <Button size="sm" variant="secondary" onClick={() => void loadDebugInfo()} disabled={debugLoading}>{debugLoading ? "Checking…" : "Refresh checks"}</Button>}
         </header>
 
-        <nav className="flex gap-2 overflow-x-auto border-b border-studio-800 px-4 py-2 md:hidden" aria-label="System Engineer sections">
-          {navItems.map((item) => <button key={item.id} onClick={() => { setTab(item.id); setNotice(null); setError(null); if (item.id === "debug") void loadDebugInfo(); }} className={`shrink-0 rounded-md border px-3 py-2 text-xs ${tab === item.id ? "border-accent-500/40 bg-accent-500/10 text-accent-200" : "border-studio-800 text-studio-400"}`}>{item.label}</button>)}
+        <nav className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2 md:hidden" aria-label="System Engineer sections">
+          {navItems.map((item) => <button key={item.id} onClick={() => { setTab(item.id); setNotice(null); setError(null); if (item.id === "debug") void loadDebugInfo(); }} className={`shrink-0 rounded-md border px-3 py-2 text-xs ${tab === item.id ? "border-accent-500/40 bg-accent-500/10 text-accent-200" : "border-line text-studio-400"}`}>{item.label}</button>)}
         </nav>
         <div className="mx-auto max-w-5xl space-y-5 p-5 md:p-7">
           {notice && <div role="status" className="rounded-lg border border-emerald-800/70 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">{notice}</div>}
           {error && <div role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-300">{error}</div>}
 
           {tab === "home" && <div className="space-y-5">
-            <div className="rounded-2xl border border-studio-700 bg-studio-900/70 p-6">
+            <div className="rounded-2xl bg-studio-900 neu-raised-sm p-6">
               <h3 className="text-xl font-semibold text-studio-100">Project tools and skills</h3>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-studio-400">Use the floating System Engineer button to ask for changes in natural language. This workspace is for reviewing reusable skills, configuring custom tools, and inspecting execution failures.</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -325,19 +325,19 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
           {tab === "skills" && <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]">
             <div className="space-y-3">
               <div><h3 className="text-base font-semibold text-studio-100">Skill library</h3><p className="mt-1 text-xs text-studio-400">A skill is reusable instructions for how an agent should perform a procedure.</p></div>
-              {skills.length === 0 && <div className="rounded-xl border border-dashed border-studio-700 p-6 text-center"><div className="text-sm text-studio-200">No skills yet</div><p className="mt-1 text-xs text-studio-500">Create one or import a skills JSON file.</p></div>}
-              {skills.map((skill) => <article key={skill.id} className="rounded-xl border border-studio-800 bg-studio-900/60 p-4">
+              {skills.length === 0 && <div className="rounded-xl border border-dashed border-line-strong p-6 text-center"><div className="text-sm text-studio-200">No skills yet</div><p className="mt-1 text-xs text-studio-500">Create one or import a skills JSON file.</p></div>}
+              {skills.map((skill) => <article key={skill.id} className="rounded-xl bg-studio-900 neu-raised-sm p-4">
                 <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate text-sm font-semibold text-studio-100">{skill.name}</h4><p className="mt-1 text-xs text-studio-400">{skill.description || "No description"}</p></div><span className="shrink-0 rounded-full bg-studio-800 px-2 py-1 text-[10px] text-studio-400">{(skill.assigned_agent_ids ?? []).length} agents</span></div>
                 <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-studio-400">{skill.instructions}</p>
                 <div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" onClick={() => beginEdit(skill)}>Edit</Button><Button size="sm" variant="secondary" onClick={() => void persistSkills(skills.filter((item) => item.id !== skill.id))} disabled={busy}>Delete</Button></div>
               </article>)}
             </div>
-            <form onSubmit={saveSkill} className="h-fit space-y-4 rounded-xl border border-studio-800 bg-studio-900/60 p-4">
+            <form onSubmit={saveSkill} className="h-fit space-y-4 rounded-xl bg-studio-900 neu-raised-sm p-4">
               <div><h3 className="text-base font-semibold text-studio-100">{editingId ? "Edit skill" : "Create a skill"}</h3><p className="mt-1 text-xs text-studio-400">Instructions are added to the assigned agent's system context at the next run.</p></div>
-              <label className="block text-xs text-studio-300">Name<input value={skillName} onChange={(event) => setSkillName(event.target.value)} maxLength={120} required placeholder="e.g. Verify research claims" className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
-              <label className="block text-xs text-studio-300">Short description<input value={skillDescription} onChange={(event) => setSkillDescription(event.target.value)} maxLength={500} placeholder="When and why to use this procedure" className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
-              <label className="block text-xs text-studio-300">Instructions<textarea value={skillInstructions} onChange={(event) => setSkillInstructions(event.target.value)} required rows={8} placeholder="Describe the procedure, decision rules, expected outputs, and how to handle failures…" className="mt-1.5 w-full resize-y rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm leading-relaxed text-studio-100 outline-none focus:border-accent-500" /></label>
-              <fieldset><legend className="text-xs text-studio-300">Assign to agents</legend><div className="mt-2 max-h-40 space-y-2 overflow-auto rounded-lg border border-studio-800 p-3">
+              <label className="block text-xs text-studio-300">Name<input value={skillName} onChange={(event) => setSkillName(event.target.value)} maxLength={120} required placeholder="e.g. Verify research claims" className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300">Short description<input value={skillDescription} onChange={(event) => setSkillDescription(event.target.value)} maxLength={500} placeholder="When and why to use this procedure" className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300">Instructions<textarea value={skillInstructions} onChange={(event) => setSkillInstructions(event.target.value)} required rows={8} placeholder="Describe the procedure, decision rules, expected outputs, and how to handle failures…" className="mt-1.5 w-full resize-y rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm leading-relaxed text-studio-100 outline-none focus:border-accent-500" /></label>
+              <fieldset><legend className="text-xs text-studio-300">Assign to agents</legend><div className="mt-2 max-h-40 space-y-2 overflow-auto rounded-lg border border-line p-3">
                 {agents.length === 0 && <p className="text-xs text-studio-500">Create an agent first.</p>}
                 {agents.map((agent) => <label key={agent.id} className="flex items-center gap-2 text-xs text-studio-300"><input type="checkbox" checked={assignedAgentIds.includes(agent.id)} onChange={(event) => setAssignedAgentIds((current) => event.target.checked ? [...current, agent.id] : current.filter((id) => id !== agent.id))} className="accent-[var(--accent)]" />{agent.name}</label>)}
               </div></fieldset>
@@ -346,19 +346,19 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
           </div>}
 
           {tab === "tools" && <div className="space-y-5">
-            <div className="rounded-xl border border-studio-800 bg-studio-900/60 p-5"><h3 className="text-base font-semibold text-studio-100">Tool library</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-studio-400">Review project tools and add supported tools from the catalog. Select an agent to see what is attached to it.</p><div className="mt-4"><Button onClick={onOpenToolCatalog}><Icon name="tools" size={15} /> <span className="ml-2">Browse tool catalog</span></Button></div></div>
-            <form onSubmit={createCustomTool} className="grid gap-4 rounded-xl border border-studio-700 bg-studio-900/60 p-5 lg:grid-cols-2">
+            <div className="rounded-xl bg-studio-900 neu-raised-sm p-5"><h3 className="text-base font-semibold text-studio-100">Tool library</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-studio-400">Review project tools and add supported tools from the catalog. Select an agent to see what is attached to it.</p><div className="mt-4"><Button onClick={onOpenToolCatalog}><Icon name="tools" size={15} /> <span className="ml-2">Browse tool catalog</span></Button></div></div>
+            <form onSubmit={createCustomTool} className="grid gap-4 rounded-xl bg-studio-900 neu-raised-sm p-5 lg:grid-cols-2">
               <div className="lg:col-span-2"><h3 className="text-base font-semibold text-studio-100">Create custom HTTP tool</h3><p className="mt-1 text-xs leading-relaxed text-studio-400">Create a reusable operation for a public HTTP GET or POST endpoint. The JSON schema becomes the model-visible input form. Requests use the existing SSRF-safe HTTP implementation.</p></div>
-              <label className="block text-xs text-studio-300">Tool name<input required maxLength={120} value={customToolName} onChange={(event) => setCustomToolName(event.target.value)} placeholder="e.g. Search public catalogue" className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
-              <label className="block text-xs text-studio-300">Endpoint URL<input required type="url" value={customToolUrl} onChange={(event) => setCustomToolUrl(event.target.value)} placeholder="https://api.example.com/search" className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
-              <label className="block text-xs text-studio-300">Method<select value={customToolMethod} onChange={(event) => setCustomToolMethod(event.target.value as "GET" | "POST")} className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500"><option value="GET">GET — arguments become query parameters</option><option value="POST">POST — arguments sent as JSON</option></select></label>
-              <label className="block text-xs text-studio-300">Description for the agent<input required maxLength={2000} value={customToolDescription} onChange={(event) => setCustomToolDescription(event.target.value)} placeholder="Explain when to use this tool and what it returns" className="mt-1.5 w-full rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
-              <label className="block text-xs text-studio-300 lg:col-span-2">Input JSON Schema<textarea required rows={8} value={customToolSchema} onChange={(event) => setCustomToolSchema(event.target.value)} spellCheck={false} className="mt-1.5 w-full resize-y rounded-lg border border-studio-700 bg-studio-950 px-3 py-2.5 font-mono text-xs leading-relaxed text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300">Tool name<input required maxLength={120} value={customToolName} onChange={(event) => setCustomToolName(event.target.value)} placeholder="e.g. Search public catalogue" className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300">Endpoint URL<input required type="url" value={customToolUrl} onChange={(event) => setCustomToolUrl(event.target.value)} placeholder="https://api.example.com/search" className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300">Method<select value={customToolMethod} onChange={(event) => setCustomToolMethod(event.target.value as "GET" | "POST")} className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500"><option value="GET">GET — arguments become query parameters</option><option value="POST">POST — arguments sent as JSON</option></select></label>
+              <label className="block text-xs text-studio-300">Description for the agent<input required maxLength={2000} value={customToolDescription} onChange={(event) => setCustomToolDescription(event.target.value)} placeholder="Explain when to use this tool and what it returns" className="mt-1.5 w-full rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 text-sm text-studio-100 outline-none focus:border-accent-500" /></label>
+              <label className="block text-xs text-studio-300 lg:col-span-2">Input JSON Schema<textarea required rows={8} value={customToolSchema} onChange={(event) => setCustomToolSchema(event.target.value)} spellCheck={false} className="mt-1.5 w-full resize-y rounded-lg border border-line-strong bg-studio-950 px-3 py-2.5 font-mono text-xs leading-relaxed text-studio-100 outline-none focus:border-accent-500" /></label>
               <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2"><p className="max-w-xl text-[11px] leading-relaxed text-studio-500">If an agent is selected, the new tool will be attached immediately. Do not put API keys or secrets in the URL or schema.</p><Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create custom tool"}</Button></div>
             </form>
             <div className="grid gap-3 md:grid-cols-2">
-              {tools.map((tool) => <article key={tool.id} className="rounded-xl border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-semibold text-studio-100">{tool.name}</h4><p className="mt-1 text-[11px] text-studio-500">{tool.kind}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${assignedTools.has(tool.id) ? "bg-emerald-950 text-emerald-300" : "bg-studio-800 text-studio-400"}`}>{assignedTools.has(tool.id) ? "Attached" : "Project only"}</span></div><p className="mt-3 text-xs leading-relaxed text-studio-400">{tool.description || "No description"}</p></article>)}
-              {tools.length === 0 && <p className="rounded-xl border border-dashed border-studio-700 p-6 text-sm text-studio-400">No project tools yet. Open the catalog to add one.</p>}
+              {tools.map((tool) => <article key={tool.id} className="rounded-xl bg-studio-900 neu-raised-sm p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-semibold text-studio-100">{tool.name}</h4><p className="mt-1 text-[11px] text-studio-500">{tool.kind}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${assignedTools.has(tool.id) ? "bg-emerald-950 text-emerald-300" : "bg-studio-800 text-studio-400"}`}>{assignedTools.has(tool.id) ? "Attached" : "Project only"}</span></div><p className="mt-3 text-xs leading-relaxed text-studio-400">{tool.description || "No description"}</p></article>)}
+              {tools.length === 0 && <p className="rounded-xl border border-dashed border-line-strong p-6 text-sm text-studio-400">No project tools yet. Open the catalog to add one.</p>}
             </div>
             <p className="text-xs leading-relaxed text-studio-500">Custom tools in this version are limited to public HTTP GET/POST endpoints. Authentication secrets, custom headers, OAuth flows, and non-HTTP custom code are not supported by this builder yet.</p>
           </div>}
@@ -366,10 +366,10 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
           {tab === "debug" && <div className="space-y-5">
             <div><h3 className="text-base font-semibold text-studio-100">Runtime checks</h3><p className="mt-1 text-xs text-studio-400">These checks come from the running backend. A green check does not replace an end-to-end execution test.</p></div>
             {debugLoading && <p className="text-sm text-studio-400">Loading runtime diagnostics…</p>}
-            {!debugLoading && checks.length === 0 && <div className="rounded-xl border border-dashed border-studio-700 p-5"><p className="text-sm text-studio-300">Run diagnostics to inspect the runtime.</p><Button className="mt-3" size="sm" onClick={() => void loadDebugInfo()}>Run checks</Button></div>}
-            {checks.map((check) => <article key={check.name} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${check.ok ? "bg-emerald-400" : "bg-red-400"}`} /><h4 className="text-sm font-medium text-studio-100">{check.name}</h4><span className={`ml-auto text-[11px] ${check.ok ? "text-emerald-300" : "text-red-300"}`}>{check.ok ? "OK" : "Needs attention"}</span></div><p className="mt-2 text-xs text-studio-400">{check.detail}</p>{check.fix && <p className="mt-2 text-xs text-accent-300">Suggested fix: {check.fix}</p>}</article>)}
+            {!debugLoading && checks.length === 0 && <div className="rounded-xl border border-dashed border-line-strong p-5"><p className="text-sm text-studio-300">Run diagnostics to inspect the runtime.</p><Button className="mt-3" size="sm" onClick={() => void loadDebugInfo()}>Run checks</Button></div>}
+            {checks.map((check) => <article key={check.name} className="rounded-lg bg-studio-900 neu-raised-sm p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${check.ok ? "bg-emerald-400" : "bg-red-400"}`} /><h4 className="text-sm font-medium text-studio-100">{check.name}</h4><span className={`ml-auto text-[11px] ${check.ok ? "text-emerald-300" : "text-red-300"}`}>{check.ok ? "OK" : "Needs attention"}</span></div><p className="mt-2 text-xs text-studio-400">{check.detail}</p>{check.fix && <p className="mt-2 text-xs text-accent-300">Suggested fix: {check.fix}</p>}</article>)}
             <div><h3 className="text-base font-semibold text-studio-100">Recent executions</h3><p className="mt-1 text-xs text-studio-400">Failed runs are shown first in the list below when available.</p></div>
-            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg border border-studio-800 bg-studio-900/60 p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p><div className="mt-3"><Button size="sm" variant="secondary" disabled={Boolean(diagnosingId)} onClick={() => void prepareDiagnosis(run)}>{diagnosingId === run.id ? "Loading evidence…" : "Prepare diagnosis"}</Button></div></article>)}
+            {[...executions].sort((a, b) => Number(b.status === "error") - Number(a.status === "error")).map((run) => <article key={run.id} className="rounded-lg bg-studio-900 neu-raised-sm p-4"><div className="flex items-center gap-2"><span className={`rounded px-2 py-1 text-[10px] ${run.status === "error" ? "bg-red-950 text-red-300" : "bg-studio-800 text-studio-300"}`}>{run.status}</span><span className="text-[11px] text-studio-500">{new Date(run.started_at).toLocaleString()}</span></div><p className="mt-2 text-sm text-studio-200">{run.task_preview || "Untitled execution"}</p><p className="mt-2 break-all font-mono text-[10px] text-studio-600">{run.id}</p><div className="mt-3"><Button size="sm" variant="secondary" disabled={Boolean(diagnosingId)} onClick={() => void prepareDiagnosis(run)}>{diagnosingId === run.id ? "Loading evidence…" : "Prepare diagnosis"}</Button></div></article>)}
             {!debugLoading && checks.length > 0 && executions.length === 0 && <p className="text-xs text-studio-500">No executions found for this project.</p>}
           </div>}
         </div>

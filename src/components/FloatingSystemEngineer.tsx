@@ -161,26 +161,26 @@ export function FloatingSystemEngineer() {
   return (
     <div className="fixed bottom-5 right-5 z-[100]">
       {open && (
-        <section aria-label="System Engineer chat" className="mb-3 flex h-[min(680px,calc(100vh-110px))] w-[min(440px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-studio-700 bg-studio-950 shadow-2xl">
-          <header className="flex items-center justify-between border-b border-studio-800 bg-studio-900 px-4 py-3">
+        <section aria-label="System Engineer chat" className="mb-3 flex h-[min(680px,calc(100vh-110px))] w-[min(440px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl bg-studio-900 neu-raised shadow-neu-lg">
+          <header className="flex items-center justify-between border-b border-line px-4 py-3">
             <div><h2 className="text-sm font-semibold text-studio-100">System Engineer</h2><p className="mt-0.5 text-[11px] text-studio-400">Build, configure, and debug your agents</p></div>
-            <button type="button" aria-label="Close System Engineer" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-lg text-studio-400 hover:bg-studio-800 hover:text-studio-100">×</button>
+            <button type="button" aria-label="Close System Engineer" onClick={() => setOpen(false)} className="neu-btn px-2 py-0.5 text-lg leading-none text-studio-400 transition-all">×</button>
           </header>
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
-            {initializing && <p className="rounded-lg bg-studio-900 p-3 text-xs text-studio-400">Connecting the System Engineer to this project…</p>}
-            {!initializing && messages.length === 0 && <div className="rounded-xl border border-studio-800 bg-studio-900/70 p-4"><p className="text-sm font-medium text-studio-100">What should I build or fix?</p><p className="mt-2 text-xs leading-relaxed text-studio-400">I can inspect project resources, create or update agents, connect workflows, create supported API tools, save skills, and verify execution results.</p></div>}
-            {messages.map((message) => <div key={message.id} className={`max-w-[92%] rounded-xl px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap break-words ${message.role === "user" ? "ml-auto bg-accent-500/15 text-studio-100" : "mr-auto border border-studio-800 bg-studio-900 text-studio-200"}`}>{messageText(message)}</div>)}
-            {busy && <div className="mr-auto rounded-xl border border-studio-800 bg-studio-900 px-3 py-2.5 text-xs text-studio-400">Working in your project…</div>}
+            {initializing && <p className="rounded-lg bg-studio-900 neu-raised-sm p-3 text-xs text-studio-400">Connecting the System Engineer to this project…</p>}
+            {!initializing && messages.length === 0 && <div className="rounded-xl bg-studio-900 neu-raised-sm p-4"><p className="text-sm font-medium text-studio-100">What should I build or fix?</p><p className="mt-2 text-xs leading-relaxed text-studio-400">I can inspect project resources, create or update agents, connect workflows, create supported API tools, save skills, and verify execution results.</p></div>}
+            {messages.map((message) => <div key={message.id} className={`max-w-[92%] rounded-xl px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap break-words ${message.role === "user" ? "ml-auto neu-accent text-white" : "mr-auto bg-studio-900 neu-raised-sm text-studio-200"}`}>{messageText(message)}</div>)}
+            {busy && <div className="mr-auto rounded-xl bg-studio-900 neu-raised-sm px-3 py-2.5 text-xs text-studio-400">Working in your project…</div>}
             <div ref={bottomRef} />
           </div>
           {error && <div role="alert" className="mx-3 mb-2 rounded-lg border border-red-900/70 bg-red-950/30 p-2 text-xs text-red-300">{error}</div>}
-          <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="border-t border-studio-800 p-3">
-            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={3} placeholder="Ask the System Engineer…" disabled={initializing || busy || !engineerId} className="w-full resize-none rounded-xl border border-studio-700 bg-studio-900 p-3 text-sm text-studio-100 outline-none placeholder:text-studio-500 focus:border-accent-500 disabled:opacity-50" />
-            <div className="mt-2 flex items-center justify-between"><span className="text-[10px] text-studio-500">Enter to send · Shift+Enter for a new line</span><button type="submit" disabled={!input.trim() || initializing || busy || !engineerId} className="rounded-lg bg-accent-500 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Send ↑</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="border-t border-line p-3">
+            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={3} placeholder="Ask the System Engineer…" disabled={initializing || busy || !engineerId} className="w-full resize-none rounded-xl border border-transparent bg-studio-900 p-3 text-sm text-studio-100 outline-none placeholder:text-studio-500 focus:border-accent-500/60 disabled:opacity-50" />
+            <div className="mt-2 flex items-center justify-between"><span className="text-[10px] text-studio-500">Enter to send · Shift+Enter for a new line</span><button type="submit" disabled={!input.trim() || initializing || busy || !engineerId} className="rounded-lg neu-accent px-3 py-2 text-xs font-semibold text-white transition-all hover:brightness-110 active:shadow-neu-pressed disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">Send ↑</button></div>
           </form>
         </section>
       )}
-      <button type="button" aria-label={open ? "Close System Engineer chat" : "Open System Engineer chat"} onClick={() => setOpen((value) => !value)} className="ml-auto flex h-14 w-14 items-center justify-center rounded-full border border-accent-400/40 bg-accent-500 text-2xl text-white shadow-xl transition-transform hover:scale-105" title="System Engineer">✦</button>
+      <button type="button" aria-label={open ? "Close System Engineer chat" : "Open System Engineer chat"} onClick={() => setOpen((value) => !value)} className="ml-auto flex h-14 w-14 items-center justify-center rounded-full neu-accent text-2xl text-white transition-all hover:scale-105 hover:brightness-110 active:shadow-neu-pressed" title="System Engineer">✦</button>
     </div>
   );
 }

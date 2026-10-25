@@ -85,7 +85,7 @@ function KindGlyph({ kind }: { kind: SpanNode["kind"] }) {
   if (kind === "agent") return <Icon name="agents" size={13} className="shrink-0 text-accent-400" />;
   if (kind === "tool_call") return <Icon name="tools" size={13} className="shrink-0 text-emerald-400" />;
   return (
-    <span className="shrink-0 rounded border border-studio-700 px-1 text-[9px] font-mono leading-4 text-studio-400">LLM</span>
+    <span className="shrink-0 rounded border border-line-strong px-1 text-[9px] font-mono leading-4 text-studio-400">LLM</span>
   );
 }
 
@@ -94,7 +94,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
       <div className="text-2xs font-mono uppercase tracking-wider text-studio-500">{label}</div>
-      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded border border-studio-800 bg-studio-950 p-2 text-2xs font-mono leading-relaxed text-studio-200">
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-studio-950/50 neu-inset p-2 text-2xs font-mono leading-relaxed text-studio-200">
         {value}
       </pre>
     </div>
@@ -166,7 +166,7 @@ function SpanDetails({ span }: { span: SpanNode }) {
             {copied ? "Copied" : "Copy JSON"}
           </button>
         </div>
-        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-studio-800 bg-studio-950 p-2 text-2xs font-mono text-studio-300">
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-studio-950/50 neu-inset p-2 text-2xs font-mono text-studio-300">
           {raw}
         </pre>
       </details>
@@ -253,12 +253,12 @@ function TraceNode({
         {node.orphan && <span className="text-[9px] font-mono uppercase text-amber-400">orphan</span>}
         <SpanDot status={node.status} />
         {tokenLabel && (
-          <span className="shrink-0 rounded border border-studio-700/80 px-1 text-[9px] font-mono tabular-nums text-studio-400" title="Input and output tokens combined">
+          <span className="shrink-0 rounded border border-line-strong px-1 text-[9px] font-mono tabular-nums text-studio-400" title="Input and output tokens combined">
             {tokenLabel}
           </span>
         )}
         {costLabel !== null && (
-          <span className="shrink-0 rounded border border-studio-700/80 px-1 text-[9px] font-mono tabular-nums text-studio-400" title="LLM call cost">
+          <span className="shrink-0 rounded border border-line-strong px-1 text-[9px] font-mono tabular-nums text-studio-400" title="LLM call cost">
             {costLabel}
           </span>
         )}
@@ -268,7 +268,7 @@ function TraceNode({
       </div>
 
       {hasChildren && !isCollapsed && (
-        <div role="group" className="ml-[15px] border-l border-studio-800 pl-1.5">
+        <div role="group" className="ml-[15px] border-l border-line pl-1.5">
           {node.children.map((child) => (
             <TraceNode
               key={child.id}
@@ -378,8 +378,8 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
 
   if (!executionId) {
     return (
-      <div className="flex h-full select-none flex-col items-center justify-center gap-3 overflow-y-auto bg-studio-900 p-4 text-center text-xs">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-studio-700 bg-studio-800 text-studio-400">
+      <div className="flex h-full select-none flex-col items-center justify-center gap-3 overflow-y-auto p-4 text-center text-xs">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-line-strong bg-studio-800 text-studio-400">
           <Icon name="logs" size={18} />
         </div>
         <div>
@@ -394,7 +394,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
             <p className="px-1 text-2xs font-mono uppercase tracking-wider text-studio-500">Recent runs</p>
             {recentRuns.map((item) => (
               <button key={item.id} type="button" onClick={() => onSelectExecution(item.id)}
-                className="w-full rounded border border-studio-800 bg-studio-950/60 px-2 py-2 text-left hover:bg-studio-850">
+                className="w-full rounded-lg bg-studio-950/50 neu-inset px-2 py-2 text-left hover:bg-studio-850">
                 <span className="block truncate text-xs text-studio-200">{item.task_preview || "Untitled run"}</span>
                 <span className="mt-1 block text-2xs font-mono text-studio-500">
                   {item.status} · {new Date(item.started_at).toLocaleString()}
@@ -437,9 +437,9 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
   const tokenText = totals ? `${totals.inputTokens.toLocaleString()} → ${totals.outputTokens.toLocaleString()}` : "—";
 
   return (
-    <div className="flex h-full min-w-0 select-none flex-col overflow-hidden bg-studio-900 text-xs">
+    <div className="flex h-full min-w-0 select-none flex-col overflow-hidden text-xs">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-studio-800 bg-studio-850 p-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line p-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-semibold text-studio-100">
             Run <span className="font-mono text-studio-400">#{executionId.slice(0, 8)}</span>
@@ -450,7 +450,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
               aria-label="Open a recent run"
               value={executionId}
               onChange={(event) => onSelectExecution(event.target.value)}
-              className="min-w-0 max-w-40 truncate rounded border border-studio-700 bg-studio-950 px-1.5 py-1 text-2xs text-studio-300"
+              className="min-w-0 max-w-40 truncate rounded border border-line-strong bg-studio-950 px-1.5 py-1 text-2xs text-studio-300"
             >
               {!recentRuns.some((item) => item.id === executionId) && <option value={executionId}>Current run</option>}
               {recentRuns.map((item) => (
@@ -488,7 +488,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
 
       {/* Run summary */}
       {run && (
-        <dl className="grid shrink-0 grid-cols-4 gap-2 border-b border-studio-800 px-3 py-2">
+        <dl className="grid shrink-0 grid-cols-4 gap-2 border-b border-line px-3 py-2">
           <Stat label="Time" value={run.durationMs != null ? formatDuration(run.durationMs) : isRunning ? "live" : "—"} />
           <Stat label="Tokens" value={tokenText} />
           <Stat label="Cost" value={formatCost(totals?.costUsd)} />
@@ -526,7 +526,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
       })()}
 
       {/* View switch */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-studio-800 bg-studio-950/70 p-1.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line p-1.5">
         <SegmentedControl
           size="sm"
           value={view}
@@ -587,7 +587,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
                   className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left transition-colors ${
                     selectedSeq === evt.seq
                       ? "border-accent-500 bg-studio-800"
-                      : "border-studio-800/80 bg-studio-950/60 hover:bg-studio-850"
+                      : "border-line bg-studio-950/60 hover:bg-studio-850"
                   }`}
                 >
                   <span className="min-w-0 truncate font-mono text-2xs capitalize text-studio-200">{eventTitle(evt)}</span>
@@ -600,7 +600,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
       </div>
 
       {/* Inspector */}
-      <div className="h-60 shrink-0 select-text overflow-y-auto border-t border-studio-800 bg-studio-950 p-3">
+      <div className="h-60 shrink-0 select-text overflow-y-auto border-t border-line bg-studio-950/40 neu-inset p-3">
         {view === "events" && selectedEvent ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -617,7 +617,7 @@ export function ExecutionTree({ executionId, onSelectExecution }: ExecutionTreeP
                 {copied ? "Copied" : "Copy JSON"}
               </button>
             </div>
-            <pre className="whitespace-pre-wrap break-all rounded border border-studio-800 bg-studio-900 p-2 text-2xs font-mono text-studio-300">
+            <pre className="whitespace-pre-wrap break-all rounded border border-line bg-studio-900 p-2 text-2xs font-mono text-studio-300">
               {JSON.stringify(selectedEvent, null, 2)}
             </pre>
           </div>

@@ -160,7 +160,7 @@ export default function App() {
   if (boot === "sidecar-down") {
     return (
       <div className="h-full w-full flex items-center justify-center bg-studio-950 p-4">
-        <div className="rounded-panel border border-studio-700 bg-studio-900 shadow-elevated p-6 max-w-md w-full">
+        <div className="rounded-panel bg-studio-900 neu-raised p-6 max-w-md w-full">
           <h1 className="text-base font-bold text-status-error mb-2">Runtime Unreachable</h1>
           <p className="text-xs text-studio-300 leading-relaxed">
             The AgentForge backend did not respond on <code className="text-accent-400">{activeApiBase}</code>.
@@ -173,7 +173,7 @@ export default function App() {
           )}
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 rounded bg-studio-800 hover:bg-studio-700 border border-studio-600 px-3 py-1.5 text-xs font-medium text-studio-100 transition-colors cursor-pointer"
+            className="mt-4 rounded-lg bg-studio-850 neu-raised-sm hover:text-white active:shadow-neu-pressed px-3 py-1.5 text-xs font-medium text-studio-100 transition-all cursor-pointer"
           >
             Reload Workspace
           </button>
@@ -194,8 +194,8 @@ export default function App() {
       />
 
       {/* Main Studio Viewport */}
-      <div className="relative flex-1 flex min-h-0 overflow-hidden">
-        <div className={`relative h-full shrink-0 border-r border-studio-800 ${isCompactViewport ? "absolute inset-y-0 left-0 z-40 shadow-elevated" : ""}`} style={{ width: isSidebarCollapsed ? 44 : sidebarWidth }}>
+      <div className="relative flex-1 flex min-h-0 gap-2.5 overflow-hidden p-2.5 pt-3">
+        <div className={`relative h-full shrink-0 rounded-panel bg-studio-900 neu-raised ${isCompactViewport ? "absolute inset-y-2.5 left-2.5 z-40 h-auto shadow-elevated" : ""}`} style={{ width: isSidebarCollapsed ? 44 : sidebarWidth }}>
           <AgentTree
             onOpenConfig={() => { setActiveTab("config"); setIsPropertiesOpen(false); setIsExecutionTreeOpen(false); }}
             isCollapsed={isSidebarCollapsed}
@@ -207,7 +207,7 @@ export default function App() {
               onPointerDown={(event) => beginResize("sidebar", event)} onPointerMove={moveResize}
               onPointerUp={endResize} onPointerCancel={endResize}
               onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(184, Math.min(440, width + (event.key === "ArrowRight" ? 12 : -12)))); } }}
-              className="absolute right-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+              className="absolute right-[-7px] top-3 bottom-3 z-30 w-1.5 cursor-col-resize touch-none rounded-full hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
             />
           )}
         </div>
@@ -217,21 +217,21 @@ export default function App() {
             onOpenToolCatalog={() => setShowToolCatalogModal(true)}
           />
         ) : activeTab === "canvas" ? (
-          <div className="relative flex-1 min-w-0 h-full overflow-hidden"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
+          <div className="relative flex-1 min-w-0 h-full overflow-hidden rounded-panel bg-studio-900 neu-raised"><WorkflowCanvas onOpenToolCatalog={() => setShowToolCatalogModal(true)} isRunning={isRunningQuickRun} /></div>
         ) : activeTab === "chat" ? (
-          <div className="flex-1 flex min-w-0 h-full overflow-hidden"><AgentChat onRunExecution={handleChatRunStarted} /></div>
+          <div className="flex-1 flex min-w-0 h-full overflow-hidden rounded-panel bg-studio-900 neu-raised"><AgentChat onRunExecution={handleChatRunStarted} /></div>
         ) : (
-          <div className="flex-1 min-w-0 h-full overflow-hidden"><AgentEditor /></div>
+          <div className="flex-1 min-w-0 h-full overflow-hidden rounded-panel bg-studio-900 neu-raised"><AgentEditor /></div>
         )}
 
         {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && activeTab !== "engineer" && (
-          <div className={`relative h-full shrink-0 bg-studio-900 border-l border-studio-700/80 ${isCompactViewport ? "absolute inset-y-0 right-11 z-40 shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
+          <div className={`relative h-full shrink-0 rounded-panel bg-studio-900 neu-raised ${isCompactViewport ? "absolute inset-y-2.5 right-16 z-40 h-auto shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
             {!isCompactViewport && (
               <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
                 onPointerDown={(event) => beginResize("inspector", event)} onPointerMove={moveResize}
                 onPointerUp={endResize} onPointerCancel={endResize}
                 onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setInspectorWidth((width) => Math.max(240, Math.min(560, width + (event.key === "ArrowLeft" ? 12 : -12)))); } }}
-                className="absolute left-[-3px] top-0 z-30 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
+                className="absolute left-[-7px] top-3 bottom-3 z-30 w-1.5 cursor-col-resize touch-none rounded-full hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
               />
             )}
             {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} onSelectExecution={setActiveExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
@@ -239,13 +239,13 @@ export default function App() {
         )}
 
         {activeTab !== "config" && activeTab !== "engineer" && (
-          <aside aria-label="Workspace panels" className="z-30 flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-studio-800 bg-studio-900 py-2">
+          <aside aria-label="Workspace panels" className="z-30 flex h-full w-12 shrink-0 flex-col items-center gap-2.5 rounded-panel bg-studio-900 neu-raised py-2.5">
             <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
-              className={`rounded-md p-2 transition-colors ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              className={`rounded-lg p-2 transition-all ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
               <Icon name="inspector" />
             </button>
             <button type="button" onClick={toggleLogs} aria-label={activeTab === "chat" ? "Activity" : "View logs"} aria-pressed={isExecutionTreeOpen} title={activeTab === "chat" ? "Activity" : "View logs"}
-              className={`rounded-md p-2 transition-colors ${isExecutionTreeOpen ? "bg-studio-800 text-accent-300" : "text-studio-400 hover:bg-studio-800 hover:text-studio-100"}`}>
+              className={`rounded-lg p-2 transition-all ${isExecutionTreeOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
               <Icon name="logs" />
             </button>
           </aside>
