@@ -17,10 +17,10 @@ def test_general_shell_and_browser_tools_are_registered():
 
 
 def test_python_environment_tool_is_registered_and_catalogued():
+    from app.contracts.graph import ToolBinding
     from app.tools.catalog import CATALOG
     from app.tools.python_environment import PythonEnvironmentTool
     from app.tools.registry import DefaultToolFactory, known_tool_kinds
-    from app.contracts.graph import ToolBinding
 
     assert "python_environment" in known_tool_kinds()
     assert any(entry.kind == "python_environment" for entry in CATALOG)
