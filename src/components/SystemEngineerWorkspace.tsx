@@ -69,6 +69,20 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
     }
   };
 
+  const openWorkspaceFolder = async () => {
+    if (!project || workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setError(null);
+    try {
+      const result = await api.projects.openWorkspace(project.id);
+      setNotice(`Opened project folder: ${result.workspace_path}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not open project folder.");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
   const downloadWorkspace = async () => {
     if (!project || workspaceBusy) return;
     setWorkspaceBusy(true);
@@ -402,7 +416,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
             <div className="rounded-xl bg-studio-900 neu-raised-sm p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div><h3 className="text-base font-semibold text-studio-100">Project files</h3><p className="mt-1 text-xs leading-relaxed text-studio-400">Files created by agents are kept in this project's workspace between runs.</p></div>
-                <div className="flex gap-2"><Button variant="secondary" onClick={() => void refreshWorkspace()} disabled={workspaceBusy}>{workspaceBusy ? "Working…" : "Refresh files"}</Button><Button onClick={() => void downloadWorkspace()} disabled={workspaceBusy || workspaceInfo?.file_count === 0}><Icon name="download" size={15} /><span className="ml-2">Download ZIP</span></Button></div>
+                <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => void refreshWorkspace()} disabled={workspaceBusy}>{workspaceBusy ? "Working…" : "Refresh files"}</Button><Button variant="secondary" onClick={() => void openWorkspaceFolder()} disabled={workspaceBusy}>Open folder</Button><Button onClick={() => void downloadWorkspace()} disabled={workspaceBusy || workspaceInfo?.file_count === 0}><Icon name="download" size={15} /><span className="ml-2">Download ZIP</span></Button></div>
               </div>
               {workspaceInfo && <div className="mt-3 rounded-lg border border-line bg-studio-950/60 p-3">
                 <p className="break-all font-mono text-[11px] text-accent-300">{workspaceInfo.workspace_path}</p>
