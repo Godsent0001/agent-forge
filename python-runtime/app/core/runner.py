@@ -239,7 +239,7 @@ class RunnerCore:
                     try:
                         embedding_model = req.options.memory.embedding_model
                         query_embedding = None
-                        if embedding_model and embedding_model.startswith("local:"):
+                        if embedding_model:
                             try:
                                 query_embedding = await asyncio.to_thread(embed_text, task, embedding_model)
                                 missing = await memory.missing_embeddings(spec.id, embedding_model, limit=50)
