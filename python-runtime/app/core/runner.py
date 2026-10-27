@@ -20,6 +20,7 @@ from app.contracts.tools import (
 )
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.durable_scheduler import SQLiteTaskPlanStore
+from app.core.embeddings import embed_text
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
@@ -34,7 +35,6 @@ from app.core.llm.types import (
 from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
-from app.core.embeddings import embed_text
 from app.core.prompt_builder import build_system_prompt
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
