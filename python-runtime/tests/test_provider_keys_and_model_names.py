@@ -34,6 +34,8 @@ def test_sets_keys_for_new_providers(monkeypatch):
     assert os.environ["DEEPSEEK_API_KEY"] == "sk-ds"
     assert os.environ["GROQ_API_KEY"] == "gsk-1"
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant"
+    c.post("/settings/keys", json={"venice": "venice-test-key"})
+    assert os.environ["VENICE_API_KEY"] == "venice-test-key"
 
 
 def test_google_slot_sets_both_gemini_variables(monkeypatch):
@@ -72,6 +74,7 @@ def test_status_reports_every_slot_and_never_returns_keys(monkeypatch):
     body = c.get("/settings/keys").json()
     assert set(body) == set(settings_router.PROVIDER_ENV_VARS)
     assert body["xai"] is True and body["deepseek"] is False
+    assert body["venice"] is False
     assert "secret-value" not in c.get("/settings/keys").text
 
 
