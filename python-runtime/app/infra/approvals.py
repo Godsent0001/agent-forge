@@ -13,6 +13,7 @@ from app.contracts.tools import Permission
 # default to Ask so newly added tools cannot silently bypass approval.
 DEFAULT_POLICIES = {
     "python": "allow",
+    "python_environment": "ask",
     "shell": "allow",
     "http_request": "allow",
     "browser": "allow",
