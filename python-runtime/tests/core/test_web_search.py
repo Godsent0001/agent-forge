@@ -12,10 +12,11 @@ from app.tools.web_search import WebSearchTool, _ddgs_search_backend
 
 
 class FakeDDGS:
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple[str, int, str]] = []
+    timeouts: list[int] = []
 
     def __init__(self, *args: Any, **kwargs: Any):
-        pass
+        self.timeouts.append(kwargs.get("timeout"))
 
     def __enter__(self):
         return self
@@ -23,8 +24,8 @@ class FakeDDGS:
     def __exit__(self, *args: Any):
         return False
 
-    def text(self, query: str, max_results: int = 8):
-        self.calls.append((query, max_results))
+    def text(self, query: str, max_results: int = 8, backend: str = "auto"):
+        self.calls.append((query, max_results, backend))
         return [
             {"title": "Example result", "href": "https://example.com", "body": "Relevant snippet"},
             {"title": "Second result", "url": "https://example.org", "snippet": "Another snippet"},
@@ -34,12 +35,14 @@ class FakeDDGS:
 @pytest.mark.asyncio
 async def test_free_ddgs_backend_maps_results_without_api_key(monkeypatch: pytest.MonkeyPatch):
     FakeDDGS.calls.clear()
+    FakeDDGS.timeouts.clear()
     monkeypatch.delenv("CRAWL4AI_KEY", raising=False)
     monkeypatch.setitem(sys.modules, "ddgs", types.SimpleNamespace(DDGS=FakeDDGS))
 
     results = await _ddgs_search_backend("power tank price Nigeria")
 
-    assert FakeDDGS.calls == [("power tank price Nigeria", 8)]
+    assert FakeDDGS.calls == [("power tank price Nigeria", 8, "auto")]
+    assert FakeDDGS.timeouts == [12]
     assert results == [
         {"title": "Example result", "url": "https://example.com", "snippet": "Relevant snippet"},
         {"title": "Second result", "url": "https://example.org", "snippet": "Another snippet"},
