@@ -34,6 +34,7 @@ _PERMISSION_MAP: dict[str, set[Permission]] = {
     "shell": {"subprocess"},
     "http_request": {"net"},
     "browser": {"net"},
+    "log_search": set(),
     "web_search": {"net"},
     "video_source": {"net"},
     "file_system": {"fs_write"},
