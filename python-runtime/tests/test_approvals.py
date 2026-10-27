@@ -35,12 +35,12 @@ async def test_explicit_ask_policy_still_requests_approval():
 
     gate = ApprovalGateImpl(
         execution_id="run-1",
-        settings={"tool_policy": {"python": "ask"}},
+        settings={"tool_policy": {"project_manager": "ask"}},
         emit=emit,
         timeout_seconds=1,
     )
     task = asyncio.create_task(gate.check(
-        tool="python", permissions={"subprocess"}, args_preview='{"code":"print(1)"}', span_id="span-1"
+        tool="project_manager", permissions={"fs_write"}, args_preview='{"action":"update"}', span_id="span-1"
     ))
     for _ in range(20):
         if any(item.execution_id == "run-1" for item in PENDING.values()):
