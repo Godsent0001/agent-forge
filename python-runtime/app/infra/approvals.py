@@ -9,28 +9,25 @@ from uuid import uuid4
 from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
 
+# All tools default to Allow for frictionless execution. Projects can still
+# explicitly choose Ask or Deny for any tool in settings.
 DEFAULT_POLICIES = {
-    # Standard workspace tools run without a modal on every call. Users can still
-    # override these policies in project settings. Shared persistent-state
-    # mutations remain approval-gated by default.
     "python": "allow",
     "shell": "allow",
     "http_request": "allow",
     "browser": "allow",
     "web_search": "allow",
-    # Read-only metadata/caption lookups; clip_extractor writes only to the run workspace.
     "video_source": "allow",
     "video_transcript": "allow",
     "clip_finder": "allow",
     "clip_extractor": "allow",
     "file_system": "allow",
-    # Shared-data mutators require approval unless the project explicitly changes policy.
-    "scene_template_manager": "ask",
-    "render_queue": "ask",
-    "project_manager": "ask",
-    "asset_cache_store": "ask",
-    "production_config": "ask",
-    "cache_engine": "ask",
+    "scene_template_manager": "allow",
+    "render_queue": "allow",
+    "project_manager": "allow",
+    "asset_cache_store": "allow",
+    "production_config": "allow",
+    "cache_engine": "allow",
 }
 APPROVAL_TIMEOUT_SECONDS = 300
 
@@ -72,12 +69,7 @@ class ApprovalGateImpl:
         configured = self.settings.get("tool_policy", {})
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
-            policy = DEFAULT_POLICIES.get(kind, "ask" if permissions else "allow")
-        # Routine execution tools must not re-open a modal on every call, even
-        # when an older saved project settings object contains the former default
-        # "ask" policy. Explicit deny remains available for these tools.
-        if policy == "ask" and kind in {"python", "shell", "browser", "http_request"}:
-            return "allow"
+            policy = DEFAULT_POLICIES.get(kind, "allow")
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
@@ -142,7 +134,6 @@ class ApprovalGateImpl:
                     },
                 )))
             except Exception:
-                # Resolution must not resurrect a completed/failed execution.
                 pass
 
         if cancelled:
