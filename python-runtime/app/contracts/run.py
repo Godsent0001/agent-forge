@@ -30,7 +30,7 @@ class BudgetSpec(BaseModel):
 class MemoryOptions(BaseModel):
     episodic: bool = True                  # <recent_runs> block and recall_run tool
     intents: bool = False                  # reminders (intent tools and <reminders> block)
-    embedding_model: str | None = None     # None = keyword-only memory search
+    embedding_model: str | None = "local:BAAI/bge-small-en-v1.5"  # local by default; set None for keyword-only search
     recall_budget_tokens: int = 800
     max_items_per_agent: int = 500
 
