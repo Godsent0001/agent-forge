@@ -12,7 +12,6 @@ class Workspace:
         self.root = root
 
     def resolve(self, relative):
-        from pathlib import Path
         candidate = (self.root / relative).resolve()
         if not candidate.is_relative_to(self.root.resolve()):
             raise ValueError("path escapes workspace")
