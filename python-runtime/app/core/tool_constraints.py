@@ -21,7 +21,7 @@ _FORBIDDEN_TOOL = re.compile(
     r"(?:(?:the|a|an)\s+)?(?P<alias>[a-z][a-z0-9_-]{0,30})\b",
     re.IGNORECASE,
 )
-_STOP_WORDS = {"a", "an", "the", "tool", "command", "system", "agentforge", "please", "only"}
+_STOP_WORDS = {"a", "an", "the", "my", "your", "its", "our", "their", "tool", "command", "system", "agentforge", "please", "only"}
 
 
 def _tokens(value: str) -> set[str]:
