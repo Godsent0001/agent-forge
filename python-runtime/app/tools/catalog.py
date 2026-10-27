@@ -55,13 +55,13 @@ SHELVES: dict[str, str] = {
 CATALOG: list[CatalogEntry] = [
     # --- General-purpose tools (always available in the unified catalog) ---
     CatalogEntry("web_search", "Web Search", "general",
-                 "Search the web for documentation, references, and relevant sources. Requires Crawl4AI configuration.",
+                 "Search the web for documentation and references using free, keyless DDGS search; an explicitly configured Crawl4AI key is optional.",
                  "real", pack=None),
     CatalogEntry("browser", "Browser", "general",
                  "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
                  "real", pack=None),
     CatalogEntry("shell", "CMD / Shell", "general",
-                 "Execute a command in the current run workspace with bounded output and a saved log. Requires subprocess permission.",
+                 "Execute a command in the current run workspace without per-call approval by default, with bounded output and a saved log. Shared-data mutations remain policy-controlled.",
                  "real", pack=None),
     CatalogEntry("log_search", "Log Search", "general",
                  "Search saved long shell logs with exact/keyword search and optional embedding-based retrieval.",
