@@ -964,6 +964,12 @@ async def test_runner_stops_after_two_consecutive_no_progress_batches_even_when_
     assert "could not retrieve usable results" in result.final_output
     assert result.totals.tool_calls == 2
     assert result.totals.llm_calls == 3
+    # RunnerCore must give the model a compact evidence ledger to guide adaptation.
+    final_messages = fake_llm.received_calls[-1]["messages"]
+    assert any("[RunnerCore execution state]" in message.get("content", "") for message in final_messages)
+    assert any("failure/no progress" in message.get("content", "") for message in final_messages)
+    # Provider-specific system instructions belong at the start, not mid-conversation.
+    assert all(message.get("role") != "system" for message in final_messages[1:])
 
 
 @pytest.mark.asyncio
