@@ -2,7 +2,7 @@
 import os
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -28,10 +28,14 @@ class BudgetSpec(BaseModel):
     max_seconds: int = 300
 
 
+def _default_embedding_model() -> str | None:
+    return os.environ.get("AGENTFORGE_EMBEDDING_MODEL", "local:BAAI/bge-small-en-v1.5")
+
+
 class MemoryOptions(BaseModel):
     episodic: bool = True                  # <recent_runs> block and recall_run tool
     intents: bool = False                  # reminders (intent tools and <reminders> block)
-    embedding_model: str | None = None  # populated from AGENTFORGE_EMBEDDING_MODEL by the runtime factory
+    embedding_model: str | None = Field(default_factory=_default_embedding_model)
     recall_budget_tokens: int = 800
     max_items_per_agent: int = 500
 
