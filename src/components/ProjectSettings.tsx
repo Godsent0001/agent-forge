@@ -4,8 +4,10 @@ import { Button } from "./ui/Button";
 
 type Policy = "ask" | "allow" | "deny";
 const POLICY_DEFAULTS: Record<string, Policy> = {
-  python: "ask",
-  http_request: "ask",
+  python: "allow",
+  shell: "allow",
+  browser: "allow",
+  http_request: "allow",
   web_search: "allow",
   file_system: "allow",
   scene_template_manager: "ask",
