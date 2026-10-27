@@ -39,6 +39,7 @@ from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
+from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
 from app.infra.paths import project_dir
@@ -69,21 +70,6 @@ def _with_attachment_context(task: str, attachments: list[Any]) -> str:
         "dedicated parser or multimodal tool; if unavailable, state that limitation."
     )
 
-
-
-def _restrict_tools_for_explicit_request(task: str, tools: list[ToolSpec]) -> tuple[list[ToolSpec], str | None]:
-    """Prevent tool substitution when the user explicitly requests a tool."""
-    lowered = task.lower()
-    requested_kind = None
-    if re.search(r"\b(?:web_search|web\s+search|search(?:ing)?\s+tool|search(?:ing)?\s+(?:the\s+web|online|for\s+(?:the\s+)?(?:price|cost|product|brand|model|options?)))\b", lowered):
-        requested_kind = "search"
-    elif re.search(r"\b(?:shell|cmd)\s+tool\b|\buse (?:the )?(?:shell|cmd)\b", lowered):
-        requested_kind = "shell"
-
-    if requested_kind is None:
-        return tools, None
-    matching = [tool for tool in tools if requested_kind in tool.name.lower()]
-    return matching, requested_kind
 
 
 def _compact_old_tool_outputs(messages: list[dict[str, Any]], *, keep_recent: int = 6, max_chars: int = 1800) -> int:
@@ -378,22 +364,9 @@ class RunnerCore:
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
                 )
-                native_tool_specs, explicitly_requested_kind = _restrict_tools_for_explicit_request(
-                    task, native_tool_specs
-                )
-                if explicitly_requested_kind and not native_tool_specs:
-                    messages.append({
-                        "role": "system",
-                        "content": (
-                            f"The user explicitly requested the {explicitly_requested_kind} tool, "
-                            "but no matching tool is attached to this agent. Do not substitute another "
-                            "tool. Explain that the requested tool is unavailable."
-                        ),
-                    })
-
                 iterations = 0
                 tool_call_history: list[str] = []
-                search_no_result_count = 0
+                consecutive_no_progress_batches = 0
 
                 while True:
                     cancel.raise_if_cancelled()
@@ -493,6 +466,7 @@ class RunnerCore:
                             task_plan_store.fail(plan_id, tc.id, "Tool result artifact persistence failed", retryable=False)
                             return f"ERROR: tool result could not be durably persisted ({type(exc).__name__})."
 
+                    batch_outcomes = []
                     if req.options.parallel_tools and len(tool_call_tuples) > 1:
                         results = await asyncio.gather(
                             *[
@@ -526,11 +500,7 @@ class RunnerCore:
                                 task_plan_store.fail(plan_id, tc.id, content, retryable=False)
                             else:
                                 content = await persist_tool_result(tc, res)
-                            if "search" in tc.name.lower() and (
-                                content.strip().lower().startswith("no results found")
-                                or content.startswith("ERROR:")
-                            ):
-                                search_no_result_count += 1
+                            batch_outcomes.append(classify_tool_outcome(content))
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
@@ -568,32 +538,43 @@ class RunnerCore:
 
                             if not content.startswith("ERROR: tool crashed"):
                                 content = await persist_tool_result(tc, content)
-                            if "search" in tc.name.lower() and (
-                                content.strip().lower().startswith("no results found")
-                                or content.startswith("ERROR:")
-                            ):
-                                search_no_result_count += 1
+                            batch_outcomes.append(classify_tool_outcome(content))
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
                                 "content": content,
                             })
 
-                    # A failed/empty search gets at most one recovery attempt per agent run.
-                    # Do not let the model burn the remaining tool budget repeating searches.
-                    if search_no_result_count >= 2:
+                    # Feedback control is based on outcomes, not tool names. A failed
+                    # batch earns one materially different recovery attempt; a second
+                    # consecutive no-progress batch ends tool use and requires an honest report.
+                    if batch_outcomes and all(not outcome.succeeded for outcome in batch_outcomes):
+                        consecutive_no_progress_batches += 1
+                        reasons = "; ".join(outcome.reason for outcome in batch_outcomes[:3])
+                        if consecutive_no_progress_batches >= 2:
+                            messages.append({
+                                "role": "system",
+                                "content": (
+                                    "The last two consecutive tool batches failed or returned no useful "
+                                    f"result ({reasons}). Stop taking actions. Summarize what was attempted, "
+                                    "what the observed results establish, and what remains unresolved. "
+                                    "Do not claim completion or invent evidence."
+                                ),
+                            })
+                            return await self._force_text_turn(
+                                spec, messages, agent_span_id, emit, budget,
+                                reason="Recent tool actions failed to make progress."
+                            )
                         messages.append({
-                            "role": "user",
+                            "role": "system",
                             "content": (
-                                "The search tool has returned no usable results twice. "
-                                "Stop searching now. Do not substitute shell/CMD commands. "
-                                "Give an honest final response explaining that search did not "
-                                "produce usable results and what limitation was observed."
+                                f"The latest tool batch made no progress ({reasons}). Inspect the actual "
+                                "result and, if justified, make one materially different recovery attempt. "
+                                "Do not repeat an equivalent action or claim success without evidence."
                             ),
                         })
-                        return await self._force_text_turn(
-                            spec, messages, agent_span_id, emit, budget
-                        )
+                    else:
+                        consecutive_no_progress_batches = 0
 
         finally:
             active_agent_ids.remove(agent_id)
@@ -780,6 +761,9 @@ class RunnerCore:
                             "tool_call_id": tc.id,
                         }))
                         await emit(EventDraft(type="artifact_verification", data=report.model_dump(mode="json")))
+                if not res.ok:
+                    detail = res.content.strip() or "Tool reported failure without details."
+                    return f"ERROR: {detail}"
                 content = res.content
 
                 saved_ref = None
@@ -895,10 +879,14 @@ class RunnerCore:
         parent_span_id: str,
         emit: Emit,
         budget: BudgetTracker,
+        reason: str = "You have reached the maximum tool iterations limit.",
     ) -> str:
         messages.append({
             "role": "user",
-            "content": "You have reached the maximum tool iterations limit. Please summarize your work and provide a final answer now without using any tools.",
+            "content": (
+                f"{reason} Please summarize what was actually accomplished, identify any "
+                "unresolved requirements, and provide an honest final answer without using tools."
+            ),
         })
         turn = await self._execute_llm_turn(spec, messages, [], parent_span_id, emit, budget)
         return turn.text or ""
