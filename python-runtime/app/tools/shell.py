@@ -51,9 +51,6 @@ def _safe_environment() -> dict[str, str]:
 
 async def _terminate_process_tree(proc: asyncio.subprocess.Process) -> None:
     """Stop the shell and its descendants, even when the caller is cancelled."""
-    if proc.returncode is not None:
-        return
-
     if os.name == "nt":
         # taskkill /T is required on Windows because killing cmd.exe alone can
         # leave commands it launched running after the execution was stopped.
