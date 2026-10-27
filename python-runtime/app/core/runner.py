@@ -102,18 +102,18 @@ def _compact_old_tool_outputs(messages: list[dict[str, Any]], *, keep_recent: in
 
         # Keep concrete paths that can be lost when trimming a large shell/log result.
         paths = re.findall(
-            r"(?:[A-Za-z]:[\\\\/][^\\s\"'<>|]+|/(?:[^\\s\"'<>|]+/)*[^\\s\"'<>|]+|(?:[A-Za-z0-9_.-]+[\\\\/])+[A-Za-z0-9_.-]+\\.[A-Za-z0-9]{1,12})",
+            r'(?:[A-Za-z]:[^\s"<>|]+|/(?:[^\s"<>|]+/)*[^\s"<>|]+|(?:[\w.-]+[/\\])+[\w.-]+\.[A-Za-z0-9]{1,12})',
             original,
         )
         unique_paths = list(dict.fromkeys(path.rstrip(".,;:)") for path in paths))[:30]
         head_size = max_chars - 700
         head = original[:head_size]
         tail = original[-400:]
-        path_block = "\\nImportant paths/identifiers retained: " + ", ".join(unique_paths) if unique_paths else ""
+        path_block = "\nImportant paths/identifiers retained: " + ", ".join(unique_paths) if unique_paths else ""
         tool_name = tool_names.get(str(message.get("tool_call_id")), "tool")
         message["content"] = (
-            f"{head}\\n\\n[Older {tool_name} output compacted to reduce repeated context; "
-            f"full result remains in AgentForge execution artifacts.]{path_block}\\n{tail}"
+            f"{head}\n\n[Older {tool_name} output compacted to reduce repeated context; "
+            f"full result remains in AgentForge execution artifacts.]{path_block}\n{tail}"
         )
         compacted += 1
     return compacted
