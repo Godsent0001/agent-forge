@@ -60,6 +60,7 @@ from app.tools.http_request import HttpRequestTool
 from app.tools.log_search import LogSearchTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
+from app.tools.python_environment import PythonEnvironmentTool
 from app.tools.qc import (
     AudioQCTool,
     AutomatedPreviewQCTool,
@@ -182,6 +183,7 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "video_transcript": VideoTranscriptTool,
     "clip_finder": ClipFinderTool,
     "clip_extractor": ClipExtractorTool,
+    "python_environment": PythonEnvironmentTool,
 }
 
 
