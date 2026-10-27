@@ -21,7 +21,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [showKeys, setShowKeys] = useState(false);
   const [status, setStatus] = useState<{ tone: "info" | "ok" | "error"; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState<"keys" | "system" | "usage">("keys");
+  const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "system" | "usage">("keys");
+  const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -34,6 +35,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     void refresh();
+    void api.settings.getEmbeddingModel()
+      .then((value) => setEmbeddingModel(value.model))
+      .catch(() => setStatus({ tone: "error", text: "Could not load embedding model settings." }));
   }, [refresh]);
 
   const pending = Object.entries(drafts).filter(([, value]) => value.trim().length > 0);
@@ -57,6 +61,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       } else {
         setStatus({ tone: "error", text: "Could not save or apply keys. Check the local runtime and try again." });
       }
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSaveEmbeddingModel = async () => {
+    if (!embeddingModel.trim() || isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Saving embedding model…" });
+    try {
+      const savedModel = await api.settings.setEmbeddingModel(embeddingModel.trim());
+      setEmbeddingModel(savedModel.model);
+      setStatus({ tone: "ok", text: "Embedding model saved. New runs will use this model." });
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save embedding model." });
     } finally {
       setIsBusy(false);
     }
@@ -113,6 +132,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-line bg-studio-950 px-4">
           <button type="button" role="tab" aria-selected={activeSection === "keys"} onClick={() => setActiveSection("keys")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "keys" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Provider keys</button>
+          <button type="button" role="tab" aria-selected={activeSection === "embeddings"} onClick={() => setActiveSection("embeddings")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "embeddings" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Embeddings</button>
           <button type="button" role="tab" aria-selected={activeSection === "system"} onClick={() => setActiveSection("system")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "system" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>System check</button>
           <button type="button" role="tab" aria-selected={activeSection === "usage"} onClick={() => setActiveSection("usage")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "usage" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Usage</button>
         </div>
@@ -169,6 +189,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           })}
           <p className="text-2xs text-studio-500">Local models (Ollama) need no key.</p>
           </div>
+          ) : activeSection === "embeddings" ? (
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="embedding-model" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Embedding model identifier</label>
+                <input
+                  id="embedding-model"
+                  value={embeddingModel}
+                  onChange={(event) => setEmbeddingModel(event.target.value)}
+                  spellCheck={false}
+                  placeholder="local:BAAI/bge-small-en-v1.5"
+                  className="w-full rounded-md border border-line-strong bg-studio-800 px-3 py-2 font-mono text-xs text-studio-100 placeholder:text-studio-500 focus:border-accent-500 focus:outline-none"
+                />
+              </div>
+              <p className="text-2xs leading-relaxed text-studio-400">Default: <span className="font-mono">local:BAAI/bge-small-en-v1.5</span>. To use a provider, enter a LiteLLM model identifier such as <span className="font-mono">venice/text-embedding-bge-m3</span> or <span className="font-mono">openai/text-embedding-3-small</span> and configure that provider's API key in Provider keys.</p>
+              <p className="text-2xs leading-relaxed text-studio-500">Changing embedding models does not automatically convert existing vectors. AgentForge keeps vectors tagged by model and only compares compatible embeddings.</p>
+              {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
+            </div>
           ) : activeSection === "system" ? <SystemCheckPanel /> : <UsagePanel projectId={project?.id} />}
         </div>
 
@@ -202,6 +239,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </div>
+        ) : activeSection === "embeddings" ? (
+          <div className="space-y-3 border-t border-line p-5 pt-3">
+            <div className="flex items-center justify-between">
+              <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
+              <Button size="xs" variant="primary" onClick={() => void handleSaveEmbeddingModel()} disabled={!embeddingModel.trim() || isBusy}>
+                {isBusy ? "Saving…" : "Save embedding model"}
+              </Button>
+            </div>
+          </div>
         ) : (
           <div className="flex justify-end border-t border-line p-5 pt-3">
             <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
