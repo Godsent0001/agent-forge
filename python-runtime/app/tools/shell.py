@@ -65,7 +65,7 @@ class ShellTool(Tool):
     name = "shell"
     description = (
         "Run a CMD/PowerShell command on Windows or a shell command on Unix in the "
-        "current run workspace. Returns bounded output, exit code, and a log path."
+        "persistent project workspace. Returns bounded output, exit code, and absolute paths for files/logs."
     )
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -137,7 +137,7 @@ class ShellTool(Tool):
         excerpt = _format_excerpt(combined, truncated or len(combined) > MAX_OUTPUT_CHARS)
         status = f"Exit code: {proc.returncode}"
         if log_path:
-            status += f"\nFull captured output: {log_path}"
+            status += f"\nFull captured output: {cwd / log_path}"
         if truncated:
             status += "\nCapture limit reached; output beyond the capture cap was discarded."
-        return f"{status}\n\n{excerpt}"
+        return f"Project workspace: {cwd}\n{status}\n\n{excerpt}"
