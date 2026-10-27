@@ -12,7 +12,7 @@ from app.tools.shell import ShellTool
 async def test_shell_cancellation_terminates_running_command_tree(tmp_path: Path):
     workspace = SimpleNamespace(root=tmp_path)
     context = SimpleNamespace(workspace=workspace, span_id="cancel-test")
-    command = f'"{sys.executable}" -c "import time; time.sleep(1); open(\\'cancel-marker.txt\\', \\'w\\').write(\\'late\\')"'
+    command = f'"{sys.executable}" -c "import time; time.sleep(1); open(\'cancel-marker.txt\', \'w\').write(\'late\')"'
 
     task = asyncio.create_task(ShellTool().execute(command, context=context))
     await asyncio.sleep(0.25)
