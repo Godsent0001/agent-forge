@@ -16,12 +16,18 @@ export function buildRunHistory(
   limit = MAX_CHAT_HISTORY_TURNS,
 ): RunHistoryMessage[] {
   if (!Number.isFinite(limit) || limit <= 0) return [];
-  return messages
+  const history = messages
     .filter((message) => message.sender === "user" || message.sender === "agent")
     .filter((message) => message.sender !== "agent" || !isSimulatedText(message.text))
-    .slice(-Math.floor(limit))
     .map((message) => ({
       role: message.sender === "user" ? "user" as const : "assistant" as const,
       content: message.text,
     }));
+
+  // The active task is sent separately. Drop trailing unanswered user messages
+  // left by interrupted/crashed runs so they cannot override the next request.
+  while (history.length && history[history.length - 1].role !== "assistant") {
+    history.pop();
+  }
+  return history.slice(-Math.floor(limit));
 }
