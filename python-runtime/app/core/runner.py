@@ -75,7 +75,7 @@ def _restrict_tools_for_explicit_request(task: str, tools: list[ToolSpec]) -> tu
     """Prevent tool substitution when the user explicitly requests a tool."""
     lowered = task.lower()
     requested_kind = None
-    if re.search(r"\b(?:web_search|web\s+search|search(?:ing)?\s+tool)\b", lowered):
+    if re.search(r"\b(?:web_search|web\s+search|search(?:ing)?\s+tool|search(?:ing)?\s+(?:the\s+web|online|for\s+(?:the\s+)?(?:price|cost|product|brand|model|options?)))\b", lowered):
         requested_kind = "search"
     elif re.search(r"\b(?:shell|cmd)\s+tool\b|\buse (?:the )?(?:shell|cmd)\b", lowered):
         requested_kind = "shell"
