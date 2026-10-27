@@ -53,7 +53,12 @@ def constrain_tools_for_task(task: str, tools: list[ToolSpec]) -> tuple[list[Too
     forbidden_aliases = [match.group("alias").strip() for match in _FORBIDDEN_TOOL.finditer(task)]
 
     if required:
-        requested = required.group("alias").strip()
+        requested = re.sub(
+            r"^(?:(?:the|a|an|my|your|its|our|their)\\s+)+",
+            "",
+            required.group("alias").strip(),
+            flags=re.IGNORECASE,
+        )
         matches = [tool for tool in tools if _matches_alias(requested, tool)]
         if not matches:
             return [], requested
