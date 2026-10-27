@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,55 @@ def _with_attachment_context(task: str, attachments: list[Any]) -> str:
         "a file unless a tool actually returned its contents. Other file types require a "
         "dedicated parser or multimodal tool; if unavailable, state that limitation."
     )
+
+
+def _compact_old_tool_outputs(messages: list[dict[str, Any]], *, keep_recent: int = 6, max_chars: int = 1800) -> int:
+    """Bound repeated tool-result context while preserving recent outputs and paths.
+
+    Full tool results are persisted separately by the execution artifact lifecycle;
+    the model context only needs a compact, path-aware excerpt from older results.
+    """
+    tool_names: dict[str, str] = {}
+    for message in messages:
+        calls = message.get("tool_calls")
+        if isinstance(calls, list):
+            for call in calls:
+                if not isinstance(call, dict):
+                    continue
+                call_id = call.get("id")
+                function = call.get("function")
+                name = function.get("name") if isinstance(function, dict) else None
+                if isinstance(call_id, str) and isinstance(name, str):
+                    tool_names[call_id] = name
+
+    tool_indices = [
+        index for index, message in enumerate(messages)
+        if message.get("role") == "tool" and isinstance(message.get("content"), str)
+    ]
+    compacted = 0
+    for index in tool_indices[:-keep_recent]:
+        message = messages[index]
+        original = message["content"]
+        if len(original) <= max_chars or original.startswith("ERROR:"):
+            continue
+
+        # Keep concrete paths that can be lost when trimming a large shell/log result.
+        paths = re.findall(
+            r"(?:[A-Za-z]:[\\\\/][^\\s\"'<>|]+|/(?:[^\\s\"'<>|]+/)*[^\\s\"'<>|]+|(?:[A-Za-z0-9_.-]+[\\\\/])+[A-Za-z0-9_.-]+\\.[A-Za-z0-9]{1,12})",
+            original,
+        )
+        unique_paths = list(dict.fromkeys(path.rstrip(".,;:)") for path in paths))[:30]
+        head_size = max_chars - 700
+        head = original[:head_size]
+        tail = original[-400:]
+        path_block = "\\nImportant paths/identifiers retained: " + ", ".join(unique_paths) if unique_paths else ""
+        tool_name = tool_names.get(str(message.get("tool_call_id")), "tool")
+        message["content"] = (
+            f"{head}\\n\\n[Older {tool_name} output compacted to reduce repeated context; "
+            f"full result remains in AgentForge execution artifacts.]{path_block}\\n{tail}"
+        )
+        compacted += 1
+    return compacted
 
 
 class AgentCycleError(RuntimeError):
@@ -319,6 +369,7 @@ class RunnerCore:
                 while True:
                     cancel.raise_if_cancelled()
                     budget.check_limits()
+                    _compact_old_tool_outputs(messages)
                     iterations += 1
 
                     if iterations > req.options.max_iterations:
