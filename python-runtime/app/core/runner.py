@@ -373,7 +373,7 @@ class RunnerCore:
                 }
                 if requested_tool and not native_tool_specs:
                     messages[0]["content"] += (
-                        "\\n\\n[Tool constraint]\\n"
+                        "\n\n[Tool constraint]\n"
                         f"The user explicitly requested the '{requested_tool}' capability, but no "
                         "attached tool matches it. Do not substitute an unrelated tool; explain "
                         "that the requested capability is unavailable."
@@ -381,6 +381,8 @@ class RunnerCore:
                 iterations = 0
                 tool_call_history: list[str] = []
                 consecutive_no_progress_batches = 0
+                execution_history: list[str] = []
+                execution_state_message_index: int | None = None
 
                 while True:
                     cancel.raise_if_cancelled()
@@ -559,6 +561,29 @@ class RunnerCore:
                                 "content": content,
                             })
 
+                    # Keep a compact, tool-agnostic execution ledger in the model context.
+                    # It survives compaction of old raw outputs and makes progress/recovery
+                    # decisions depend on observed outcomes rather than the tool name.
+                    for tc, outcome in zip(tool_call_tuples, batch_outcomes):
+                        status = "useful result" if outcome.succeeded else "failure/no progress"
+                        execution_history.append(f"- {tc.name}: {status} — {outcome.reason[:180]}")
+                    execution_history = execution_history[-8:]
+                    state_content = (
+                        "[RunnerCore execution state]\n"
+                        f"Original user goal: {task}\n"
+                        "Observed recent actions and outcomes:\n"
+                        + "\n".join(execution_history)
+                        + "\nBefore choosing the next action, compare this evidence with the requested end state. "
+                        "Continue only if the next action can make measurable progress; after a failure, change "
+                        "the approach rather than repeating an equivalent action. Treat tool success messages as "
+                        "evidence, not automatic proof that the user's goal is complete."
+                    )
+                    if execution_state_message_index is None:
+                        messages.append({"role": "user", "content": state_content})
+                        execution_state_message_index = len(messages) - 1
+                    else:
+                        messages[execution_state_message_index]["content"] = state_content
+
                     # Feedback control is based on outcomes, not tool names. A failed
                     # batch earns one materially different recovery attempt; a second
                     # consecutive no-progress batch ends tool use and requires an honest report.
@@ -567,7 +592,7 @@ class RunnerCore:
                         reasons = "; ".join(outcome.reason for outcome in batch_outcomes[:3])
                         if consecutive_no_progress_batches >= 2:
                             messages.append({
-                                "role": "system",
+                                "role": "user",
                                 "content": (
                                     "The last two consecutive tool batches failed or returned no useful "
                                     f"result ({reasons}). Stop taking actions. Summarize what was attempted, "
@@ -580,7 +605,7 @@ class RunnerCore:
                                 reason="Recent tool actions failed to make progress."
                             )
                         messages.append({
-                            "role": "system",
+                            "role": "user",
                             "content": (
                                 f"The latest tool batch made no progress ({reasons}). Inspect the actual "
                                 "result and, if justified, make one materially different recovery attempt. "
