@@ -24,15 +24,19 @@ async def test_web_search_supports_injected_backend_without_provider_key():
 @pytest.mark.asyncio
 async def test_default_search_uses_ddgs_without_api_key(monkeypatch):
     class FakeDDGS:
+        def __init__(self, *, timeout: int):
+            assert timeout == 12
+
         def __enter__(self):
             return self
 
         def __exit__(self, *_args):
             return False
 
-        def text(self, query: str, *, max_results: int):
+        def text(self, query: str, *, max_results: int, backend: str):
             assert query == "agentforge"
             assert max_results == 8
+            assert backend == "auto"
             return [{"title": "AgentForge", "href": "https://example.com", "body": "Result"}]
 
     fake_module = ModuleType("ddgs")
