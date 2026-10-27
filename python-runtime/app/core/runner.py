@@ -366,6 +366,11 @@ class RunnerCore:
                     include_attachment_reader=bool(req.attachments),
                 )
                 native_tool_specs, requested_tool = constrain_tools_for_task(task, native_tool_specs)
+                allowed_tool_names = {tool.name for tool in native_tool_specs}
+                tool_instances = {
+                    name: instance for name, instance in tool_instances.items()
+                    if name in allowed_tool_names
+                }
                 if requested_tool and not native_tool_specs:
                     messages[0]["content"] += (
                         "\\n\\n[Tool constraint]\\n"
