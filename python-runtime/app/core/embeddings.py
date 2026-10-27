@@ -40,8 +40,24 @@ def _embed_cached(model_id: str, text: str) -> tuple[float, ...]:
     if model_id.startswith("local:"):
         model = _load_model(model_id)
         vector = next(model.embed([text]))
+    elif model_id.startswith("venice/"):
+        import httpx
+
+        api_key = os.environ.get("VENICE_API_KEY")
+        if not api_key:
+            raise RuntimeError("Venice embeddings require VENICE_API_KEY in Provider settings.")
+        model_name = model_id.split("/", 1)[1]
+        endpoint = os.environ.get("VENICE_API_BASE", "https://api.venice.ai/api/v1").rstrip("/")
+        with httpx.Client(timeout=30.0, trust_env=False) as client:
+            response = client.post(
+                f"{endpoint}/embeddings",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model_name, "input": [text]},
+            )
+            response.raise_for_status()
+            vector = response.json()["data"][0]["embedding"]
     else:
-        # LiteLLM routes provider/model embedding calls using the same provider
+        # LiteLLM routes other provider/model embedding calls using the same
         # credentials already configured for chat completions.
         import litellm
 
