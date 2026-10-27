@@ -365,6 +365,7 @@ class RunnerCore:
 
                 iterations = 0
                 tool_call_history: list[str] = []
+                search_no_result_count = 0
 
                 while True:
                     cancel.raise_if_cancelled()
@@ -497,6 +498,11 @@ class RunnerCore:
                                 task_plan_store.fail(plan_id, tc.id, content, retryable=False)
                             else:
                                 content = await persist_tool_result(tc, res)
+                            if "search" in tc.name.lower() and (
+                                content.strip().lower().startswith("no results found")
+                                or content.startswith("ERROR:")
+                            ):
+                                search_no_result_count += 1
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
@@ -534,11 +540,32 @@ class RunnerCore:
 
                             if not content.startswith("ERROR: tool crashed"):
                                 content = await persist_tool_result(tc, content)
+                            if "search" in tc.name.lower() and (
+                                content.strip().lower().startswith("no results found")
+                                or content.startswith("ERROR:")
+                            ):
+                                search_no_result_count += 1
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
                                 "content": content,
                             })
+
+                    # A failed/empty search gets at most one recovery attempt per agent run.
+                    # Do not let the model burn the remaining tool budget repeating searches.
+                    if search_no_result_count >= 2:
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "The search tool has returned no usable results twice. "
+                                "Stop searching now. Do not substitute shell/CMD commands. "
+                                "Give an honest final response explaining that search did not "
+                                "produce usable results and what limitation was observed."
+                            ),
+                        })
+                        return await self._force_text_turn(
+                            spec, messages, agent_span_id, emit, budget
+                        )
 
         finally:
             active_agent_ids.remove(agent_id)
