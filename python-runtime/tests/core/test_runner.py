@@ -964,3 +964,58 @@ async def test_runner_stops_after_two_consecutive_no_progress_batches_even_when_
     assert "could not retrieve usable results" in result.final_output
     assert result.totals.tool_calls == 2
     assert result.totals.llm_calls == 3
+
+
+@pytest.mark.asyncio
+async def test_runner_preserves_structured_tool_failure_status():
+    fake_llm = FakeLLM([
+        LLMTurn(tool_calls=[ToolCall(id="structured-failure", name="status_tool", arguments={})]),
+        LLMTurn(text="The operation failed, so I have not claimed it succeeded."),
+    ])
+
+    class StructuredFailureFactory:
+        def build(self, binding: ToolBinding) -> Tool:
+            class StatusTool(Tool):
+                kind = binding.kind
+                default_description = "Reports a structured failure."
+
+                async def run(self, args: dict, ctx: Any) -> ToolResult:
+                    return ToolResult(ok=False, content="The operation was rejected.")
+
+            return StatusTool()
+
+    graph = AgentGraph(
+        root_id="root_1",
+        agents={
+            "root_1": AgentSpec(
+                id="root_1",
+                name="Status Agent",
+                provider="fake",
+                model="fake-model",
+                tools=[ToolBinding(id="tb1", kind="status_tool", name="status_tool")],
+            )
+        },
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await RunnerCore(fake_llm=fake_llm).run(
+            req=RunRequest(
+                execution_id="exec_structured_failure",
+                project_id="proj_1",
+                root_agent_id="root_1",
+                task="Perform the operation and report its outcome.",
+            ),
+            graph=graph,
+            emit=noop_emit,
+            cancel=MockCancelToken(),
+            approvals=MockApprovalGate(),
+            workspace=MockWorkspace(Path(tmpdir)),
+            tools=StructuredFailureFactory(),
+            memory=None,
+            lessons=None,
+            intents=None,
+            run_history=None,
+        )
+
+    assert result.status == "completed"
+    tool_messages = [m for m in fake_llm.received_calls[1]["messages"] if m["role"] == "tool"]
+    assert tool_messages[-1]["content"] == "ERROR: The operation was rejected."
