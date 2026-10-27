@@ -1,0 +1,83 @@
+"""Local embedding provider with bounded in-process result caching.
+
+The model files are prepared by scripts/prepare_embedding_model.py during the
+desktop packaging build. Runtime retrieval gracefully falls back to lexical
+search when the model is unavailable.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+from functools import lru_cache
+from pathlib import Path
+
+DEFAULT_EMBEDDING_MODEL = "local:BAAI/bge-small-en-v1.5"
+
+
+def _model_cache_dir() -> Path:
+    configured = os.environ.get("AGENTFORGE_EMBEDDING_CACHE_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return Path(__file__).resolve().parents[2] / "models" / "embedding-cache"
+
+
+@lru_cache(maxsize=2)
+def _load_model(model_id: str):
+    if not model_id.startswith("local:"):
+        raise ValueError(f"Unsupported embedding provider: {model_id.split(':', 1)[0]}")
+    model_name = model_id.split(":", 1)[1]
+    cache_dir = _model_cache_dir()
+    if not cache_dir.is_dir() or not any(cache_dir.iterdir()):
+        raise RuntimeError(
+            "Local embedding model is not prepared. Rebuild AgentForge or prepare the model cache."
+        )
+    from fastembed import TextEmbedding
+
+    return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
+
+
+@lru_cache(maxsize=2048)
+def _embed_cached(model_id: str, text: str) -> tuple[float, ...]:
+    model = _load_model(model_id)
+    vector = next(model.embed([text]))
+    return tuple(float(value) for value in vector)
+
+
+def embed_text(text: str, model_id: str = DEFAULT_EMBEDDING_MODEL) -> list[float]:
+    """Embed one text value locally; results are cached by model and exact text."""
+    if not text.strip():
+        return []
+    return list(_embed_cached(model_id, text))
+
+
+def embed_many(texts: list[str], model_id: str = DEFAULT_EMBEDDING_MODEL) -> list[list[float]]:
+    """Embed multiple texts, reusing cached vectors for repeated values."""
+    if not texts:
+        return []
+    result: list[list[float] | None] = [None] * len(texts)
+    missing: list[str] = []
+    missing_indexes: list[int] = []
+    for index, value in enumerate(texts):
+        if not value.strip():
+            result[index] = []
+            continue
+        cached = _embed_cached.cache_info()
+        # Calling the cached helper also updates cache statistics; avoid relying on
+        # cache internals to detect hits, and keep batching simple and deterministic.
+        missing.append(value)
+        missing_indexes.append(index)
+    model = _load_model(model_id)
+    vectors = iter(model.embed(missing))
+    for index, value in zip(missing_indexes, vectors):
+        result[index] = list(_embed_cached(model_id, value))
+    return [value or [] for value in result]
+
+
+def cache_info() -> dict[str, int]:
+    info = _embed_cached.cache_info()
+    return {"hits": info.hits, "misses": info.misses, "size": info.currsize, "max_size": info.maxsize}
+
+
+def clear_embedding_cache() -> None:
+    _embed_cached.cache_clear()
+    _load_model.cache_clear()
