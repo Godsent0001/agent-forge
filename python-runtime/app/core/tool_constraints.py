@@ -3,6 +3,7 @@
 This is catalog-driven: it does not hard-code tool names or assume that a particular
 capability is implemented by a particular tool.
 """
+
 from __future__ import annotations
 
 import re
@@ -13,7 +14,7 @@ from app.core.llm.types import ToolSpec
 _REQUIRED_TOOL = re.compile(
     r"\b(?:use|call|invoke|test|try|run|execute)\s+"
     r"(?:(?:the|a|an)\s+)?"
-    r"(?P<alias>[a-z][a-z0-9 _-]{0,39}?)\s+(?:tool|command)\b",
+    r"(?P<alias>[a-z][a-z0-9 _-]{0,39}?)\s+(?:tool|command)s?\b",
     re.IGNORECASE,
 )
 _FORBIDDEN_TOOL = re.compile(
@@ -21,11 +22,19 @@ _FORBIDDEN_TOOL = re.compile(
     r"(?:(?:the|a|an)\s+)?(?P<alias>[a-z][a-z0-9_-]{0,30})\b",
     re.IGNORECASE,
 )
-_STOP_WORDS = {"a", "an", "the", "my", "your", "its", "our", "their", "tool", "command", "system", "agentforge", "please", "only"}
+_STOP_WORDS = {
+    "a", "an", "the", "my", "your", "its", "our", "their", "it",
+    "tool", "tools", "command", "commands", "system", "agentforge",
+    "please", "only",
+}
 
 
 def _tokens(value: str) -> set[str]:
-    return {word for word in re.findall(r"[a-z0-9]+", value.casefold()) if word not in _STOP_WORDS}
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", value.casefold())
+        if word not in _STOP_WORDS
+    }
 
 
 def _tool_terms(tool: ToolSpec) -> set[str]:
@@ -42,35 +51,63 @@ def _matches_alias(alias: str, tool: ToolSpec) -> bool:
     return bool(requested) and requested.issubset(_tool_terms(tool))
 
 
-def constrain_tools_for_task(task: str, tools: list[ToolSpec]) -> tuple[list[ToolSpec], str | None]:
+def _normalize_alias(alias: str) -> str:
+    return re.sub(
+        r"^(?:(?:the|a|an|my|your|its|our|their|it)\s+)+",
+        "",
+        alias.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def constrain_tools_for_task(
+    task: str, tools: list[ToolSpec]
+) -> tuple[list[ToolSpec], str | None]:
     """Honor explicit required/forbidden tool mentions using the live tool catalog.
 
-    If the task requires a capability that is not available, return no tools and
-    the requested label so the caller can explain the limitation rather than
-    silently substituting an unrelated capability.
+    Multiple explicitly requested tools are retained together for multi-step tasks.
+    If any required capability is unavailable, no unrelated tool is exposed as a
+    substitute; the caller can explain the missing capability.
     """
-    required = _REQUIRED_TOOL.search(task)
-    forbidden_aliases = [match.group("alias").strip() for match in _FORBIDDEN_TOOL.finditer(task)]
-
-    if required:
-        requested = re.sub(
-            r"^(?:(?:the|a|an|my|your|its|our|their)\\s+)+",
-            "",
-            required.group("alias").strip(),
-            flags=re.IGNORECASE,
+    required_aliases = list(
+        dict.fromkeys(
+            _normalize_alias(match.group("alias"))
+            for match in _REQUIRED_TOOL.finditer(task)
+            if _normalize_alias(match.group("alias"))
         )
-        matches = [tool for tool in tools if _matches_alias(requested, tool)]
-        if not matches:
-            return [], requested
+    )
+    forbidden_aliases = [
+        _normalize_alias(match.group("alias"))
+        for match in _FORBIDDEN_TOOL.finditer(task)
+    ]
+
+    if required_aliases:
+        matched_tools: dict[str, ToolSpec] = {}
+        missing_aliases: list[str] = []
+        for alias in required_aliases:
+            matches = [tool for tool in tools if _matches_alias(alias, tool)]
+            if not matches:
+                missing_aliases.append(alias)
+                continue
+            for tool in matches:
+                matched_tools[tool.name] = tool
+
+        if missing_aliases:
+            return [], ", ".join(missing_aliases)
+
         allowed = [
-            tool for tool in matches
+            tool
+            for tool in matched_tools.values()
             if not any(_matches_alias(alias, tool) for alias in forbidden_aliases)
         ]
-        return allowed, requested
+        if not allowed:
+            return [], ", ".join(required_aliases)
+        return allowed, ", ".join(required_aliases)
 
     if forbidden_aliases:
         tools = [
-            tool for tool in tools
+            tool
+            for tool in tools
             if not any(_matches_alias(alias, tool) for alias in forbidden_aliases)
         ]
     return tools, None
