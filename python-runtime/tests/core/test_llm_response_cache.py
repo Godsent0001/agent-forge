@@ -53,3 +53,12 @@ async def test_adapter_reuses_identical_no_tool_completion(monkeypatch):
     assert second.usage.output_tokens == 0
     assert second.cost_usd == 0.0
     assert calls["count"] == 1
+
+
+def test_live_information_prompts_bypass_cache():
+    assert response_cache.is_cacheable_messages([
+        {"role": "user", "content": "What is the latest exchange rate today?"}
+    ]) is False
+    assert response_cache.is_cacheable_messages([
+        {"role": "user", "content": "Explain how a Python decorator works."}
+    ]) is True
