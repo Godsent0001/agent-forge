@@ -57,6 +57,7 @@ from app.tools.graphics import (
     VisualAssetManagerTool,
 )
 from app.tools.http_request import HttpRequestTool
+from app.tools.log_search import LogSearchTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.qc import (
@@ -90,6 +91,7 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     # General-purpose
     "web_search": WebSearchTool,
     "browser": BrowserTool,
+    "log_search": LogSearchTool,
     "shell": ShellTool,
     "python": PythonExecTool,
     "http_request": HttpRequestTool,
