@@ -47,6 +47,22 @@ def test_generic_tool_name_can_be_required():
     assert [tool.name for tool in selected] == ["database_query"]
 
 
+def test_multiple_explicit_tools_remain_available_for_multi_step_task():
+    tools = [
+        _tool("web_search", "Search the web."),
+        _tool("shell", "Run a CMD/PowerShell command."),
+        _tool("file_system", "Read and write project files."),
+    ]
+
+    selected, requested = constrain_tools_for_task(
+        "Use the web search tool and shell tool to find information and save a report.",
+        tools,
+    )
+
+    assert requested == "web search, shell"
+    assert [tool.name for tool in selected] == ["web_search", "shell"]
+
+
 def test_missing_required_capability_does_not_substitute_another_tool():
     tools = [
         _tool("web_search", "Search the web."),
@@ -54,6 +70,20 @@ def test_missing_required_capability_does_not_substitute_another_tool():
     ]
 
     selected, requested = constrain_tools_for_task("Use the OCR tool.", tools)
+
+    assert requested == "OCR"
+    assert selected == []
+
+
+def test_missing_one_of_multiple_required_capabilities_does_not_silently_substitute():
+    tools = [
+        _tool("web_search", "Search the web."),
+        _tool("shell", "Run a CMD/PowerShell command."),
+    ]
+
+    selected, requested = constrain_tools_for_task(
+        "Use the web search tool and OCR tool.", tools
+    )
 
     assert requested == "OCR"
     assert selected == []
