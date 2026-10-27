@@ -103,14 +103,15 @@ def constrain_tools_for_task(
             for tool in matches:
                 matched_tools[tool.name] = tool
 
-        if missing_aliases:
-            return [], ", ".join(missing_aliases)
-
         allowed = [
             tool
             for tool in matched_tools.values()
             if not any(_matches_alias(alias, tool) for alias in forbidden_aliases)
         ]
+        if missing_aliases:
+            # Continue with explicitly requested capabilities that are available;
+            # report missing capabilities rather than silently substituting tools.
+            return allowed, f"missing capability: {', '.join(missing_aliases)}"
         if not allowed:
             return [], ", ".join(required_aliases)
         return allowed, ", ".join(required_aliases)
