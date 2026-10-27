@@ -1,12 +1,12 @@
-"""Web search tool backed by Crawl4AI Cloud.
+"""Free web search with an optional configured Crawl4AI fallback.
 
-Crawl4AI provides a ranked web-search endpoint. AgentForge keeps the backend
-pluggable so tests can inject a deterministic search function without network
-access.
+The default backend uses the open-source `ddgs` Python package and does not
+require a paid API key. Crawl4AI Cloud is only used when explicitly configured.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -16,16 +16,42 @@ from app.tools.base import Tool, ToolExecutionError
 SearchFn = Callable[[str], Awaitable[list[dict[str, str]]]]
 
 
+async def _ddgs_search_backend(query: str) -> list[dict[str, str]]:
+    """Search using the open-source DDGS client without an API key."""
+    try:
+        from ddgs import DDGS
+
+        def search() -> list[dict[str, str]]:
+            with DDGS() as client:
+                raw_results = client.text(query, max_results=8)
+                return [
+                    {
+                        "title": str(item.get("title", "")),
+                        "url": str(item.get("href", item.get("url", ""))),
+                        "snippet": str(item.get("body", item.get("snippet", ""))),
+                    }
+                    for item in raw_results
+                    if isinstance(item, dict)
+                ]
+
+        return await asyncio.to_thread(search)
+    except Exception as exc:  # noqa: BLE001 — normalize upstream failures
+        # A configured Crawl4AI key is an explicit opt-in fallback, never a requirement.
+        if os.environ.get("CRAWL4AI_KEY"):
+            return await _crawl4ai_search_backend(query)
+        raise ToolExecutionError(
+            "Free web search failed. Check your internet connection or try again. "
+            f"Details: {exc}"
+        ) from exc
+
+
 async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
-    """Search through the Crawl4AI Cloud /search endpoint."""
+    """Search through Crawl4AI Cloud when a user explicitly configured it."""
     key = os.environ.get("CRAWL4AI_KEY")
     if not key:
-        raise ToolExecutionError(
-            "web_search requires CRAWL4AI_KEY for the Crawl4AI search backend."
-        )
+        raise ToolExecutionError("Crawl4AI fallback is not configured.")
 
     base_url = os.environ.get("CRAWL4AI_URL", "https://api.crawl4ai.com").rstrip("/")
-
     try:
         import httpx
 
@@ -37,36 +63,37 @@ async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
             )
             response.raise_for_status()
             payload = response.json()
-    except ToolExecutionError:
-        raise
     except Exception as exc:  # noqa: BLE001 — normalize network/backend failures
-        raise ToolExecutionError(f"Crawl4AI search backend failed: {exc}") from exc
+        raise ToolExecutionError(f"Crawl4AI fallback failed: {exc}") from exc
 
     raw_results = payload.get("results", []) if isinstance(payload, dict) else []
-    results: list[dict[str, str]] = []
-    for item in raw_results[:10]:
-        if not isinstance(item, dict):
-            continue
-        results.append({
+    return [
+        {
             "title": str(item.get("title", "")),
             "url": str(item.get("url", "")),
             "snippet": str(item.get("snippet", "")),
-        })
-    return results
+        }
+        for item in raw_results[:8]
+        if isinstance(item, dict)
+    ]
 
 
 class WebSearchTool(Tool):
     name = "web_search"
-    description = "Search the web using Crawl4AI and return ranked source results."
+    description = (
+        "Search the web for ranked sources using free, keyless DDGS search. "
+        "An explicitly configured Crawl4AI key can be used as a fallback."
+    )
 
     def __init__(self, search_fn: SearchFn | None = None):
-        self._search_fn = search_fn or _crawl4ai_search_backend
+        self._search_fn = search_fn or _ddgs_search_backend
 
     async def execute(self, input: str, *, context: Any) -> str:
-        if not input.strip():
+        query = input.strip()
+        if not query:
             raise ToolExecutionError("web_search requires a non-empty query")
         try:
-            results = await self._search_fn(input.strip())
+            results = await self._search_fn(query)
         except ToolExecutionError:
             raise
         except Exception as exc:  # noqa: BLE001 — normalize injected backend failures
