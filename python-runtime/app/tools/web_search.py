@@ -22,8 +22,10 @@ async def _ddgs_search_backend(query: str) -> list[dict[str, str]]:
         from ddgs import DDGS
 
         def search() -> list[dict[str, str]]:
-            with DDGS() as client:
-                raw_results = client.text(query, max_results=8)
+            # Keep requests bounded and use DDGS metasearch's auto backend so one
+            # blocked provider does not become the only search path.
+            with DDGS(timeout=12) as client:
+                raw_results = client.text(query, max_results=8, backend="auto")
                 return [
                     {
                         "title": str(item.get("title", "")),
