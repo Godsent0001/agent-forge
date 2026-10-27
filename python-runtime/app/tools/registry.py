@@ -74,12 +74,12 @@ from app.tools.rendering import (
     RenderQueueTool,
     RenderWorkerTool,
 )
-from app.tools.shell import ShellTool
 from app.tools.scene import (
     LightingEngineTool,
     SceneBuilderTool,
     SceneTemplateManagerTool,
 )
+from app.tools.shell import ShellTool
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
 from app.tools.video_clips import ClipExtractorTool, ClipFinderTool, VideoTranscriptTool
 from app.tools.video_source import VideoSourceTool
