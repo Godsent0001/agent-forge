@@ -11,7 +11,7 @@
     "dev:live": "cross-env AGENTFORGE_RUNNER=v2 npm run dev",
     "build:icon": "uv run --project python-runtime python scripts/generate_icon.py",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "build:python": "cd python-runtime && uv sync --frozen --group build && uv run pyinstaller --clean --noconfirm python-runtime.spec",
+    "build:python": "cd python-runtime && uv sync --group build && uv run pyinstaller --clean --noconfirm python-runtime.spec",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "dist": "npm run build:icon && npm run build && npm run prepare:embeddings && npm run build:python && npm run fetch:ffmpeg && electron-builder --publish never",
