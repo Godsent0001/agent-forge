@@ -6,7 +6,6 @@ search when the model is unavailable.
 """
 from __future__ import annotations
 
-import hashlib
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -54,23 +53,7 @@ def embed_many(texts: list[str], model_id: str = DEFAULT_EMBEDDING_MODEL) -> lis
     """Embed multiple texts, reusing cached vectors for repeated values."""
     if not texts:
         return []
-    result: list[list[float] | None] = [None] * len(texts)
-    missing: list[str] = []
-    missing_indexes: list[int] = []
-    for index, value in enumerate(texts):
-        if not value.strip():
-            result[index] = []
-            continue
-        cached = _embed_cached.cache_info()
-        # Calling the cached helper also updates cache statistics; avoid relying on
-        # cache internals to detect hits, and keep batching simple and deterministic.
-        missing.append(value)
-        missing_indexes.append(index)
-    model = _load_model(model_id)
-    vectors = iter(model.embed(missing))
-    for index, value in zip(missing_indexes, vectors):
-        result[index] = list(_embed_cached(model_id, value))
-    return [value or [] for value in result]
+    return [embed_text(value, model_id) for value in texts]
 
 
 def cache_info() -> dict[str, int]:
