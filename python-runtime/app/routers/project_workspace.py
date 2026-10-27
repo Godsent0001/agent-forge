@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -73,6 +76,30 @@ def list_project_workspace(project_id: str, db: Session = Depends(get_db)):
         "file_count": len(files),
         "total_bytes": sum(size for _, _, size in files),
     }
+
+
+@router.post("/{project_id}/workspace/open")
+def open_project_workspace(project_id: str, db: Session = Depends(get_db)):
+    """Open the current project's workspace in the operating-system file manager."""
+    root = _workspace(project_id, db)
+    try:
+        if os.name == "nt":
+            os.startfile(str(root))  # type: ignore[attr-defined]
+        else:
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
+            executable = shutil.which(opener)
+            if not executable:
+                raise OSError(f"File-manager opener '{opener}' is unavailable")
+            subprocess.Popen(
+                [executable, str(root)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not open project folder: {exc}") from exc
+    return {"opened": True, "workspace_path": str(root)}
 
 
 @router.get("/{project_id}/workspace.zip")
