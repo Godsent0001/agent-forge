@@ -62,6 +62,16 @@ def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
         path_parts = [os.path.join(system_root, "System32")] if system_root else []
         path_parts.append(os.path.dirname(sys.executable))
+        if workspace_root is not None:
+            venv_cfg = workspace_root / ".venv" / "pyvenv.cfg"
+            if venv_cfg.is_file():
+                for line in venv_cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+                    key, separator, value = line.partition("=")
+                    if separator and key.strip().casefold() == "home":
+                        base_home = value.strip()
+                        if base_home:
+                            path_parts.append(base_home)
+                            break
         env = {"PATH": os.pathsep.join(path_parts), "PYTHONDONTWRITEBYTECODE": "1"}
         for key in ("SYSTEMROOT", "TEMP", "TMP"):
             value = os.environ.get(key) or os.environ.get(key.lower())
