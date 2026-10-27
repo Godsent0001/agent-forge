@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import signal
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,57 @@ def _safe_environment() -> dict[str, str]:
         if not any(marker in key.upper() for marker in blocked)
     }
     return env
+
+
+async def _terminate_process_tree(proc: asyncio.subprocess.Process) -> None:
+    """Stop the shell and its descendants, even when the caller is cancelled."""
+    if proc.returncode is not None:
+        return
+
+    if os.name == "nt":
+        # taskkill /T is required on Windows because killing cmd.exe alone can
+        # leave commands it launched running after the execution was stopped.
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill", "/PID", str(proc.pid), "/T", "/F",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(killer.wait(), timeout=5)
+        except (OSError, asyncio.TimeoutError):
+            pass
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=2)
+        except asyncio.TimeoutError:
+            if proc.returncode is None:
+                proc.kill()
+            await proc.wait()
+        return
+
+    # Unix shell processes are started in their own session/process group.
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=1)
+    except asyncio.TimeoutError:
+        pass
+    # Kill remaining descendants even if the shell parent already exited.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if proc.returncode is None:
+        await proc.wait()
+
+
+async def _cancel_reader_tasks(*tasks: asyncio.Task) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _format_excerpt(text: str, truncated: bool) -> str:
@@ -96,7 +148,10 @@ class ShellTool(Tool):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=creationflags,
+                start_new_session=(os.name != "nt"),
             )
+            stdout_task = None
+            stderr_task = None
             try:
                 stdout_task = asyncio.create_task(_read_bounded(proc.stdout, MAX_CAPTURE_BYTES))
                 stderr_task = asyncio.create_task(_read_bounded(proc.stderr, MAX_CAPTURE_BYTES))
@@ -105,9 +160,13 @@ class ShellTool(Tool):
                     timeout=WALL_CLOCK_TIMEOUT_SECONDS,
                 )
                 await proc.wait()
+            except asyncio.CancelledError:
+                await _terminate_process_tree(proc)
+                await _cancel_reader_tasks(*(task for task in (stdout_task, stderr_task) if task is not None))
+                raise
             except asyncio.TimeoutError as exc:
-                proc.kill()
-                await proc.wait()
+                await _terminate_process_tree(proc)
+                await _cancel_reader_tasks(*(task for task in (stdout_task, stderr_task) if task is not None))
                 raise ToolExecutionError(
                     f"shell command exceeded the {WALL_CLOCK_TIMEOUT_SECONDS}s wall-clock limit"
                 ) from exc
