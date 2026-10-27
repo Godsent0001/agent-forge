@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import os\nfrom types import SimpleNamespace
 
 import pytest
 
@@ -45,3 +45,18 @@ async def test_shell_does_not_pass_provider_keys_to_child_process(tmp_path, monk
     )
 
     assert "must-not-leak" not in result
+
+
+
+def test_shell_prefers_project_virtual_environment(tmp_path, monkeypatch):
+    from app.tools.shell import _safe_environment
+
+    venv = tmp_path / ".venv"
+    bin_dir = venv / ("Scripts" if os.name == "nt" else "bin")
+    bin_dir.mkdir(parents=True)
+    python_exe = bin_dir / ("python.exe" if os.name == "nt" else "python")
+    python_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PATH", "original-path")
+    env = _safe_environment(tmp_path)
+    assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["PATH"].startswith(str(bin_dir) + os.pathsep)
