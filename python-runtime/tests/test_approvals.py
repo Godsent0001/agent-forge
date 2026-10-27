@@ -55,7 +55,7 @@ async def test_explicit_ask_policy_still_requests_approval():
 
 
 @pytest.mark.asyncio
-async def test_persistent_shared_state_mutator_defaults_to_approval():
+async def test_persistent_shared_state_mutator_defaults_to_allow():
     events = []
 
     async def emit(event):
@@ -66,28 +66,14 @@ async def test_persistent_shared_state_mutator_defaults_to_approval():
         settings={},
         emit=emit,
         tool_kinds={"asset_cache_store": "asset_cache_store"},
-        timeout_seconds=1,
     )
-    task = asyncio.create_task(gate.check(
+    assert await gate.check(
         tool="asset_cache_store",
         permissions={"fs_write"},
         args_preview='{"action":"store"}',
         span_id="writer-span",
-    ))
-    for _ in range(20):
-        if any(item.execution_id == "run-shared-writer" for item in PENDING.values()):
-            break
-        await asyncio.sleep(0)
-    approval_id = next(
-        key for key, item in PENDING.items() if item.execution_id == "run-shared-writer"
-    )
-    assert events[0].type == "approval_requested"
-    assert events[0].data["tool_kind"] == "asset_cache_store"
-    assert resolve_approval(
-        execution_id="run-shared-writer", approval_id=approval_id, decision="deny"
-    )
-    assert await task is False
-
+    ) is True
+    assert events == []
 
 @pytest.mark.asyncio
 async def test_project_deny_policy_blocks_without_prompt():
@@ -198,22 +184,28 @@ async def test_cancelling_pending_approval_cleans_up():
     assert events[-1].data["cancelled"] is True
 
 
-
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["python", "shell", "browser", "http_request"])
-async def test_legacy_ask_policy_does_not_prompt_for_routine_tools(kind):
+async def test_explicit_ask_policy_is_honored_for_routine_tools():
     events = []
 
     async def emit(event):
         events.append(event)
 
     gate = ApprovalGateImpl(
-        execution_id=f"run-legacy-{kind}",
-        settings={"tool_policy": {kind: "ask"}},
+        execution_id="run-explicit-ask",
+        settings={"tool_policy": {"shell": "ask"}},
         emit=emit,
-        tool_kinds={kind: kind},
+        tool_kinds={"shell": "shell"},
+        timeout_seconds=1,
     )
-    assert await gate.check(
-        tool=kind, permissions={"subprocess"}, args_preview="{}", span_id="routine-span"
-    ) is True
-    assert events == []
+    task = asyncio.create_task(gate.check(
+        tool="shell", permissions={"subprocess"}, args_preview="mkdir demo", span_id="shell-span"
+    ))
+    for _ in range(20):
+        if any(item.execution_id == "run-explicit-ask" for item in PENDING.values()):
+            break
+        await asyncio.sleep(0)
+    approval_id = next(key for key, item in PENDING.items() if item.execution_id == "run-explicit-ask")
+    assert events[0].type == "approval_requested"
+    assert resolve_approval(execution_id="run-explicit-ask", approval_id=approval_id, decision="allow_once")
+    assert await task is True
