@@ -10,12 +10,12 @@ const POLICY_DEFAULTS: Record<string, Policy> = {
   http_request: "allow",
   web_search: "allow",
   file_system: "allow",
-  scene_template_manager: "ask",
-  render_queue: "ask",
-  project_manager: "ask",
-  asset_cache_store: "ask",
-  production_config: "ask",
-  cache_engine: "ask",
+  scene_template_manager: "allow",
+  render_queue: "allow",
+  project_manager: "allow",
+  asset_cache_store: "allow",
+  production_config: "allow",
+  cache_engine: "allow",
 };
 
 export function ProjectSettings({ onClose }: { onClose: () => void }) {
@@ -41,9 +41,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     setPolicy(Object.fromEntries(
       Object.entries(POLICY_DEFAULTS).map(([kind, fallback]) => {
         const value = configuredPolicy[kind];
-        const routineTool = ["python", "shell", "browser", "http_request"].includes(kind);
-        const normalized = routineTool && value === "ask" ? "allow" : value;
-        return [kind, normalized === "allow" || normalized === "ask" || normalized === "deny" ? normalized : fallback];
+        return [kind, value === "allow" || value === "ask" || value === "deny" ? value : fallback];
       }),
     ) as Record<string, Policy>);
   }, [project?.id, project?.settings]);
@@ -99,13 +97,13 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <h3 className="mb-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Tool policy</h3>
-            <p className="mb-3 text-2xs text-studio-500">“Ask” pauses the run until you approve. Shared-state writers default to Ask because they persist changes beyond the current run. “Deny” blocks the tool call; “Allow” skips the prompt.</p>
+            <p className="mb-3 text-2xs text-studio-500">All tools default to Allow. You can change any tool to “Ask” to approve each call, or “Deny” to block it. “Allow” runs without an approval prompt.</p>
             <div className="divide-y divide-line rounded border border-line">
               {Object.keys(POLICY_DEFAULTS).map((kind) => (
                 <label key={kind} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <span className="text-xs font-mono">{kind}</span>
                   <select aria-label={`Policy for ${kind}`} value={policy[kind]} onChange={(event) => setPolicy((current) => ({ ...current, [kind]: event.target.value as Policy }))} className="rounded border border-line-strong bg-studio-950 px-2 py-1.5 text-xs">
-                    {["python", "shell", "browser", "http_request"].includes(kind) ? null : <option value="ask">Ask</option>}<option value="allow">Allow</option><option value="deny">Deny</option>
+                    <option value="ask">Ask</option><option value="allow">Allow</option><option value="deny">Deny</option>
                   </select>
                 </label>
               ))}
