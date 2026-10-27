@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import re
 from pathlib import Path
 from typing import Any
 
@@ -124,7 +125,8 @@ class ShellTool(Tool):
         truncated = stdout_cut or stderr_cut
         log_path = None
         try:
-            result_path = cwd / ".results" / f"shell-{getattr(context, 'span_id', 'output')}.txt"
+            span_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(getattr(context, "span_id", "output")))[:64] or "output"
+            result_path = cwd / ".results" / f"shell-{span_id}.txt"
             result_path.parent.mkdir(parents=True, exist_ok=True)
             result_path.write_text(combined, encoding="utf-8")
             log_path = result_path.relative_to(cwd).as_posix()
