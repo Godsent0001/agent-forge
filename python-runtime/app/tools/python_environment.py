@@ -86,6 +86,10 @@ async def _run(command: list[str], *, cwd: Path) -> tuple[int, str]:
             proc.kill()
             await proc.wait()
             raise ToolError(f"Python environment command exceeded {WALL_CLOCK_TIMEOUT_SECONDS}s.") from exc
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.wait()
+            raise
     except OSError as exc:
         raise ToolError(f"Could not start Python environment command: {exc}") from exc
     text = output.decode("utf-8", errors="replace")
