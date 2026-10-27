@@ -39,13 +39,20 @@ async def _read_bounded(stream: asyncio.StreamReader, limit: int) -> tuple[bytes
     return b"".join(chunks), truncated
 
 
-def _safe_environment() -> dict[str, str]:
+def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
     """Keep basic process variables but do not leak provider credentials to commands."""
     blocked = ("_API_KEY", "_TOKEN", "_SECRET", "PASSWORD", "PASSWD")
     env = {
         key: value for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in blocked)
     }
+    if workspace_root is not None:
+        venv_dir = workspace_root / ".venv"
+        venv_bin = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+        python_exe = venv_bin / ("python.exe" if os.name == "nt" else "python")
+        if python_exe.is_file():
+            env["VIRTUAL_ENV"] = str(venv_dir)
+            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
     return env
 
 
@@ -141,7 +148,7 @@ class ShellTool(Tool):
             proc = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(cwd),
-                env=_safe_environment(),
+                env=_safe_environment(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=creationflags,
