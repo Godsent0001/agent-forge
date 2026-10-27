@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -56,7 +57,7 @@ class LogSearchTool(Tool):
     )
 
     def __init__(self, embedding_fn: Callable[[str], list[float]] | None = None) -> None:
-        self._embedding_fn = embedding_fn or (lambda text: embed_text(text, DEFAULT_EMBEDDING_MODEL))
+        self._embedding_fn = embedding_fn or (lambda text: embed_text(text, os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)))
 
     async def execute(self, input: str, *, context: Any) -> str:
         if "::" not in input:
