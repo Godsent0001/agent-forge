@@ -37,8 +37,16 @@ def _load_model(model_id: str):
 
 @lru_cache(maxsize=2048)
 def _embed_cached(model_id: str, text: str) -> tuple[float, ...]:
-    model = _load_model(model_id)
-    vector = next(model.embed([text]))
+    if model_id.startswith("local:"):
+        model = _load_model(model_id)
+        vector = next(model.embed([text]))
+    else:
+        # LiteLLM routes provider/model embedding calls using the same provider
+        # credentials already configured for chat completions.
+        import litellm
+
+        response = litellm.embedding(model=model_id, input=[text])
+        vector = response.data[0]["embedding"]
     return tuple(float(value) for value in vector)
 
 
