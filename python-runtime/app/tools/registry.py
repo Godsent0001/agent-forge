@@ -31,6 +31,7 @@ from app.tools.audio import (
     VoiceGeneratorTool,
 )
 from app.tools.base import Tool
+from app.tools.browser import BrowserTool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
 from app.tools.character import (
     BodyPoseTool,
@@ -72,6 +73,7 @@ from app.tools.rendering import (
     RenderQueueTool,
     RenderWorkerTool,
 )
+from app.tools.shell import ShellTool
 from app.tools.scene import (
     LightingEngineTool,
     SceneBuilderTool,
@@ -87,6 +89,8 @@ from app.tools.web_search import WebSearchTool
 _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     # General-purpose
     "web_search": WebSearchTool,
+    "browser": BrowserTool,
+    "shell": ShellTool,
     "python": PythonExecTool,
     "http_request": HttpRequestTool,
     "video_source": VideoSourceTool,
