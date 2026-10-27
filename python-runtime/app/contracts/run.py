@@ -46,7 +46,7 @@ class RunOptions(BaseModel):
     max_depth: int = 4                     # sub-agent nesting
     max_iterations: int = 10               # LLM turns per agent
     scenario: str | None = None            # FakeRunner only
-    memory: MemoryOptions = MemoryOptions()
+    memory: MemoryOptions = Field(default_factory=MemoryOptions)
     timezone: str = "UTC"                  # IANA name, so "tomorrow at 9" can be resolved
     # Model aliases the core resolves itself (see models.yaml). Keys: "fast",
     # "summarizer_model", "reflection_model", "vision_model". Values: "provider/model".
@@ -62,7 +62,7 @@ class RunRequest(BaseModel):
     history: list[ChatMessage] = []        # earlier turns NOT covered by history_summary (oldest first)
     history_summary: str = ""              # summary of older messages that are no longer in `history`
     attachments: list[AttachmentRef] = []  # files attached to `task`
-    options: RunOptions = RunOptions()
+    options: RunOptions = Field(default_factory=RunOptions)
 
 
 class Totals(BaseModel):
