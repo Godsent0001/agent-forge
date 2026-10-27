@@ -73,6 +73,11 @@ class ApprovalGateImpl:
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
             policy = DEFAULT_POLICIES.get(kind, "ask" if permissions else "allow")
+        # Routine execution tools must not re-open a modal on every call, even
+        # when an older saved project settings object contains the former default
+        # "ask" policy. Explicit deny remains available for these tools.
+        if policy == "ask" and kind in {"python", "shell", "browser", "http_request"}:
+            return "allow"
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
