@@ -37,17 +37,6 @@ async def complete(
         raise LLMBadRequest("Empty model name provided.")
 
     params = params or LLMParams()
-    cache_key = None
-    if not tools and cache_enabled() and is_cacheable_messages(messages):
-        cache_key = make_cache_key(
-            model=model,
-            messages=messages,
-            temperature=params.temperature,
-            max_tokens=params.max_tokens,
-        )
-        cached_turn = get_cached(cache_key)
-        if cached_turn is not None:
-            return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
     tools_formatted = None
     if tools:
         tools_formatted = [
@@ -61,6 +50,22 @@ async def complete(
             }
             for t in tools
         ]
+
+    # Tool-enabled agents can reuse a prior plain-text completion for an exactly
+    # identical prompt + tool schema. Tool-call responses themselves are never
+    # cached, so side effects are not skipped or replayed from cache.
+    cache_key = None
+    if cache_enabled() and is_cacheable_messages(messages):
+        cache_key = make_cache_key(
+            model=model,
+            messages=messages,
+            temperature=params.temperature,
+            max_tokens=params.max_tokens,
+            tools=tools_formatted,
+        )
+        cached_turn = get_cached(cache_key)
+        if cached_turn is not None:
+            return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
 
     attempt = 0
     while True:
