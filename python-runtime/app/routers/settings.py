@@ -1,9 +1,45 @@
+import json
 import logging
 import os
+import re
+from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+
+from app.infra.paths import data_dir
 
 logger = logging.getLogger("agentforge.settings")
+
+DEFAULT_EMBEDDING_MODEL = "local:BAAI/bge-small-en-v1.5"
+
+
+def _embedding_settings_path() -> Path:
+    return data_dir() / "embedding_settings.json"
+
+
+def _valid_embedding_model(value: str) -> bool:
+    return bool(value and len(value) <= 200 and not any(char.isspace() for char in value)
+                and re.fullmatch(r"[A-Za-z0-9_.:/-]+", value)
+                and ("local:" in value or "/" in value))
+
+
+def _load_embedding_model() -> str:
+    configured = os.environ.get("AGENTFORGE_EMBEDDING_MODEL")
+    if configured and _valid_embedding_model(configured):
+        return configured
+    try:
+        stored = json.loads(_embedding_settings_path().read_text("utf-8"))
+        value = stored.get("model")
+        if isinstance(value, str) and _valid_embedding_model(value):
+            os.environ["AGENTFORGE_EMBEDDING_MODEL"] = value
+            return value
+    except (OSError, ValueError, AttributeError):
+        pass
+    os.environ.setdefault("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+    return os.environ["AGENTFORGE_EMBEDDING_MODEL"]
+
+
+_CURRENT_EMBEDDING_MODEL = _load_embedding_model()
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -51,3 +87,32 @@ def set_api_keys(payload: dict[str, str | None]):
 def get_api_keys_status():
     """Which providers currently have a key in the runtime. Never returns the keys themselves."""
     return {slot: any(os.environ.get(name) for name in names) for slot, names in PROVIDER_ENV_VARS.items()}
+
+
+
+@router.get("/embedding-model")
+def get_embedding_model():
+    """Return the configured embedding model identifier (never returns credentials)."""
+    return {"model": os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)}
+
+
+@router.post("/embedding-model")
+def set_embedding_model(payload: dict[str, str]):
+    """Set a local or LiteLLM provider/model identifier for future memory retrieval."""
+    value = payload.get("model", "").strip()
+    if not _valid_embedding_model(value):
+        raise HTTPException(
+            status_code=422,
+            detail="Use 'local:MODEL_ID' or a provider/model identifier, without spaces.",
+        )
+    path = _embedding_settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps({"model": value}, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not persist embedding model configuration.") from exc
+    os.environ["AGENTFORGE_EMBEDDING_MODEL"] = value
+    logger.info("Embedding model configuration updated: %s", value)
+    return {"status": "ok", "model": value}
