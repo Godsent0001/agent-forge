@@ -16,6 +16,8 @@ dependencies = [
     "litellm>=1.100.0",
     "fastembed>=0.7.4",
     "yt-dlp>=2026.8.19",
+    # Free, open-source search client; no API key required.
+    "ddgs>=9.0.0",
 ]
 
 [project.optional-dependencies]
