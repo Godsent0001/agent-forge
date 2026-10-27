@@ -10,8 +10,13 @@ from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
 
 DEFAULT_POLICIES = {
-    "python": "ask",
-    "http_request": "ask",
+    # Standard workspace tools run without a modal on every call. Users can still
+    # override these policies in project settings. Shared persistent-state
+    # mutations remain approval-gated by default.
+    "python": "allow",
+    "shell": "allow",
+    "http_request": "allow",
+    "browser": "allow",
     "web_search": "allow",
     # Read-only metadata/caption lookups; clip_extractor writes only to the run workspace.
     "video_source": "allow",
