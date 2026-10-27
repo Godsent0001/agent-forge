@@ -75,7 +75,7 @@ def test_missing_required_capability_does_not_substitute_another_tool():
     assert selected == []
 
 
-def test_missing_one_of_multiple_required_capabilities_does_not_silently_substitute():
+def test_missing_one_of_multiple_capabilities_preserves_available_requested_work():
     tools = [
         _tool("web_search", "Search the web."),
         _tool("shell", "Run a CMD/PowerShell command."),
@@ -85,8 +85,8 @@ def test_missing_one_of_multiple_required_capabilities_does_not_silently_substit
         "Use the web search tool and OCR tool.", tools
     )
 
-    assert requested == "OCR"
-    assert selected == []
+    assert requested == "missing capability: OCR"
+    assert [tool.name for tool in selected] == ["web_search"]
 
 
 def test_forbidden_tool_is_removed_without_restricting_other_capabilities():
