@@ -49,7 +49,7 @@ async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
     """Search through Crawl4AI Cloud when a user explicitly configured it."""
     key = os.environ.get("CRAWL4AI_KEY")
     if not key:
-        raise ToolExecutionError("Crawl4AI fallback is not configured.")
+        raise ToolExecutionError("Crawl4AI fallback is not configured. Set CRAWL4AI_KEY to enable this optional fallback.")
 
     base_url = os.environ.get("CRAWL4AI_URL", "https://api.crawl4ai.com").rstrip("/")
     try:
