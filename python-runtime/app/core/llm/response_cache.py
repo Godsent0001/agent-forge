@@ -19,9 +19,9 @@ def cache_enabled() -> bool:
     return os.environ.get("AGENTFORGE_LLM_CACHE", "1").strip().lower() not in {"0", "false", "off"}
 
 
-def make_cache_key(*, model: str, messages: list[dict], temperature: float | None, max_tokens: int | None) -> str:
+def make_cache_key(*, model: str, messages: list[dict], temperature: float | None, max_tokens: int | None, tools: list[dict] | None = None) -> str:
     payload = json.dumps(
-        {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens},
+        {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "tools": tools or []},
         sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
