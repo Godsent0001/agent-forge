@@ -41,7 +41,9 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
     setPolicy(Object.fromEntries(
       Object.entries(POLICY_DEFAULTS).map(([kind, fallback]) => {
         const value = configuredPolicy[kind];
-        return [kind, value === "allow" || value === "ask" || value === "deny" ? value : fallback];
+        const routineTool = ["python", "shell", "browser", "http_request"].includes(kind);
+        const normalized = routineTool && value === "ask" ? "allow" : value;
+        return [kind, normalized === "allow" || normalized === "ask" || normalized === "deny" ? normalized : fallback];
       }),
     ) as Record<string, Policy>);
   }, [project?.id, project?.settings]);
@@ -103,7 +105,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
                 <label key={kind} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <span className="text-xs font-mono">{kind}</span>
                   <select aria-label={`Policy for ${kind}`} value={policy[kind]} onChange={(event) => setPolicy((current) => ({ ...current, [kind]: event.target.value as Policy }))} className="rounded border border-line-strong bg-studio-950 px-2 py-1.5 text-xs">
-                    <option value="ask">Ask</option><option value="allow">Allow</option><option value="deny">Deny</option>
+                    {["python", "shell", "browser", "http_request"].includes(kind) ? null : <option value="ask">Ask</option>}<option value="allow">Allow</option><option value="deny">Deny</option>
                   </select>
                 </label>
               ))}
