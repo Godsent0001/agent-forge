@@ -37,6 +37,7 @@ async def test_explicit_ask_policy_still_requests_approval():
         execution_id="run-1",
         settings={"tool_policy": {"project_manager": "ask"}},
         emit=emit,
+        tool_kinds={"project_manager": "project_manager"},
         timeout_seconds=1,
     )
     task = asyncio.create_task(gate.check(
@@ -182,6 +183,33 @@ async def test_cancelling_pending_approval_cleans_up():
     assert not any(value.execution_id == "run-5" for value in PENDING.values())
     assert events[-1].type == "approval_resolved"
     assert events[-1].data["cancelled"] is True
+
+
+@pytest.mark.asyncio
+async def test_unknown_tool_type_defaults_to_ask():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-unknown",
+        settings={},
+        emit=emit,
+        tool_kinds={"mystery_tool": "mystery_tool"},
+        timeout_seconds=1,
+    )
+    task = asyncio.create_task(gate.check(
+        tool="mystery_tool", permissions=set(), args_preview="{}", span_id="unknown-span"
+    ))
+    for _ in range(20):
+        if any(item.execution_id == "run-unknown" for item in PENDING.values()):
+            break
+        await asyncio.sleep(0)
+    approval_id = next(key for key, item in PENDING.items() if item.execution_id == "run-unknown")
+    assert events[0].type == "approval_requested"
+    assert resolve_approval(execution_id="run-unknown", approval_id=approval_id, decision="deny")
+    assert await task is False
 
 
 @pytest.mark.asyncio
