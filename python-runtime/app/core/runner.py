@@ -290,6 +290,19 @@ class RunnerCore:
                     history_summary_block=history_summary,
                 )
 
+                # Keep the workspace contract explicit in every agent context so the
+                # model does not need extra shell calls to rediscover where it is.
+                system_prompt += (
+                    "\\n\\n[AgentForge project workspace]\\n"
+                    f"Absolute workspace path: {workspace.root}\\n"
+                    "This is a persistent project workspace shared by executions in this project. "
+                    "Use workspace-relative paths for file tools and shell commands. "
+                    "After creating or modifying files, report their absolute paths using this root. "
+                    "Do not run extra commands just to rediscover paths or repeat checks already "
+                    "confirmed by a successful tool result. Verify a deliverable once at a meaningful "
+                    "checkpoint, then summarize the exact files created."
+                )
+
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
                 for msg in history:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
