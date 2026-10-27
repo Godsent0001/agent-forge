@@ -97,7 +97,7 @@ export function ProjectSettings({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <h3 className="mb-2 text-2xs font-mono uppercase tracking-wider text-studio-400">Tool policy</h3>
-            <p className="mb-3 text-2xs text-studio-500">All tools default to Allow. You can change any tool to “Ask” to approve each call, or “Deny” to block it. “Allow” runs without an approval prompt.</p>
+            <p className="mb-3 text-2xs text-studio-500">Known tools default to Allow; unrecognized tool types default to Ask. Change any listed tool to “Ask” to approve each call, or “Deny” to block it. “Allow” runs without an approval prompt.</p>
             <div className="divide-y divide-line rounded border border-line">
               {Object.keys(POLICY_DEFAULTS).map((kind) => (
                 <label key={kind} className="flex items-center justify-between gap-3 px-3 py-2.5">
