@@ -9,8 +9,8 @@ from uuid import uuid4
 from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
 
-# All tools default to Allow for frictionless execution. Projects can still
-# explicitly choose Ask or Deny for any tool in settings.
+# Known tools default to Allow for frictionless execution. Unknown tool types
+# default to Ask so newly added tools cannot silently bypass approval.
 DEFAULT_POLICIES = {
     "python": "allow",
     "shell": "allow",
@@ -69,7 +69,7 @@ class ApprovalGateImpl:
         configured = self.settings.get("tool_policy", {})
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
-            policy = DEFAULT_POLICIES.get(kind, "allow")
+            policy = DEFAULT_POLICIES.get(kind, "ask")
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
