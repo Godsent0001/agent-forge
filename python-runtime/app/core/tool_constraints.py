@@ -10,7 +10,6 @@ import re
 
 from app.core.llm.types import ToolSpec
 
-
 _REQUIRED_TOOL = re.compile(
     r"\b(?:use|call|invoke|test|try|run|execute)\s+"
     r"(?:(?:the|a|an)\s+)?"
