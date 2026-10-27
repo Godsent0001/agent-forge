@@ -18,6 +18,7 @@ PROVIDER_ENV_VARS: dict[str, tuple[str, ...]] = {
     "groq": ("GROQ_API_KEY",),
     "xai": ("XAI_API_KEY",),
     "openrouter": ("OPENROUTER_API_KEY",),
+    "venice": ("VENICE_API_KEY",),
 }
 
 
