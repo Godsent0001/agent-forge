@@ -17,6 +17,11 @@ _REQUIRED_TOOL = re.compile(
     r"(?P<alias>[a-z][a-z0-9 _-]{0,39}?)\s+(?:tool|command)s?\b",
     re.IGNORECASE,
 )
+_RELATED_TOOL = re.compile(
+    r"\b(?:and|or)\s+(?:(?:the|a|an)\s+)?"
+    r"(?P<alias>[a-z][a-z0-9 _-]{0,39}?)\s+(?:tool|command)s?\b",
+    re.IGNORECASE,
+)
 _FORBIDDEN_TOOL = re.compile(
     r"\b(?:do not|don't|never|avoid)\s+(?:use|call|run|invoke)\s+"
     r"(?:(?:the|a|an)\s+)?(?P<alias>[a-z][a-z0-9_-]{0,30})\b",
@@ -69,13 +74,19 @@ def constrain_tools_for_task(
     If any required capability is unavailable, no unrelated tool is exposed as a
     substitute; the caller can explain the missing capability.
     """
-    required_aliases = list(
-        dict.fromkeys(
-            _normalize_alias(match.group("alias"))
-            for match in _REQUIRED_TOOL.finditer(task)
-            if _normalize_alias(match.group("alias"))
-        )
-    )
+    required_matches = list(_REQUIRED_TOOL.finditer(task))
+    required_aliases: list[str] = []
+    if required_matches:
+        first = required_matches[0]
+        required_aliases.append(_normalize_alias(first.group("alias")))
+        # Support natural compound requests such as "use the search tool and shell
+        # tool" without treating every incidental tool mention as a hard constraint.
+        clause_end = re.search(r"[.!?;\n]", task[first.end():])
+        end = first.end() + clause_end.start() if clause_end else len(task)
+        for match in _RELATED_TOOL.finditer(task, first.end(), end):
+            required_aliases.append(_normalize_alias(match.group("alias")))
+    required_aliases = list(dict.fromkeys(alias for alias in required_aliases if alias))
+
     forbidden_aliases = [
         _normalize_alias(match.group("alias"))
         for match in _FORBIDDEN_TOOL.finditer(task)
