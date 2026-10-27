@@ -196,3 +196,24 @@ async def test_cancelling_pending_approval_cleans_up():
     assert not any(value.execution_id == "run-5" for value in PENDING.values())
     assert events[-1].type == "approval_resolved"
     assert events[-1].data["cancelled"] is True
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["python", "shell", "browser", "http_request"])
+async def test_legacy_ask_policy_does_not_prompt_for_routine_tools(kind):
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id=f"run-legacy-{kind}",
+        settings={"tool_policy": {kind: "ask"}},
+        emit=emit,
+        tool_kinds={kind: kind},
+    )
+    assert await gate.check(
+        tool=kind, permissions={"subprocess"}, args_preview="{}", span_id="routine-span"
+    ) is True
+    assert events == []
