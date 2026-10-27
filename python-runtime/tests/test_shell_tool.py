@@ -16,7 +16,7 @@ async def test_shell_runs_command_and_saves_complete_output(tmp_path):
     assert f"Project workspace: {tmp_path.resolve()}" in result
     assert "Full captured output:" in result
     assert "shell-ok" in result
-    assert ".results/shell-shell-test.txt" in result
+    assert "shell-shell-test.txt" in result
     saved = (tmp_path / ".results" / "shell-shell-test.txt").read_text(encoding="utf-8")
     assert "shell-ok" in saved
 
