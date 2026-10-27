@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from .pricing import calculate_cost
-from .response_cache import cache_enabled, get_cached, make_cache_key, set_cached
+from .response_cache import cache_enabled, get_cached, is_cacheable_messages, make_cache_key, set_cached
 from .types import (
     LLMBadRequest,
     LLMContextTooLong,
@@ -32,7 +32,7 @@ async def complete(
 
     params = params or LLMParams()
     cache_key = None
-    if not tools and cache_enabled():
+    if not tools and cache_enabled() and is_cacheable_messages(messages):
         cache_key = make_cache_key(
             model=model,
             messages=messages,
