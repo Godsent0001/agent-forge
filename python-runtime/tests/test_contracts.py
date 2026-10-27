@@ -110,7 +110,7 @@ def test_run_request_minimal_and_defaults():
     assert r.options.budget.max_llm_calls == 30
     assert r.options.memory.episodic is True
     assert r.options.memory.intents is False
-    assert r.options.memory.embedding_model is None
+    assert r.options.memory.embedding_model == "local:BAAI/bge-small-en-v1.5"
     assert r.options.memory.recall_budget_tokens == 800
     assert r.options.memory.max_items_per_agent == 500
     assert r.options.timezone == "UTC"
