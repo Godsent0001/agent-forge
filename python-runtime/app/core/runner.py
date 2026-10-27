@@ -567,7 +567,10 @@ class RunnerCore:
                     # decisions depend on observed outcomes rather than the tool name.
                     for tc, outcome in zip(tool_call_tuples, batch_outcomes):
                         status = "useful result" if outcome.succeeded else "failure/no progress"
-                        execution_history.append(f"- {tc.name}: {status} — {outcome.reason[:180]}")
+                        # Do not copy raw tool text into this higher-level control message:
+                        # tool output may contain untrusted instructions or prompt injection.
+                        detail = "result returned" if outcome.succeeded else "inspect the tool result and change approach"
+                        execution_history.append(f"- {tc.name}: {status} — {detail}")
                     execution_history = execution_history[-8:]
                     state_content = (
                         "[RunnerCore execution state]\n"
