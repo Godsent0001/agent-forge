@@ -293,8 +293,8 @@ class RunnerCore:
                 # Keep the workspace contract explicit in every agent context so the
                 # model does not need extra shell calls to rediscover where it is.
                 system_prompt += (
-                    "\\n\\n[AgentForge project workspace]\\n"
-                    f"Absolute workspace path: {workspace.root}\\n"
+                    "\n\n[AgentForge project workspace]\n"
+                    f"Absolute workspace path: {workspace.root}\n"
                     "This is a persistent project workspace shared by executions in this project. "
                     "Use workspace-relative paths for file tools and shell commands. "
                     "After creating or modifying files, report their absolute paths using this root. "
