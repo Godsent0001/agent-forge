@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .pricing import calculate_cost
+from .response_cache import cache_enabled, get_cached, make_cache_key, set_cached
 from .types import (
     LLMBadRequest,
     LLMContextTooLong,
@@ -30,6 +31,17 @@ async def complete(
         raise LLMBadRequest("Empty model name provided.")
 
     params = params or LLMParams()
+    cache_key = None
+    if not tools and cache_enabled():
+        cache_key = make_cache_key(
+            model=model,
+            messages=messages,
+            temperature=params.temperature,
+            max_tokens=params.max_tokens,
+        )
+        cached_turn = get_cached(cache_key)
+        if cached_turn is not None:
+            return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
     tools_formatted = None
     if tools:
         tools_formatted = [
@@ -65,7 +77,10 @@ async def complete(
                 kwargs["max_tokens"] = params.max_tokens
 
             response = await litellm.acompletion(**kwargs)
-            return _parse_response(response, model)
+            turn = _parse_response(response, model)
+            if cache_key is not None and not turn.tool_calls:
+                set_cached(cache_key, turn.model_copy(deep=True))
+            return turn
 
         except Exception as err:
             attempt += 1
