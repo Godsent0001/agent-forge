@@ -204,6 +204,12 @@ export const api = {
       request<Project>("/projects", { method: "POST", body: JSON.stringify({ name, parallel_execution }) }),
     update: (id: string, patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) =>
       request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    workspace: (id: string) => request<{
+      project_id: string; workspace_path: string; file_count: number; total_bytes: number;
+      files: { path: string; size_bytes: number }[];
+    }>(`/projects/${encodeURIComponent(id)}/workspace`),
+    downloadWorkspace: (id: string) =>
+      requestAttachmentBlob(`/projects/${encodeURIComponent(id)}/workspace.zip`),
   },
   attachments: {
     list: (projectId: string, limit = 100) =>
