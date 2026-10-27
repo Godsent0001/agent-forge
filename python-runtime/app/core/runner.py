@@ -371,12 +371,14 @@ class RunnerCore:
                     name: instance for name, instance in tool_instances.items()
                     if name in allowed_tool_names
                 }
-                if requested_tool and not native_tool_specs:
+                if requested_tool and requested_tool.startswith("missing capability:"):
+                    missing_capabilities = requested_tool.removeprefix("missing capability:").strip()
                     messages[0]["content"] += (
                         "\n\n[Tool constraint]\n"
-                        f"The user explicitly requested the '{requested_tool}' capability, but no "
-                        "attached tool matches it. Do not substitute an unrelated tool; explain "
-                        "that the requested capability is unavailable."
+                        f"The user explicitly requested these capabilities, but no attached tool "
+                        f"matches: {missing_capabilities}. Do not substitute an unrelated tool "
+                        "for a missing capability. Continue with any explicitly requested tools "
+                        "that are available, and state the limitation honestly."
                     )
                 iterations = 0
                 tool_call_history: list[str] = []
