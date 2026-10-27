@@ -39,8 +39,8 @@ from app.core.memory.recall import recall_memories
 from app.core.prompt_builder import build_system_prompt
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
-from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tool_constraints import constrain_tools_for_task
+from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
 from app.infra.paths import project_dir
