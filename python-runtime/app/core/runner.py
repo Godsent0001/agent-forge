@@ -70,6 +70,22 @@ def _with_attachment_context(task: str, attachments: list[Any]) -> str:
     )
 
 
+
+def _restrict_tools_for_explicit_request(task: str, tools: list[ToolSpec]) -> tuple[list[ToolSpec], str | None]:
+    """Prevent tool substitution when the user explicitly requests a tool."""
+    lowered = task.lower()
+    requested_kind = None
+    if re.search(r"\\b(?:web_search|web\\s+search|search(?:ing)?\\s+tool)\\b", lowered):
+        requested_kind = "search"
+    elif re.search(r"\\b(?:shell|cmd)\\s+tool\\b|\\buse (?:the )?(?:shell|cmd)\\b", lowered):
+        requested_kind = "shell"
+
+    if requested_kind is None:
+        return tools, None
+    matching = [tool for tool in tools if requested_kind in tool.name.lower()]
+    return matching, requested_kind
+
+
 def _compact_old_tool_outputs(messages: list[dict[str, Any]], *, keep_recent: int = 6, max_chars: int = 1800) -> int:
     """Bound repeated tool-result context while preserving recent outputs and paths.
 
@@ -362,6 +378,18 @@ class RunnerCore:
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
                 )
+                native_tool_specs, explicitly_requested_kind = _restrict_tools_for_explicit_request(
+                    task, native_tool_specs
+                )
+                if explicitly_requested_kind and not native_tool_specs:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            f"The user explicitly requested the {explicitly_requested_kind} tool, "
+                            "but no matching tool is attached to this agent. Do not substitute another "
+                            "tool. Explain that the requested tool is unavailable."
+                        ),
+                    })
 
                 iterations = 0
                 tool_call_history: list[str] = []
