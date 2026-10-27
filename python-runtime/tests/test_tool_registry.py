@@ -24,7 +24,7 @@ def test_python_environment_tool_is_registered_and_catalogued():
 
     assert "python_environment" in known_tool_kinds()
     assert any(entry.kind == "python_environment" for entry in CATALOG)
-    binding = ToolBinding(kind="python_environment", name="python_environment", description="")
+    binding = ToolBinding(id="python_environment", kind="python_environment", name="python_environment", description="")
     tool = DefaultToolFactory().build(binding)
     assert isinstance(tool, PythonEnvironmentTool)
     assert tool.permissions == {"net", "subprocess"}
