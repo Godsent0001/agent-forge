@@ -32,6 +32,7 @@ from app.routers import (
     executions,
     executions_v2,
     projects,
+    project_workspace,
     settings,
     system,
     tools,
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
+app.include_router(project_workspace.router)
 app.include_router(attachments_router.router)
 app.include_router(agents.router)
 app.include_router(tools.router)
