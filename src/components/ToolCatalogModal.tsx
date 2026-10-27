@@ -23,16 +23,12 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
   const [isLoading, setIsLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [videoPackEnabled, setVideoPackEnabled] = useState(() => {
-    try { return localStorage.getItem("agentforge-video-pack") === "enabled"; }
-    catch { return false; }
-  });
-
-  const loadShelves = async (enableVideoPack = videoPackEnabled) => {
+  const loadShelves = async () => {
     setIsLoading(true);
     setCatalogError(null);
     try {
-      const data = await api.catalog.shelves(enableVideoPack ? "video" : "none");
+      // Keep one unified catalog; video-specific pack entries remain excluded.
+      const data = await api.catalog.shelves("none");
       setShelves(data);
       setSelectedShelf((current) => data.some((shelf) => shelf.shelf === current) ? current : data[0]?.shelf ?? "");
     } catch (error) {
@@ -42,15 +38,7 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  useEffect(() => { void loadShelves(videoPackEnabled); }, []);
-
-  const toggleVideoPack = (enabled: boolean) => {
-    setVideoPackEnabled(enabled);
-    try { localStorage.setItem("agentforge-video-pack", enabled ? "enabled" : "disabled"); }
-    catch { /* browser storage can be disabled; this session toggle still works */ }
-    setSelectedShelf("");
-    void loadShelves(enabled);
-  };
+  useEffect(() => { void loadShelves(); }, []);
 
   const activeShelf = shelves.find((s) => s.shelf === selectedShelf) ?? shelves[0];
 
@@ -116,10 +104,6 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 whitespace-nowrap text-2xs text-studio-300" title="Video-production tools are disabled by default">
-              <input type="checkbox" checked={videoPackEnabled} onChange={(event) => toggleVideoPack(event.target.checked)} className="h-3.5 w-3.5 accent-accent-500" />
-              Video pack
-            </label>
             <input
               type="text"
               value={searchQuery}
@@ -252,8 +236,8 @@ export function ToolCatalogModal({ onClose }: { onClose: () => void }) {
               </>
             ) : (
               <div className="rounded border border-dashed border-line p-8 text-center">
-                <p className="text-xs font-medium text-studio-200">Video pack is disabled</p>
-                <p className="mt-1 text-2xs text-studio-400">Enable Video pack above to browse video-production tools. It stays off by default.</p>
+                <p className="text-xs font-medium text-studio-200">No tools available</p>
+                <p className="mt-1 text-2xs text-studio-400">The catalog did not return any tools. Retry or check the runtime.</p>
               </div>
             )}
           </div>
