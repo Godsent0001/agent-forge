@@ -430,6 +430,12 @@ export const api = {
     syncKeysToBackend: () => keychain.syncToRuntime(),
     /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
+    getEmbeddingModel: () => request<{ model: string }>("/settings/embedding-model"),
+    setEmbeddingModel: (model: string) =>
+      request<{ status: string; model: string }>("/settings/embedding-model", {
+        method: "POST",
+        body: JSON.stringify({ model }),
+      }),
   },
   system: {
     check: () => request<SystemCheck[]>("/v2/system/check"),
