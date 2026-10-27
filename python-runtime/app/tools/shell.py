@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
