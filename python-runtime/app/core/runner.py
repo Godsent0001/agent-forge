@@ -382,7 +382,6 @@ class RunnerCore:
                 tool_call_history: list[str] = []
                 consecutive_no_progress_batches = 0
                 execution_history: list[str] = []
-                execution_state_message_index: int | None = None
 
                 while True:
                     cancel.raise_if_cancelled()
@@ -578,11 +577,7 @@ class RunnerCore:
                         "the approach rather than repeating an equivalent action. Treat tool success messages as "
                         "evidence, not automatic proof that the user's goal is complete."
                     )
-                    if execution_state_message_index is None:
-                        messages.append({"role": "user", "content": state_content})
-                        execution_state_message_index = len(messages) - 1
-                    else:
-                        messages[execution_state_message_index]["content"] = state_content
+                    messages.append({"role": "user", "content": state_content})
 
                     # Feedback control is based on outcomes, not tool names. A failed
                     # batch earns one materially different recovery attempt; a second
