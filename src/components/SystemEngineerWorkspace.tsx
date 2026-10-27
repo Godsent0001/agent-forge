@@ -31,6 +31,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
   const tools = useStore((s) => s.tools);
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const updateProjectSettings = useStore((s) => s.updateProjectSettings);
+  const deleteTool = useStore((s) => s.deleteTool);
   const [tab, setTab] = useState<WorkspaceTab>("home");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,6 +42,8 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [workspaceInfo, setWorkspaceInfo] = useState<{ workspace_path: string; file_count: number; total_bytes: number; files: { path: string; size_bytes: number }[] } | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [checks, setChecks] = useState<SystemCheck[]>([]);
   const [executions, setExecutions] = useState<ExecutionSummary[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
@@ -52,6 +55,56 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
   const [customToolSchema, setCustomToolSchema] = useState("{\n  \"type\": \"object\",\n  \"properties\": {\n    \"query\": { \"type\": \"string\", \"description\": \"The value to send to the endpoint\" }\n  },\n  \"required\": [\"query\"]\n}");
 
   useEffect(() => setSkills(skillList(project?.settings)), [project?.id, project?.settings]);
+  const refreshWorkspace = async () => {
+    if (!project || workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setError(null);
+    try {
+      const info = await api.projects.workspace(project.id);
+      setWorkspaceInfo(info);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not inspect project workspace.");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const downloadWorkspace = async () => {
+    if (!project || workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setError(null);
+    try {
+      const blob = await api.projects.downloadWorkspace(project.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `agentforge-project-${project.name.replace(/[^A-Za-z0-9_-]+/g, "-")}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setNotice("Project ZIP download started.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not package project workspace.");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const removeProjectTool = async (toolId: string, toolName: string) => {
+    if (!window.confirm(`Remove "${toolName}" from this project? The global tool catalog will not be changed.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteTool(toolId);
+      setNotice(`Removed "${toolName}" from this project. The global catalog is unchanged.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not remove project tool.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   const assignedTools = useMemo(() => new Set(selectedAgent?.tool_ids ?? []), [selectedAgent?.tool_ids]);
 
@@ -346,6 +399,17 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
           </div>}
 
           {tab === "tools" && <div className="space-y-5">
+            <div className="rounded-xl bg-studio-900 neu-raised-sm p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h3 className="text-base font-semibold text-studio-100">Project files</h3><p className="mt-1 text-xs leading-relaxed text-studio-400">Files created by agents are kept in this project's workspace between runs.</p></div>
+                <div className="flex gap-2"><Button variant="secondary" onClick={() => void refreshWorkspace()} disabled={workspaceBusy}>{workspaceBusy ? "Working…" : "Refresh files"}</Button><Button onClick={() => void downloadWorkspace()} disabled={workspaceBusy || workspaceInfo?.file_count === 0}><Icon name="download" size={15} /><span className="ml-2">Download ZIP</span></Button></div>
+              </div>
+              {workspaceInfo && <div className="mt-3 rounded-lg border border-line bg-studio-950/60 p-3">
+                <p className="break-all font-mono text-[11px] text-accent-300">{workspaceInfo.workspace_path}</p>
+                <p className="mt-1 text-[11px] text-studio-500">{workspaceInfo.file_count} files · {(workspaceInfo.total_bytes / 1024).toFixed(1)} KB</p>
+                {workspaceInfo.files.length > 0 ? <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto">{workspaceInfo.files.slice(0, 100).map((file) => <li key={file.path} className="flex items-center justify-between gap-3 text-xs"><span className="break-all font-mono text-studio-200">{file.path}</span><span className="shrink-0 text-[10px] text-studio-500">{(file.size_bytes / 1024).toFixed(1)} KB</span></li>)}</ul> : <p className="mt-3 text-xs text-studio-500">No project files yet. Run a task that creates files, then refresh.</p>}
+              </div>}
+            </div>
             <div className="rounded-xl bg-studio-900 neu-raised-sm p-5"><h3 className="text-base font-semibold text-studio-100">Tool library</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-studio-400">Review project tools and add supported tools from the catalog. Select an agent to see what is attached to it.</p><div className="mt-4"><Button onClick={onOpenToolCatalog}><Icon name="tools" size={15} /> <span className="ml-2">Browse tool catalog</span></Button></div></div>
             <form onSubmit={createCustomTool} className="grid gap-4 rounded-xl bg-studio-900 neu-raised-sm p-5 lg:grid-cols-2">
               <div className="lg:col-span-2"><h3 className="text-base font-semibold text-studio-100">Create custom HTTP tool</h3><p className="mt-1 text-xs leading-relaxed text-studio-400">Create a reusable operation for a public HTTP GET or POST endpoint. The JSON schema becomes the model-visible input form. Requests use the existing SSRF-safe HTTP implementation.</p></div>
@@ -357,7 +421,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
               <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2"><p className="max-w-xl text-[11px] leading-relaxed text-studio-500">If an agent is selected, the new tool will be attached immediately. Do not put API keys or secrets in the URL or schema.</p><Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create custom tool"}</Button></div>
             </form>
             <div className="grid gap-3 md:grid-cols-2">
-              {tools.map((tool) => <article key={tool.id} className="rounded-xl bg-studio-900 neu-raised-sm p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-semibold text-studio-100">{tool.name}</h4><p className="mt-1 text-[11px] text-studio-500">{tool.kind}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${assignedTools.has(tool.id) ? "bg-emerald-950 text-emerald-300" : "bg-studio-800 text-studio-400"}`}>{assignedTools.has(tool.id) ? "Attached" : "Project only"}</span></div><p className="mt-3 text-xs leading-relaxed text-studio-400">{tool.description || "No description"}</p></article>)}
+              {tools.map((tool) => <article key={tool.id} className="rounded-xl bg-studio-900 neu-raised-sm p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-semibold text-studio-100">{tool.name}</h4><p className="mt-1 text-[11px] text-studio-500">{tool.kind}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] ${assignedTools.has(tool.id) ? "bg-emerald-950 text-emerald-300" : "bg-studio-800 text-studio-400"}`}>{assignedTools.has(tool.id) ? "Attached" : "Project only"}</span><button type="button" disabled={busy} onClick={() => void removeProjectTool(tool.id, tool.name)} title="Remove from this project only" aria-label={`Remove ${tool.name} from project`} className="rounded border border-red-900/70 px-2 py-1 text-[10px] text-red-300 hover:bg-red-950/40 disabled:opacity-50">Remove</button></div></div><p className="mt-3 text-xs leading-relaxed text-studio-400">{tool.description || "No description"}</p></article>)}
               {tools.length === 0 && <p className="rounded-xl border border-dashed border-line-strong p-6 text-sm text-studio-400">No project tools yet. Open the catalog to add one.</p>}
             </div>
             <p className="text-xs leading-relaxed text-studio-500">Custom tools in this version are limited to public HTTP GET/POST endpoints. Authentication secrets, custom headers, OAuth flows, and non-HTTP custom code are not supported by this builder yet.</p>
