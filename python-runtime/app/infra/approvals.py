@@ -54,15 +54,12 @@ class ApprovalGateImpl:
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.allowed_for_run: set[tuple[str, str]] = set()
 
-    def _kind_for(self, tool: str, permissions: set[Permission]) -> str:
+    def _kind_for(self, tool: str) -> str:
         if tool in self.tool_kinds:
             return self.tool_kinds[tool]
-        if "subprocess" in permissions:
-            return "python"
-        if "net" in permissions:
-            return "http_request"
-        if "fs_write" in permissions:
-            return "file_system"
+        # Only known built-in tool names inherit their own default policy.
+        # Unknown names remain unknown even if their permissions resemble a
+        # built-in tool, so they fall back to Ask rather than silently Allow.
         return tool
 
     def _policy_for(self, kind: str, permissions: set[Permission]) -> str:
@@ -73,7 +70,7 @@ class ApprovalGateImpl:
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
-        kind = self._kind_for(tool, permissions)
+        kind = self._kind_for(tool)
         if (self.execution_id, tool) in self.allowed_for_run:
             return True
 
