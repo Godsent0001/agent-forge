@@ -13,6 +13,8 @@ async def test_shell_runs_command_and_saves_complete_output(tmp_path):
     result = await ShellTool().execute('python -c "print(\'shell-ok\')"', context=context)
 
     assert "Exit code: 0" in result
+    assert f"Project workspace: {tmp_path.resolve()}" in result
+    assert "Full captured output:" in result
     assert "shell-ok" in result
     assert ".results/shell-shell-test.txt" in result
     saved = (tmp_path / ".results" / "shell-shell-test.txt").read_text(encoding="utf-8")
