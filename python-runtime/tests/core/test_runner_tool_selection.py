@@ -21,6 +21,20 @@ def test_explicit_tool_constraint_uses_catalog_not_hardcoded_tool_names():
     assert [tool.name for tool in selected] == ["web_search"]
 
 
+def test_possessive_tool_reference_matches_catalog_capability():
+    tools = [
+        _tool("web_search", "Search the web."),
+        _tool("shell", "Run a CMD/PowerShell command."),
+    ]
+
+    selected, requested = constrain_tools_for_task(
+        "Please test/use its search tool, not CMD.", tools
+    )
+
+    assert requested == "search"
+    assert [tool.name for tool in selected] == ["web_search"]
+
+
 def test_generic_tool_name_can_be_required():
     tools = [
         _tool("web_search", "Search the web."),
