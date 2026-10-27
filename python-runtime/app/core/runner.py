@@ -20,6 +20,7 @@ from app.contracts.tools import (
 )
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.durable_scheduler import SQLiteTaskPlanStore
+from app.core.embeddings import embed_text
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
@@ -236,12 +237,30 @@ class RunnerCore:
                 memory_block = ""
                 if spec.memory_enabled and memory:
                     try:
+                        embedding_model = req.options.memory.embedding_model
+                        query_embedding = None
+                        if embedding_model:
+                            try:
+                                query_embedding = await asyncio.to_thread(embed_text, task, embedding_model)
+                                missing = await memory.missing_embeddings(spec.id, embedding_model, limit=50)
+                                if missing:
+                                    pairs = []
+                                    for item in missing:
+                                        vector = await asyncio.to_thread(embed_text, item.text, embedding_model)
+                                        if vector:
+                                            pairs.append((item.id, vector, embedding_model))
+                                    if pairs:
+                                        await memory.set_embeddings(pairs)
+                            except Exception as embedding_error:
+                                logger.warning("Local embedding unavailable; using keyword memory recall: %s", embedding_error)
+                                query_embedding = None
                         _, memory_block = await recall_memories(
                             store=memory,
                             agent_id=spec.id,
                             query=task,
                             recall_budget_tokens=req.options.memory.recall_budget_tokens,
-                            embedding_model=req.options.memory.embedding_model,
+                            query_embedding=query_embedding,
+                            embedding_model=embedding_model,
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")

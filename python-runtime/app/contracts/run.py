@@ -1,7 +1,8 @@
 """C-1: run request and result. Pure data (see docs/CONTRACTS.md)."""
+import os
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -27,10 +28,14 @@ class BudgetSpec(BaseModel):
     max_seconds: int = 300
 
 
+def _default_embedding_model() -> str | None:
+    return os.environ.get("AGENTFORGE_EMBEDDING_MODEL", "local:BAAI/bge-small-en-v1.5")
+
+
 class MemoryOptions(BaseModel):
     episodic: bool = True                  # <recent_runs> block and recall_run tool
     intents: bool = False                  # reminders (intent tools and <reminders> block)
-    embedding_model: str | None = None     # None = keyword-only memory search
+    embedding_model: str | None = Field(default_factory=_default_embedding_model)
     recall_budget_tokens: int = 800
     max_items_per_agent: int = 500
 
@@ -41,7 +46,7 @@ class RunOptions(BaseModel):
     max_depth: int = 4                     # sub-agent nesting
     max_iterations: int = 10               # LLM turns per agent
     scenario: str | None = None            # FakeRunner only
-    memory: MemoryOptions = MemoryOptions()
+    memory: MemoryOptions = Field(default_factory=MemoryOptions)
     timezone: str = "UTC"                  # IANA name, so "tomorrow at 9" can be resolved
     # Model aliases the core resolves itself (see models.yaml). Keys: "fast",
     # "summarizer_model", "reflection_model", "vision_model". Values: "provider/model".
@@ -57,7 +62,7 @@ class RunRequest(BaseModel):
     history: list[ChatMessage] = []        # earlier turns NOT covered by history_summary (oldest first)
     history_summary: str = ""              # summary of older messages that are no longer in `history`
     attachments: list[AttachmentRef] = []  # files attached to `task`
-    options: RunOptions = RunOptions()
+    options: RunOptions = Field(default_factory=RunOptions)
 
 
 class Totals(BaseModel):

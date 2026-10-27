@@ -2,7 +2,7 @@
  * Single source of truth for LLM providers in the UI.
  *
  * The backend routes every call through LiteLLM using "<provider>/<model>" (python-runtime/app/core/runner.py),
- * so `id` MUST be a LiteLLM provider prefix. Any model a provider offers can be used through the
+ * so id MUST be a LiteLLM provider prefix. Any model a provider offers can be used through the
  * "Custom model ID" option, so this list never needs to be exhaustive.
  *
  * NOTE: model IDs below (other than Anthropic's) come from general knowledge and have not been
@@ -141,6 +141,18 @@ export const PROVIDERS: ProviderInfo[] = [
     defaultModel: "openai/gpt-4o-mini",
     customPlaceholder: "e.g. anthropic/claude-sonnet-4.5",
     models: [{ value: "openai/gpt-4o-mini", label: "openai/gpt-4o-mini" }],
+  },
+  {
+    id: "venice",
+    label: "Venice AI",
+    keyId: "venice",
+    needsKey: true,
+    keyPlaceholder: "Venice API key",
+    defaultModel: "deepseek-v4-1-flash-uncensored",
+    customPlaceholder: "e.g. deepseek-v4-1-flash-uncensored",
+    models: [
+      { value: "deepseek-v4-1-flash-uncensored", label: "DeepSeek V4.1 Flash Uncensored" },
+    ],
   },
   {
     id: "ollama",

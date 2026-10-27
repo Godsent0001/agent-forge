@@ -37,6 +37,13 @@ describe("provider registry", () => {
     expect(isKnownModel("anthropic", "")).toBe(false);
   });
 
+  it("registers Venice with the configured default model and API key slot", () => {
+    expect(getProvider("venice")?.keyId).toBe("venice");
+    expect(getProvider("venice")?.defaultModel).toBe("deepseek-v4-1-flash-uncensored");
+    expect(isKnownModel("venice", "deepseek-v4-1-flash-uncensored")).toBe(true);
+    expect(providersNeedingKeys().some((p) => p.id === "venice")).toBe(true);
+  });
+
   it("does not ask for a key for local providers", () => {
     expect(providersNeedingKeys().some((p) => p.id === "ollama")).toBe(false);
   });

@@ -7,7 +7,7 @@ import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter"]);
+const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter", "venice"]);
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 // Only unpackaged builds are dev builds. An inherited NODE_ENV must never make an
 // installed app load (and hand its API token to) whatever serves localhost:5173.
@@ -264,7 +264,12 @@ function startPythonBackend() {
 
   // Bundled ffmpeg/ffprobe (scripts/fetch-ffmpeg.mjs) go first on PATH so every media
   // tool and yt-dlp find them; a system install is still used when none is bundled.
-  const env = { ...process.env };
+  const env = {
+    ...process.env,
+    AGENTFORGE_EMBEDDING_CACHE_DIR: isDev
+      ? path.join(projectRoot, "python-runtime", "models", "embedding-cache")
+      : path.join(process.resourcesPath, "embedding-model-cache"),
+  };
   const bundledFfmpeg = isDev ? null : path.join(process.resourcesPath, "ffmpeg");
   if (bundledFfmpeg && fs.existsSync(bundledFfmpeg)) {
     const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") || "PATH";

@@ -21,10 +21,14 @@ tiktoken_hiddenimports = collect_submodules("tiktoken") + collect_submodules("ti
 # yt-dlp registers its site extractors and networking handlers by dynamic import.
 yt_dlp_hiddenimports = collect_submodules("yt_dlp")
 
+# FastEmbed/ONNX Runtime are imported lazily by the local embedding provider.
+fastembed_datas, fastembed_binaries, fastembed_hiddenimports = collect_all("fastembed")
+onnx_datas, onnx_binaries, onnx_hiddenimports = collect_all("onnxruntime")
+
 datas = [
     ("alembic.ini", "."),
     ("alembic", "alembic"),
-] + collect_data_files("alembic") + litellm_datas + tiktoken_metadata
+] + collect_data_files("alembic") + litellm_datas + tiktoken_metadata + fastembed_datas + onnx_datas
 
 hiddenimports = [
     "uvicorn.logging",
@@ -40,12 +44,12 @@ hiddenimports = [
     "app.graph",
     "app.models",
     "app.ws",
-] + litellm_hiddenimports + tiktoken_hiddenimports + yt_dlp_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
+] + litellm_hiddenimports + tiktoken_hiddenimports + yt_dlp_hiddenimports + fastembed_hiddenimports + onnx_hiddenimports + collect_submodules("app") + collect_submodules("alembic")
 
 a = Analysis(
     ["main.py"],
     pathex=["."],
-    binaries=litellm_binaries,
+    binaries=litellm_binaries + fastembed_binaries + onnx_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

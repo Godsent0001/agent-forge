@@ -36,6 +36,7 @@ class CatalogEntry:
 
 
 SHELVES: dict[str, str] = {
+    "general": "General Tools",
     "audio": "Audio",
     "character": "Character",
     "scene": "Scene",
@@ -52,6 +53,29 @@ SHELVES: dict[str, str] = {
 
 
 CATALOG: list[CatalogEntry] = [
+    # --- General-purpose tools (always available in the unified catalog) ---
+    CatalogEntry("web_search", "Web Search", "general",
+                 "Search the web for documentation, references, and relevant sources. Requires Crawl4AI configuration.",
+                 "real", pack=None),
+    CatalogEntry("browser", "Browser", "general",
+                 "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
+                 "real", pack=None),
+    CatalogEntry("shell", "CMD / Shell", "general",
+                 "Execute a command in the current run workspace with bounded output and a saved log. Requires subprocess permission.",
+                 "real", pack=None),
+    CatalogEntry("log_search", "Log Search", "general",
+                 "Search saved long shell logs with exact/keyword search and optional embedding-based retrieval.",
+                 "real", pack=None),
+    CatalogEntry("python", "Python Execution", "general",
+                 "Execute a short Python snippet in a restricted subprocess with bounded output.",
+                 "real", pack=None),
+    CatalogEntry("http_request", "HTTP Request", "general",
+                 "Make a bounded HTTP GET or POST request to a public URL.",
+                 "real", pack=None),
+    CatalogEntry("file_system", "File Operations", "general",
+                 "Read, write, or list files within the current run workspace.",
+                 "real", pack=None),
+
     # --- Audio ---------------------------------------------------------
     CatalogEntry("voice_generator", "Voice Generator", "audio",
                  "Converts character dialogue into speech using Piper TTS "

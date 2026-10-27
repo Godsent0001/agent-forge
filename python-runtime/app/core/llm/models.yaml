@@ -74,3 +74,10 @@ models:
     supports_vision: false
     price_in: 0.0
     price_out: 0.0
+
+  - provider: venice
+    model: deepseek-v4-1-flash-uncensored
+    tier: fast
+    kind: chat
+    supports_tools: true
+    supports_vision: false
