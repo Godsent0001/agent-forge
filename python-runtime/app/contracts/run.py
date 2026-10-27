@@ -1,4 +1,5 @@
 """C-1: run request and result. Pure data (see docs/CONTRACTS.md)."""
+import os
 from typing import Literal
 
 from pydantic import BaseModel
@@ -30,7 +31,7 @@ class BudgetSpec(BaseModel):
 class MemoryOptions(BaseModel):
     episodic: bool = True                  # <recent_runs> block and recall_run tool
     intents: bool = False                  # reminders (intent tools and <reminders> block)
-    embedding_model: str | None = "local:BAAI/bge-small-en-v1.5"  # local by default; set None for keyword-only search
+    embedding_model: str | None = None  # populated from AGENTFORGE_EMBEDDING_MODEL by the runtime factory
     recall_budget_tokens: int = 800
     max_items_per_agent: int = 500
 
