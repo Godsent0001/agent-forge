@@ -20,7 +20,7 @@ def _embedding_settings_path() -> Path:
 def _valid_embedding_model(value: str) -> bool:
     return bool(value and len(value) <= 200 and not any(char.isspace() for char in value)
                 and re.fullmatch(r"[A-Za-z0-9_.:/-]+", value)
-                and ("local:" in value or "/" in value))
+                and (value.startswith("local:") or "/" in value))
 
 
 def _load_embedding_model() -> str:
