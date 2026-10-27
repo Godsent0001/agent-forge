@@ -27,6 +27,21 @@ def make_cache_key(*, model: str, messages: list[dict], temperature: float | Non
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def is_cacheable_messages(messages: list[dict]) -> bool:
+    """Skip caching for prompts that explicitly ask for fresh/live information."""
+    volatile_terms = {
+        "current", "currently", "latest", "today", "now", "weather",
+        "forecast", "stock price", "share price", "exchange rate", "breaking news",
+        "open now", "right now", "this week",
+    }
+    user_text = " ".join(
+        str(message.get("content", ""))
+        for message in messages
+        if message.get("role") == "user"
+    ).casefold()
+    return not any(term in user_text for term in volatile_terms)
+
+
 def get_cached(key: str, *, now: float | None = None):
     current = time.monotonic() if now is None else now
     with _lock:
