@@ -53,6 +53,7 @@ class LLMTurn(BaseModel):
     finish_reason: str = "stop"
     model: str = ""
     reasoning_text: str | None = None
+    cached: bool = False
 
 
 # ---- Exceptions ----
