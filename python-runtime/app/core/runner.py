@@ -34,6 +34,7 @@ from app.core.llm.types import (
 from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
 from app.core.memory.recall import recall_memories
+from app.core.embeddings import embed_text
 from app.core.prompt_builder import build_system_prompt
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
@@ -236,12 +237,30 @@ class RunnerCore:
                 memory_block = ""
                 if spec.memory_enabled and memory:
                     try:
+                        embedding_model = req.options.memory.embedding_model
+                        query_embedding = None
+                        if embedding_model and embedding_model.startswith("local:"):
+                            try:
+                                query_embedding = await asyncio.to_thread(embed_text, task, embedding_model)
+                                missing = await memory.missing_embeddings(spec.id, embedding_model, limit=50)
+                                if missing:
+                                    pairs = []
+                                    for item in missing:
+                                        vector = await asyncio.to_thread(embed_text, item.text, embedding_model)
+                                        if vector:
+                                            pairs.append((item.id, vector, embedding_model))
+                                    if pairs:
+                                        await memory.set_embeddings(pairs)
+                            except Exception as embedding_error:
+                                logger.warning("Local embedding unavailable; using keyword memory recall: %s", embedding_error)
+                                query_embedding = None
                         _, memory_block = await recall_memories(
                             store=memory,
                             agent_id=spec.id,
                             query=task,
                             recall_budget_tokens=req.options.memory.recall_budget_tokens,
-                            embedding_model=req.options.memory.embedding_model,
+                            query_embedding=query_embedding,
+                            embedding_model=embedding_model,
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
