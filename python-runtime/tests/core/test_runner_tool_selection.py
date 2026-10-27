@@ -71,7 +71,7 @@ def test_missing_required_capability_does_not_substitute_another_tool():
 
     selected, requested = constrain_tools_for_task("Use the OCR tool.", tools)
 
-    assert requested == "OCR"
+    assert requested == "missing capability: OCR"
     assert selected == []
 
 
