@@ -14,8 +14,8 @@ def main() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     os.environ["FASTEMBED_CACHE_PATH"] = str(CACHE_DIR)
     model = TextEmbedding(model_name=MODEL_NAME, cache_dir=str(CACHE_DIR))
-    vector = next(model.embed(["AgentForge local embedding verification"]))
-    if not vector or not all(isinstance(value, (int, float)) for value in vector):
+    vector = list(next(model.embed(["AgentForge local embedding verification"])))
+    if len(vector) == 0 or not all(isinstance(value, (int, float)) for value in vector):
         raise RuntimeError("Embedding model verification returned an invalid vector")
     print(f"[embeddings] Verified {MODEL_NAME}; dimensions={len(vector)}; cache={CACHE_DIR}")
 
