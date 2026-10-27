@@ -40,6 +40,7 @@ from app.core.prompt_builder import build_system_prompt
 from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
 from app.core.tool_outcomes import classify_tool_outcome
+from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
 from app.infra.paths import project_dir
@@ -364,6 +365,14 @@ class RunnerCore:
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
                 )
+                native_tool_specs, requested_tool = constrain_tools_for_task(task, native_tool_specs)
+                if requested_tool and not native_tool_specs:
+                    messages[0]["content"] += (
+                        "\\n\\n[Tool constraint]\\n"
+                        f"The user explicitly requested the '{requested_tool}' capability, but no "
+                        "attached tool matches it. Do not substitute an unrelated tool; explain "
+                        "that the requested capability is unavailable."
+                    )
                 iterations = 0
                 tool_call_history: list[str] = []
                 consecutive_no_progress_batches = 0
