@@ -23,9 +23,10 @@ def build_runtime_capability_manifest(
         "AgentForge runtime self-awareness (current run)",
         "- Execution uses the shared RunnerCore for tool dispatch, approvals, cancellation, memory, artifacts, and events; do not assume a separate execution engine.",
         "- Shell access is not the same as graphical desktop control. Claim GUI/computer-use ability only when a dedicated tool is declared for this run.",
+        "- Architecture map: RunnerCore owns execution lifecycle; the prompt builder supplies stable instructions; the registry/catalog defines tools; tool specs define call schemas; workspace/knowledge tools provide file and indexed-document operations when declared. Inspect source only if it is actually accessible in the current workspace.",
         "- Select tools by task intent. Their live API schemas are supplied separately; follow those exact names, fields, and required arguments.",
         "- A tool omitted from this run's declarations is not available to this run. Do not invent tools, parameters, access, or completed actions.",
-        f"- Persistent project workspace: {workspace_root}",
+        f"- Persistent project workspace: {workspace_root[:240]}",
         "- Conversation messages supplied in this request are conversation history; semantic memory is separate and only available when explicitly provided or through a declared memory tool.",
     ]
     if tools:
