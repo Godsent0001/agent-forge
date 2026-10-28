@@ -23,13 +23,14 @@ describe("buildRunHistory", () => {
     ])).toEqual([
       { role: "user", content: "Find sources" },
       { role: "assistant", content: "Here are sources" },
+      { role: "user", content: "Summarize them" },
     ]);
   });
 
-  it("drops an unanswered user request left by an interrupted run", () => {
+  it("preserves an unanswered user request so transcript questions can inspect it", () => {
     expect(buildRunHistory([
       user("u1", "Old request that was interrupted"),
-    ])).toEqual([]);
+    ])).toEqual([{ role: "user", content: "Old request that was interrupted" }]);
   });
 
   it("never includes simulated demo replies in real model context", () => {
