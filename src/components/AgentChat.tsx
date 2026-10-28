@@ -94,6 +94,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationReloadKey, setConversationReloadKey] = useState(0);
   const [readyConversationIds, setReadyConversationIds] = useState<Set<string>>(new Set());
   const [newConversationIds, setNewConversationIds] = useState<Set<string>>(new Set());
   const [conversationError, setConversationError] = useState<string | null>(null);
@@ -214,7 +215,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
     };
-  }, [activeConversationId, newConversationIds, agent?.id, agent?.name, project?.id, setChatMessages]);
+  }, [activeConversationId, newConversationIds, conversationReloadKey, agent?.id, agent?.name, project?.id, setChatMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -653,9 +654,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           </p>
         )}
         {conversationError && (
-          <p role="alert" className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-2xs text-amber-200">
-            {conversationError}
-          </p>
+          <div role="alert" className="flex flex-wrap items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-2xs text-amber-200">
+            <span className="min-w-0 flex-1">{conversationError}</span>
+            <button type="button" onClick={() => setConversationReloadKey((value) => value + 1)} disabled={conversationLoading || isProcessing} className="rounded border border-amber-700/70 px-2 py-1 hover:bg-amber-900/40 disabled:opacity-50">Retry loading</button>
+          </div>
         )}
         {agentMessages.every((message) => message.sender === "tool") && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
