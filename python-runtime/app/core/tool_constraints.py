@@ -84,7 +84,10 @@ def constrain_tools_for_task(
     If any required capability is unavailable, no unrelated tool is exposed as a
     substitute; the caller can explain the missing capability.
     """
-    required_matches = list(_REQUIRED_TOOL.finditer(task))
+    required_matches = [
+        match for match in _REQUIRED_TOOL.finditer(task)
+        if not re.search(r"\\b(?:do\\s+not|don't|never|avoid)\\s+$", task[:match.start()], re.IGNORECASE)
+    ]
     required_aliases: list[str] = []
     if required_matches:
         first = required_matches[0]
