@@ -206,11 +206,12 @@ def edit_user_message(
     except StopIteration as exc:
         raise HTTPException(status_code=404, detail="Message not found in conversation") from exc
 
+    edited_content = payload.content.strip()
+    if not edited_content:
+        raise HTTPException(status_code=422, detail="Message content cannot be empty")
     for later_message in ordered[edited_index + 1:]:
         db.delete(later_message)
-    message.content = payload.content.strip()
-    if not message.content:
-        raise HTTPException(status_code=422, detail="Message content cannot be empty")
+    message.content = edited_content
 
     first_user = next((item for item in ordered if item.role == "user"), None)
     if first_user and first_user.id == message.id:
