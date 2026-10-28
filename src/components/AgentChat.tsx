@@ -19,6 +19,33 @@ function storedRunStatus(status: string | null | undefined): TerminalRunStatus |
   return TERMINAL_RUN_STATUSES.find((value) => value === status);
 }
 
+function describeActiveStep(event: import("../types").ExecutionEvent): string {
+  const rawName = (event.name || "Current step").replace(/[_-]+/g, " ").trim();
+  let args: Record<string, unknown> = {};
+  const rawArgs = event.data?.args;
+  if (typeof rawArgs === "string") {
+    try {
+      const parsed: unknown = JSON.parse(rawArgs);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+    } catch { /* Tool arguments may be omitted or summarized. */ }
+  } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+    args = rawArgs as Record<string, unknown>;
+  }
+  const detail = (["query", "url", "path", "file_path", "operation", "action"] as const)
+    .map((key) => args[key])
+    .find((value) => typeof value === "string" && value.trim());
+  const suffix = typeof detail === "string" ? ` · ${detail.length > 64 ? detail.slice(0, 61) + "…" : detail}` : "";
+  const name = rawName.toLowerCase();
+  if (name.includes("web search")) return `Searching the web${suffix}`;
+  if (name === "browser") return `Inspecting webpage${suffix}`;
+  if (name === "file" || name.includes("workspace files")) return `Working with project files${suffix}`;
+  if (name === "python") return `Running Python work${suffix}`;
+  if (name.includes("knowledge ingest")) return `Indexing document for retrieval${suffix}`;
+  if (name.includes("knowledge search")) return `Searching indexed project knowledge${suffix}`;
+  if (name.includes("shell") || name.includes("cmd")) return "Running a shell command";
+  return `Working with ${rawName}${suffix}`;
+}
+
 function fromStoredMessage(record: ConversationMessageRecord, agentName: string): ChatMessage {
   const timestamp = new Date(record.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (record.role === "user") {
@@ -263,17 +290,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     })();
   }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
 
-  const activeSpanName = (() => {
-    const open = new Map<string, string>();
+  const activeProgressBrief = (() => {
+    const open = new Map<string, import("../types").ExecutionEvent>();
     for (const event of [...activeExecutionEvents].sort((a, b) => a.seq - b.seq)) {
-      if (event.type === "span_started" && event.span_id) {
-        open.set(event.span_id, event.name ?? "Current step");
-      } else if (event.type === "span_ended" && event.span_id) {
-        open.delete(event.span_id);
-      }
+      if (event.type === "span_started" && event.span_id) open.set(event.span_id, event);
+      else if (event.type === "span_ended" && event.span_id) open.delete(event.span_id);
     }
-    const names = [...open.values()];
-    return names.length ? names[names.length - 1] : null;
+    const latest = [...open.values()].at(-1);
+    return latest ? describeActiveStep(latest) : null;
   })();
 
   const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
@@ -733,7 +757,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
         {isProcessing && (
           <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit font-mono">
-            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeSpanName ? `${activeSpanName} is running…` : `${agent.name} is running the task…`}
+            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeProgressBrief || `${agent.name} is working through the task…`}
           </div>
         )}
 
