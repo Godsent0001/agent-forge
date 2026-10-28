@@ -373,7 +373,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setConversations((current) => [created, ...current.filter((item) => item.id !== activeConversationId && item.id !== created.id)]);
       setReadyConversationIds((current) => new Set(current).add(created.id));
       setNewConversationIds((current) => new Set(current).add(created.id));
-      setNewConversationIds((current) => new Set(current).add(created.id));
       setChatMessages(agent.id, []);
       setActiveConversationId(created.id);
     } catch (cause) {
