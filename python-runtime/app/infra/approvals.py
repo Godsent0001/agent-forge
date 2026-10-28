@@ -23,6 +23,7 @@ DEFAULT_POLICIES = {
     "clip_finder": "allow",
     "clip_extractor": "allow",
     "file_system": "allow",
+    "file": "allow",
     "scene_template_manager": "allow",
     "render_queue": "allow",
     "project_manager": "allow",
