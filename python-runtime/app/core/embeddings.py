@@ -74,9 +74,15 @@ def embed_text(text: str, model_id: str = DEFAULT_EMBEDDING_MODEL) -> list[float
 
 
 def embed_many(texts: list[str], model_id: str = DEFAULT_EMBEDDING_MODEL) -> list[list[float]]:
-    """Embed multiple texts, reusing cached vectors for repeated values."""
+    """Embed a batch efficiently; use the local model's native batch API when possible."""
     if not texts:
         return []
+    if model_id.startswith("local:"):
+        model = _load_model(model_id)
+        vectors = list(model.embed(texts))
+        if len(vectors) != len(texts):
+            raise RuntimeError("Local embedding model returned an incomplete batch.")
+        return [[float(value) for value in vector] for vector in vectors]
     return [embed_text(value, model_id) for value in texts]
 
 
