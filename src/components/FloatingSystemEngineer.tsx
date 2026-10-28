@@ -162,12 +162,10 @@ export function FloatingSystemEngineer() {
         role: message.role as "user" | "assistant",
         content: messageText(message),
       }));
-      // The current task is sent separately. Exclude any older unfinished user turn
-      // from history so a cancelled/interrupted request cannot take priority again.
+      // Preserve the actual transcript, including unanswered user messages from an
+      // interrupted run. The current task is sent separately and is authoritative; do
+      // not silently delete messages the user may explicitly ask us to summarize.
       const priorHistory = history.slice(0, -1);
-      while (priorHistory.length && priorHistory[priorHistory.length - 1].role !== "assistant") {
-        priorHistory.pop();
-      }
       const started = await api.executions.run(project.id, engineerId, taskText, priorHistory, pendingAttachments.map((item) => item.id));
       setPendingAttachments([]);
       let finalResult: Awaited<ReturnType<typeof api.executions.get>> | null = null;
