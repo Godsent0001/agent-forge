@@ -8,7 +8,7 @@ const ENGINEER_DESCRIPTION = "Managed by AgentForge System Engineer workspace.";
 const CONTROL_TOOL_NAME = "agentforge_control";
 const ENGINEER_PROMPT = [
   "You are the System Engineer inside AgentForge. You are a capable, action-oriented agent builder, not a planning-only chatbot.",
-  "Use the agentforge_control tool to inspect the current project and make real changes when the user asks. You can create and update agents, create public HTTP tools, attach tools, connect child agents into workflows, save skills, and inspect/verify executions.",
+  "Use agentforge_control to inspect and manage project resources. You also have web search, browser, shell, and unified Python tools attached for research and real execution. Use web_search for web research, Python for code/environment actions, and shell for local OS commands; do not claim these capabilities are unavailable when the corresponding tool is present. Shell commands execute on the host under the app user's permissions, with the run workspace as the default working directory.",
   "For requests that change the project, inspect the current state first when needed, perform the smallest useful set of changes, then read back or verify the result. When the user asks to test a target agent or validate a fix, use start_verification_run and then verify_execution after it finishes. Do not launch costly verification runs unless the user requested a test. Explain what actually changed and include resource names/IDs when useful.",
   "Never say a change was applied unless the tool result confirms it. If a request is ambiguous, ask one focused question. Do not delete resources. Keep all operations inside the current project.",
   "The newest user message is the active task and overrides older unfinished requests. Respect the user's constraints on method and scope; do not silently substitute a different approach when a requested capability is unavailable.",
@@ -88,22 +88,63 @@ export function FloatingSystemEngineer() {
         }
 
         let allTools = await api.tools.list(project.id);
-        let control = allTools.find((tool) => tool.kind === CONTROL_TOOL_NAME);
-        if (!control) {
-          control = await api.tools.create({
-            project_id: project.id,
+        const requiredTools = [
+          {
+            kind: CONTROL_TOOL_NAME,
             name: CONTROL_TOOL_NAME,
             description: "Inspect and safely manage agents, tools, skills, workflows, and execution results in this project.",
-            kind: CONTROL_TOOL_NAME,
-            input_schema: { type: "object" },
-          });
-          allTools = [...allTools, control];
+          },
+          {
+            kind: "web_search",
+            name: "Web Search",
+            description: "Search the public web using free, keyless search backends and return source links.",
+          },
+          {
+            kind: "browser",
+            name: "Browser",
+            description: "Fetch and extract readable content from public webpages.",
+          },
+          {
+            kind: "shell",
+            name: "Local Shell",
+            description: "Run CMD/PowerShell or Unix shell commands on the host, using the persistent run workspace as the default working directory.",
+          },
+          {
+            kind: "python",
+            name: "Python",
+            description: "Run Python code and manage the shared project virtual environment and dependencies through one action-based interface.",
+          },
+          {
+            kind: "log_search",
+            name: "Log Search",
+            description: "Search saved shell logs for relevant diagnostics and output.",
+          },
+          {
+            kind: "http_request",
+            name: "HTTP Request",
+            description: "Make bounded HTTP GET/POST requests to public endpoints.",
+          },
+        ];
+        const attachedToolIds = new Set(engineer.tool_ids ?? []);
+        for (const definition of requiredTools) {
+          let tool = allTools.find((item) => item.kind === definition.kind);
+          if (!tool) {
+            tool = await api.tools.create({
+              project_id: project.id,
+              name: definition.name,
+              description: definition.description,
+              kind: definition.kind,
+              input_schema: { type: "object" },
+            });
+            allTools = [...allTools, tool];
+          }
+          if (!attachedToolIds.has(tool.id)) {
+            await api.agents.attachTool(engineer.id, tool.id);
+            attachedToolIds.add(tool.id);
+          }
         }
-        if (!(engineer.tool_ids ?? []).includes(control.id)) {
-          await api.agents.attachTool(engineer.id, control.id);
-          engineer = { ...engineer, tool_ids: [...(engineer.tool_ids ?? []), control.id] };
-          allAgents = allAgents.map((agent) => agent.id === engineer!.id ? engineer! : agent);
-        }
+        engineer = { ...engineer, tool_ids: [...attachedToolIds] };
+        allAgents = allAgents.map((agent) => agent.id === engineer!.id ? engineer! : agent);
         if (cancelled) return;
         useStore.setState({ agents: allAgents, tools: allTools });
 
