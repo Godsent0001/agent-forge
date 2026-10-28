@@ -48,8 +48,6 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
         {fileUrl ? (
           <a
             href={fileUrl}
-            target="_blank"
-            rel="noreferrer"
             download={filename}
             className="text-accent-400 hover:text-accent-300 font-mono text-2xs hover:underline"
           >
