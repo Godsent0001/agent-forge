@@ -50,3 +50,40 @@ async def test_default_search_uses_ddgs_without_api_key(monkeypatch):
         "url": "https://example.com",
         "snippet": "Result",
     }]
+
+
+@pytest.mark.asyncio
+async def test_search_falls_back_to_keyless_html_backend_when_ddgs_fails(monkeypatch):
+    class BrokenDDGS:
+        def __init__(self, *, timeout: int):
+            raise RuntimeError("simulated DDGS connection failure")
+
+    fake_module = ModuleType("ddgs")
+    fake_module.DDGS = BrokenDDGS
+    monkeypatch.setitem(sys.modules, "ddgs", fake_module)
+    monkeypatch.delenv("CRAWL4AI_KEY", raising=False)
+
+    async def html_search(query: str) -> list[dict[str, str]]:
+        assert query == "power tank price"
+        return [{"title": "Example result", "url": "https://example.com/price", "snippet": "Listed price"}]
+
+    monkeypatch.setattr("app.tools.web_search._duckduckgo_html_search_backend", html_search)
+    results = await _ddgs_search_backend("power tank price")
+    assert results[0]["url"] == "https://example.com/price"
+
+
+def test_ddg_html_parser_extracts_external_result_links_and_snippets():
+    from app.tools.web_search import _parse_ddg_html_results
+
+    html = '''
+    <div class="result">
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fprice">Power tank <b>price</b></a>
+      <a class="result__snippet">Current listed price and availability.</a>
+    </div>
+    '''
+    results = _parse_ddg_html_results(html)
+    assert results == [{
+        "title": "Power tank price",
+        "url": "https://example.com/price",
+        "snippet": "Current listed price and availability.",
+    }]
