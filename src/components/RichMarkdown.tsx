@@ -41,12 +41,12 @@ function SequenceDiagram({ source }: { source: string }) {
   const messages: { from: string; to: string; label: string; dashed: boolean }[] = [];
   for (const line of lines) {
     if (/^sequenceDiagram\b/i.test(line)) continue;
-    const participant = /^(?:participant|actor)\s+([A-Za-z][\w-]*)(?:\s+as\s+(.+))?$/i.exec(line);
+    const participant = /^(?:participant|actor)\s+([A-Za-z][A-Za-z0-9_]*)(?:\s+as\s+(.+))?$/i.exec(line);
     if (participant) {
       names.set(participant[1], participant[2]?.trim() || participant[1]);
       continue;
     }
-    const message = /^([A-Za-z][\w-]*)\s*(-{1,2}|={1,2})(>>|>|x)\s*([A-Za-z][\w-]*)\s*:\s*(.+)$/.exec(line);
+    const message = /^([A-Za-z][A-Za-z0-9_]*)\s*(-{1,2}|={1,2})(>>|>|x)\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.+)$/.exec(line);
     if (message) {
       const from = message[1];
       const to = message[4];
