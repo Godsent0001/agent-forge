@@ -21,7 +21,8 @@ def build_runtime_capability_manifest(
     """Describe only the capabilities and workspace that are real for this run."""
     lines = [
         "AgentForge runtime self-awareness (current run)",
-        "- Execution uses the shared RunnerCore; the tools declared for this request are authoritative.",
+        "- Execution uses the shared RunnerCore for tool dispatch, approvals, cancellation, memory, artifacts, and events; do not assume a separate execution engine.",
+        "- Shell access is not the same as graphical desktop control. Claim GUI/computer-use ability only when a dedicated tool is declared for this run.",
         "- Select tools by task intent. Their live API schemas are supplied separately; follow those exact names, fields, and required arguments.",
         "- A tool omitted from this run's declarations is not available to this run. Do not invent tools, parameters, access, or completed actions.",
         f"- Persistent project workspace: {workspace_root}",
