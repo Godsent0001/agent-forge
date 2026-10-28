@@ -225,7 +225,7 @@ export function ProjectAttachmentsPanel({
           onClick={() => compact ? inputRef.current?.click() : setOpen((value) => !value)}
           aria-expanded={compact ? undefined : open}
           aria-controls={compact ? undefined : "project-attachments-panel"}
-          aria-label={compact ? "Attach files" : "Open project attachments"}
+          aria-label={compact ? "Attach files" : undefined}
           title={compact ? "Attach files" : "Project attachments"}
           disabled={disabled || uploading}
           className={compact
