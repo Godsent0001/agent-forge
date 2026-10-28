@@ -68,3 +68,26 @@ def test_runner_adds_attachment_manifest_and_safe_read_guidance():
     assert "read_attachment" in task
     assert "untrusted user-provided data" in task
     assert _with_attachment_context(task, [attachment]) == task
+
+
+@pytest.mark.asyncio
+async def test_reads_attached_python_source_as_text_without_executing_it(tmp_path: Path):
+    attachment_dir = tmp_path / "attachments"
+    attachment_dir.mkdir()
+    source = "def add(a, b):\\n    return a + b\\n"
+    (attachment_dir / "calculator.py").write_text(source, encoding="utf-8")
+    tool = ReadAttachmentTool()
+    ctx = SimpleNamespace(workspace=Workspace(tmp_path))
+
+    result = await tool.run(ReadAttachmentInput(path="attachments/calculator.py"), ctx)
+    assert "def add(a, b):" in result.content
+    assert "return a + b" in result.content
+
+
+def test_runner_marks_unscanned_attachments_as_untrusted():
+    attachment = AttachmentRef(
+        path="attachments/source.py", mime="text/x-python", name="source.py", scan_status="unscanned"
+    )
+    task = _with_attachment_context("Inspect this source", [attachment])
+    assert "scan_status=\\\"unscanned\\\"" in task
+    assert "do not execute or import it" in task
