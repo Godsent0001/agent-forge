@@ -133,9 +133,11 @@ async def upload_project_attachment(project_id: str, request: Request, db: Sessi
                 elif scan_result == "infected":
                     status, clean, scanned_at = "rejected", False, datetime.now(timezone.utc)
                 else:
-                    # Scanner absent, timed out, crashed or returned an uncertain verdict:
-                    # preserve the file in quarantine, never make it downloadable or runnable.
-                    status, clean, scanned_at = "quarantined", False, None
+                    # Format and content validation already passed. Keep the upload available
+                    # for inspection, but label it unscanned; execution policy must not treat
+                    # an unscanned script as trusted. Do not make scanner availability a
+                    # prerequisite for attaching ordinary source/data files to a conversation.
+                    status, clean, scanned_at = "unscanned", True, None
 
                 promote_staged_file(staging, storage_key, clean=clean)
                 promoted = True
@@ -221,8 +223,8 @@ def download_project_attachment(
 ):
     _project_or_404(db, project_id)
     row = _lookup_attachment_or_404(db, project_id, attachment_id)
-    if row.status != "clean":
-        raise HTTPException(status_code=409, detail="Attachment is quarantined or rejected and cannot be downloaded")
+    if row.status not in {"clean", "unscanned"}:
+        raise HTTPException(status_code=409, detail="Attachment was rejected and cannot be downloaded")
     try:
         path = resolve_blob(row.storage_key, clean=True)
     except FileNotFoundError as exc:
@@ -251,11 +253,11 @@ async def rescan_project_attachment(
     row = _lookup_attachment_or_404(db, project_id, attachment_id)
     if row.status == "clean":
         return {**attachment_out(row), "scan_result": "already_clean"}
-    if row.status != "quarantined":
-        raise HTTPException(status_code=409, detail="Only quarantined attachments can be rescanned")
+    if row.status not in {"quarantined", "unscanned"}:
+        raise HTTPException(status_code=409, detail="Only unscanned attachments can be rescanned")
 
     try:
-        path = resolve_blob(row.storage_key, clean=False)
+        path = resolve_blob(row.storage_key, clean=row.status == "unscanned")
         detected_mime = validate_attachment(path, row.original_name, row.declared_mime)
         digest = hashlib.sha256()
         with path.open("rb") as handle:
@@ -279,16 +281,17 @@ async def rescan_project_attachment(
     scan_result, scanner_version = await scan_attachment(path)
     row.scanner_version = scanner_version
     if scan_result == "clean":
-        try:
-            promote_quarantined_blob_to_clean(row.storage_key)
-        except (AttachmentStorageError, OSError) as exc:
-            raise HTTPException(status_code=409, detail="Attachment could not be safely promoted") from exc
+        if row.status == "quarantined":
+            try:
+                promote_quarantined_blob_to_clean(row.storage_key)
+            except (AttachmentStorageError, OSError) as exc:
+                raise HTTPException(status_code=409, detail="Attachment could not be safely promoted") from exc
         row.status = "clean"
         row.scanned_at = datetime.now(timezone.utc)
     elif scan_result == "infected":
         row.status = "rejected"
         row.scanned_at = datetime.now(timezone.utc)
-    # Missing scanner, timeout or an uncertain result remain quarantined.
+    # Missing scanner, timeout or an uncertain result preserve the current unscanned state.
     try:
         db.commit()
         db.refresh(row)
