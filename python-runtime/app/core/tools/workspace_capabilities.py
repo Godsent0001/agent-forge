@@ -70,7 +70,7 @@ class KnowledgeIngestTool(Tool):
     kind = "knowledge_ingest"
     default_description = (
         "Index a workspace file for later retrieval. Supports text, Markdown, code, HTML, JSON, CSV, "
-        "and optional PDF/DOCX extractors. This indexes extracted text; it does not modify the source."
+        "and PDF/DOCX extraction. This indexes extracted text; it does not modify the source."
     )
     Input = KnowledgeIngestInput
     permissions: set[Permission] = set()
