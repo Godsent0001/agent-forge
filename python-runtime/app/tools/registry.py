@@ -183,6 +183,7 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "video_transcript": VideoTranscriptTool,
     "clip_finder": ClipFinderTool,
     "clip_extractor": ClipExtractorTool,
+    "python": PythonProjectTool,
     "python_environment": PythonEnvironmentTool,
 }
 
