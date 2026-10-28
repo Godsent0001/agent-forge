@@ -227,6 +227,10 @@ def validate_attachment(path: Path, original_name: str, declared_mime: str | Non
         "binary/octet-stream": "",
     }
     claimed = mime_aliases.get(claimed, claimed)
+    # Browsers frequently label source/data files as text/plain even when the
+    # extension and validated content identify a more specific text MIME type.
+    if extension in {".txt", ".py", ".md", ".csv", ".json"} and claimed == "text/plain":
+        claimed = mime
     if claimed and claimed != mime:
         raise AttachmentStorageError("Declared MIME type does not match the detected file type")
     if expected_mime != mime:
