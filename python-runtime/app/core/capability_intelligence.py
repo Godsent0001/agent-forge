@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from app.core.llm.types import ToolSpec
 
-_MAX_MANIFEST_CHARS = 2400
+_MAX_MANIFEST_CHARS = 1800
 _MAX_DESCRIPTION_CHARS = 96
 
 
