@@ -39,7 +39,7 @@ function describeActiveStep(event: import("../types").ExecutionEvent): string {
   if (name.includes("web search")) return `Searching the web${suffix}`;
   if (name === "browser") return `Inspecting webpage${suffix}`;
   if (name === "file" || name.includes("workspace files")) {
-    const target = filePath ? filePath.split(/[\\\\/]/).pop() : "";
+    const target = filePath ? filePath.split(/[\\/]/).pop() : "";
     if (operation === "read") return `Inspecting file ${target || "contents"} for the current task`;
     if (operation === "write") return `Writing ${target || "a project file"}`;
     if (operation === "list") return "Checking project files";
