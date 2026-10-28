@@ -73,7 +73,7 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
     assert download.status_code == 200
     assert download.content == content
 
-def test_unavailable_scanner_quarantines_until_clean_rescan(client, db_session, monkeypatch, tmp_path):
+def test_unavailable_scanner_keeps_valid_attachment_available_for_inspection(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
     project = _project(db_session)
@@ -81,16 +81,47 @@ def test_unavailable_scanner_quarantines_until_clean_rescan(client, db_session, 
     response = _upload(client, project.id)
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "quarantined"
-    denied = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
-    assert denied.status_code == 409
+    assert attachment["status"] == "unscanned"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == b"Project brief"
+
+    agent = models.Agent(project_id=project.id, name="Upload agent")
+    db_session.add(agent)
+    db_session.commit()
+    captured = {}
+    monkeypatch.setattr(executions_v2.manager, "start", lambda req: captured.setdefault("req", req) or {})
+    start = client.post("/v2/executions", json={
+        "project_id": project.id,
+        "root_agent_id": agent.id,
+        "task": "Read the attached brief",
+        "attachment_ids": [attachment["id"]],
+    })
+    assert start.status_code == 200, start.text
+    assert captured["req"].attachments[0].scan_status == "unscanned"
+    run_file = data_dir() / "runs" / captured["req"].execution_id / captured["req"].attachments[0].path
+    assert run_file.read_bytes() == b"Project brief"
 
     monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     rescanned = client.post(f"/v2/projects/{project.id}/attachments/{attachment['id']}/scan")
     assert rescanned.status_code == 200, rescanned.text
     assert rescanned.json()["status"] == "clean"
     assert rescanned.json()["scan_result"] == "clean"
-    assert client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content").content == b"Project brief"
+
+
+def test_python_source_attachment_is_validated_and_available_for_inspection(client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
+    project = _project(db_session)
+    source = b"def add(a, b):\n    return a + b\n"
+    response = _upload(client, project.id, "calculator.py", source)
+    assert response.status_code == 201, response.text
+    attachment = response.json()
+    assert attachment["status"] == "unscanned"
+    assert attachment["mime"] == "text/x-python"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == source
 
 
 def test_infected_file_is_rejected_and_cannot_be_downloaded(client, db_session, monkeypatch, tmp_path):
