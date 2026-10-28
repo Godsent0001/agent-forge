@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Protocol
+from pathlib import Path
+from typing import Any, Literal, Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +36,17 @@ class KnowledgeIngestInput(BaseModel):
 class KnowledgeSearchInput(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     limit: int = Field(default=6, ge=1, le=20)
+
+
+class WorkspaceFilesInput(BaseModel):
+    action: Literal["list", "read", "write", "mkdir", "delete"] = Field(
+        description="Choose one file operation: list directory entries, read a text excerpt, create/write a text file, create a directory, or delete a single file."
+    )
+    path: str = Field(default=".", min_length=1, max_length=1000, description="Workspace-relative path. Absolute paths and paths escaping the workspace are rejected.")
+    content: str = Field(default="", max_length=1_000_000, description="UTF-8 content for action='write'.")
+    start_char: int = Field(default=0, ge=0, description="Character offset for continuing a long text read.")
+    max_chars: int = Field(default=12_000, ge=100, le=50_000, description="Maximum characters to return for a text read.")
+    overwrite: bool = Field(default=False, description="For write, explicitly set true to replace an existing file.")
 
 
 class ReplacementInput(BaseModel):
@@ -131,6 +144,121 @@ class KnowledgeSearchTool(Tool):
                 } for hit in hits
             ],
         }, ensure_ascii=False))
+
+
+class WorkspaceFilesTool(Tool):
+    """Predictable file operations scoped to the persistent run workspace."""
+
+    kind = "workspace_files"
+    default_description = (
+        "File operations for the persistent project workspace. Use action='list' to inspect a directory, "
+        "'read' for a bounded UTF-8 excerpt, 'write' to create or explicitly overwrite a text file, "
+        "'mkdir' to create a directory, and 'delete' to remove one file. Paths must be workspace-relative. "
+        "This tool operates on the same workspace used by shell and Python."
+    )
+    Input = WorkspaceFilesInput
+    permissions: set[Permission] = set()
+
+    def permissions_for(self, arguments: dict) -> set[Permission]:
+        return {"fs_write"} if arguments.get("action") in {"write", "mkdir", "delete"} else set()
+
+    def requires_approval(self, arguments: dict) -> bool:
+        return arguments.get("action") == "delete"
+
+    def approval_reason(self, arguments: dict) -> str:
+        return "Delete a file from the persistent project workspace."
+
+    async def run(self, args: WorkspaceFilesInput, ctx: ToolContext) -> ToolResult:
+        try:
+            target = ctx.workspace.resolve(args.path)
+            root = Path(ctx.workspace.root).resolve()
+            if not target.resolve(strict=False).is_relative_to(root):
+                raise ToolError("The requested path escapes the project workspace.")
+
+            if args.action == "list":
+                if not target.exists():
+                    raise ToolError(f"Directory does not exist: {args.path}")
+                if not target.is_dir():
+                    raise ToolError(f"Path is not a directory: {args.path}")
+                entries = []
+                for item in sorted(target.iterdir(), key=lambda entry: entry.name.casefold())[:200]:
+                    if item.is_symlink():
+                        item_type = "symlink"
+                    elif item.is_dir():
+                        item_type = "directory"
+                    elif item.is_file():
+                        item_type = "file"
+                    else:
+                        item_type = "other"
+                    entries.append({
+                        "name": item.name,
+                        "type": item_type,
+                        "size_bytes": item.stat().st_size if item.is_file() and not item.is_symlink() else None,
+                    })
+                return ToolResult(content=json.dumps({
+                    "path": ctx.workspace.relative(target),
+                    "entries": entries,
+                    "truncated": len(list(target.iterdir())) > 200,
+                }, ensure_ascii=False))
+
+            if args.action == "read":
+                if not target.is_file() or target.is_symlink():
+                    raise ToolError(f"Text file does not exist or is not a regular file: {args.path}")
+                try:
+                    text = target.read_text(encoding="utf-8-sig")
+                except UnicodeDecodeError as exc:
+                    raise ToolError("The file is not valid UTF-8 text; use Python or a format-specific parser.") from exc
+                if args.start_char >= len(text) and text:
+                    raise ToolError(f"start_char is beyond the end of the file ({len(text)} characters).")
+                excerpt = text[args.start_char:args.start_char + args.max_chars]
+                next_offset = args.start_char + len(excerpt)
+                has_more = next_offset < len(text)
+                return ToolResult(content=(
+                    f"Path: {ctx.workspace.relative(target)}\n"
+                    f"Characters: {len(text)}; excerpt starts at {args.start_char}\n"
+                    f"{excerpt}"
+                    + (f"\n[Truncated; continue with start_char={next_offset}.]" if has_more else "")
+                ), truncated=has_more, next_offset=next_offset if has_more else None)
+
+            if args.action == "mkdir":
+                target.mkdir(parents=True, exist_ok=True)
+                return ToolResult(content=json.dumps({"created": True, "path": ctx.workspace.relative(target)}))
+
+            if args.action == "write":
+                if target.exists() and not args.overwrite:
+                    raise ToolError("File already exists. Read it first and set overwrite=true only if replacement is intended.")
+                if target.is_symlink() or (target.exists() and not target.is_file()):
+                    raise ToolError("Writes are allowed only to regular files, not symlinks or directories.")
+                if not target.parent.is_dir():
+                    raise ToolError(f"Parent directory does not exist: {ctx.workspace.relative(target.parent)}. Create it with action='mkdir' first.")
+                temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+                try:
+                    with temporary.open("x", encoding="utf-8", newline="") as handle:
+                        handle.write(args.content)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    temporary.replace(target)
+                finally:
+                    if temporary.is_file() and not temporary.is_symlink():
+                        temporary.unlink()
+                return ToolResult(content=json.dumps({
+                    "written": True,
+                    "path": ctx.workspace.relative(target),
+                    "size_bytes": target.stat().st_size,
+                    "sha256": __import__("hashlib").sha256(target.read_bytes()).hexdigest(),
+                }))
+
+            if args.action == "delete":
+                if not target.is_file() or target.is_symlink():
+                    raise ToolError("Delete supports regular files only; directories and symlinks are not removed.")
+                target.unlink()
+                return ToolResult(content=json.dumps({"deleted": True, "path": ctx.workspace.relative(target)}))
+
+            raise ToolError(f"Unsupported file operation: {args.action}")
+        except ToolError:
+            raise
+        except (OSError, ValueError) as exc:
+            raise ToolError(f"Workspace file operation failed: {type(exc).__name__}: {exc}") from exc
 
 
 class WorkspaceEditTool(Tool):
