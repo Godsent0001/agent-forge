@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ProjectAttachmentsPanel } from "./ProjectAttachmentsPanel";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
@@ -104,7 +104,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [createAgentError, setCreateAgentError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const processedExecutionRef = useRef<string | null>(null);
   const conversationLoadRef = useRef(0);
   const conversationNavigationRef = useRef(0);
@@ -228,9 +228,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     };
   }, [activeConversationId, newConversationIds, conversationReloadKey, agent?.id, agent?.name, project?.id, setChatMessages]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [agentMessages, isProcessing, agent?.id]);
+  // Position the chat at its latest content before paint. Avoid smooth scrolling
+  // from the first message, which makes every newly opened conversation visibly loop.
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [agentMessages, isProcessing, activeConversationId, conversationLoading, agent?.id]);
 
   // Tasks queued elsewhere (Run workflow dialog) go through exactly the same path as typing in the composer,
   // so they appear in this agent's chat history and trace like any other message.
@@ -666,7 +669,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         </div>
       )}
 
-      <div role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+      <div ref={messagesContainerRef} role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {conversationLoading && (
           <p role="status" className="rounded-lg bg-studio-900 neu-raised-sm px-3 py-2 text-2xs text-studio-400">
             Loading saved conversation…
@@ -805,7 +808,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <span className="font-semibold">Something went wrong.</span> {chatError}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <ApprovalDialog executionId={activeExecutionId} events={activeExecutionEvents} />
