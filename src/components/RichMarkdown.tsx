@@ -35,6 +35,7 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
 }
 
 function SequenceDiagram({ source }: { source: string }) {
+  const arrowId = useId().replace(/:/g, "");
   const lines = source.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("%%"));
   const names = new Map<string, string>();
   const messages: { from: string; to: string; label: string; dashed: boolean }[] = [];
@@ -45,7 +46,7 @@ function SequenceDiagram({ source }: { source: string }) {
       names.set(participant[1], participant[2]?.trim() || participant[1]);
       continue;
     }
-    const message = /^([A-Za-z][\w-]*)\s*(-{1,2}|={1,2})?>?>?([+-]?>?)\s*([A-Za-z][\w-]*)\s*:\s*(.+)$/.exec(line);
+    const message = /^([A-Za-z][\w-]*)\s*(-{1,2}|={1,2})(>>|>|x)\s*([A-Za-z][\w-]*)\s*:\s*(.+)$/.exec(line);
     if (message) {
       const from = message[1];
       const to = message[4];
@@ -64,13 +65,13 @@ function SequenceDiagram({ source }: { source: string }) {
   return (
     <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid sequence diagram">
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
-        <defs><marker id="sequence-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
+        <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {participants.map((id) => <g key={id}><rect x={xFor(id) - 66} y="8" width="132" height="34" rx="7" fill="#202734" stroke="#64748b" /><text x={xFor(id)} y="29" textAnchor="middle" fontSize="11" fill="#f1f5f9">{names.get(id)}</text><line x1={xFor(id)} y1="42" x2={xFor(id)} y2={height - 10} stroke="currentColor" strokeOpacity=".35" strokeDasharray="4 4" /></g>)}
         {messages.map((message, index) => {
           const y = 70 + index * 58;
           const x1 = xFor(message.from);
           const x2 = xFor(message.to);
-          return <g key={index}><line x1={x1} y1={y} x2={x2} y2={y} stroke="currentColor" strokeWidth="1.4" strokeDasharray={message.dashed ? "5 4" : undefined} markerEnd="url(#sequence-arrow)" /><text x={(x1 + x2) / 2} y={y - 7} textAnchor="middle" fontSize="10" fill="currentColor">{message.label.slice(0, 42)}</text></g>;
+          return <g key={index}><line x1={x1} y1={y} x2={x2} y2={y} stroke="currentColor" strokeWidth="1.4" strokeDasharray={message.dashed ? "5 4" : undefined} markerEnd={"url(#" + arrowId + ")"} /><text x={(x1 + x2) / 2} y={y - 7} textAnchor="middle" fontSize="10" fill="currentColor">{message.label.slice(0, 42)}</text></g>;
         })}
       </svg>
       <p className="mt-1 text-[10px] text-studio-500">Mermaid sequence diagram · {participants.length} participants · {messages.length} messages</p>
