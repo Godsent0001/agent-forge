@@ -24,8 +24,8 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
     const edge = edgePattern.exec(line);
     if (edge) {
       addNode(edge[1]);
-      addNode(edge[4]);
-      edges.push({ from: edge[1].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[1], to: edge[4].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[4], label: edge[3]?.trim() || undefined });
+      addNode(edge[3]);
+      edges.push({ from: edge[1].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[1], to: edge[3].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[3], label: edge[2]?.trim() || undefined });
       continue;
     }
     const declaration = /^([A-Za-z][A-Za-z0-9_-]*(?:\\[[^\\]]*\\]|\\([^)]*\\)|\\{[^}]*\\})?)/.exec(line);
