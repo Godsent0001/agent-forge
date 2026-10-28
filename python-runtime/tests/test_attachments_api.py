@@ -90,7 +90,11 @@ def test_unavailable_scanner_keeps_valid_attachment_available_for_inspection(cli
     db_session.add(agent)
     db_session.commit()
     captured = {}
-    monkeypatch.setattr(executions_v2.manager, "start", lambda req: captured.setdefault("req", req) or {})
+    def capture(req):
+        captured["req"] = req
+        return {"id": req.execution_id, "status": "running"}
+
+    monkeypatch.setattr(executions_v2.manager, "start", capture)
     start = client.post("/v2/executions", json={
         "project_id": project.id,
         "root_agent_id": agent.id,
