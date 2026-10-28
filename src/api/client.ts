@@ -340,6 +340,11 @@ export const api = {
         `/v2/conversations/${encodeURIComponent(conversationId)}/messages`,
         { method: "POST", body: JSON.stringify(payload) },
       ),
+    editUserMessage: (messageId: string, content: string) =>
+      request<ConversationMessageRecord>(
+        `/v2/messages/${encodeURIComponent(messageId)}`,
+        { method: "PATCH", body: JSON.stringify({ content }) },
+      ),
     feedback: (messageId: string, value: -1 | 1, note?: string) =>
       request<{ ok: boolean; value: -1 | 1 }>(
         `/v2/messages/${encodeURIComponent(messageId)}/feedback`,
