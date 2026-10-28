@@ -20,6 +20,7 @@ from app.contracts.tools import (
     ToolResult,
 )
 from app.core.budget import BudgetExceededError, BudgetTracker
+from app.core.capability_intelligence import build_runtime_capability_manifest
 from app.core.durable_scheduler import SQLiteTaskPlanStore
 from app.core.embeddings import embed_text
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
@@ -387,6 +388,11 @@ class RunnerCore:
                     name: instance for name, instance in tool_instances.items()
                     if name in allowed_tool_names
                 }
+                # The manifest is generated from the actual tools for this run. Full
+                # JSON schemas are already supplied by the tool-calling API, so keep
+                # this additional self-awareness context compact and non-duplicative.
+                runtime_manifest = build_runtime_capability_manifest(native_tool_specs, str(workspace.root))
+                messages[0]["content"] += "\\n\\n<runtime_capabilities>\\n" + runtime_manifest + "\\n</runtime_capabilities>"
                 if requested_tool and requested_tool.startswith("missing capability:"):
                     missing_capabilities = requested_tool.removeprefix("missing capability:").strip()
                     messages[0]["content"] += (
