@@ -61,6 +61,7 @@ from app.tools.log_search import LogSearchTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_environment import PythonEnvironmentTool
 from app.tools.python_exec import PythonExecTool
+from app.tools.python_project import PythonProjectTool
 from app.tools.qc import (
     AudioQCTool,
     AutomatedPreviewQCTool,
