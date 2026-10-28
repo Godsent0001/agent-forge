@@ -44,7 +44,24 @@ def build_runtime_capability_manifest(
 
     # Keep every actual tool name visible, trimming descriptive prose before
     # dropping any capabilities. Full schemas remain available to the model.
-    compact_lines = lines[:5]
+    compact_header = [
+        line for line in lines
+        if line.startswith((
+            "AgentForge runtime self-awareness",
+            "- Execution uses",
+            "- Shell access",
+            "- Architecture map:",
+            "- Select tools",
+            "- A tool omitted",
+            "- Persistent project workspace:",
+        ))
+    ]
+    compact_lines = compact_header.copy()
+    if tools:
+        compact_lines.append("- Tools available in this run:")
+        compact_lines.extend(f"  - {tool.name[:80]}" for tool in tools)
+    else:
+        compact_lines.append("- No tool calls are available in this run.")
     if tools:
         compact_lines.append("- Tools available in this run:")
         compact_lines.extend(f"  - {tool.name}" for tool in tools)
@@ -57,7 +74,7 @@ def build_runtime_capability_manifest(
     # Extremely large custom-tool catalogs still stay bounded; preserve all names
     # when possible and make the omission explicit rather than implying completeness.
     names = [tool.name for tool in tools]
-    prefix = "\n".join(lines[:5] + ["- Available tool names:"])
+    prefix = "\\n".join(compact_header + ["- Available tool names:"])
     budget = max(0, _MAX_MANIFEST_CHARS - len(prefix) - 32)
     selected: list[str] = []
     used = 0
