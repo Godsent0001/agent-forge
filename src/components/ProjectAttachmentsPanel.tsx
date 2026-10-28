@@ -6,7 +6,7 @@ import { Icon } from "./ui/Icon";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_RUN_BYTES = 100 * 1024 * 1024;
 const MAX_RUN_FILES = 20;
-const ACCEPTED_EXTENSIONS = ".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.wav,.mp3,.mp4,.webm";
+const ACCEPTED_EXTENSIONS = ".txt,.py,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.wav,.mp3,.mp4,.webm";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -16,6 +16,7 @@ function formatBytes(bytes: number): string {
 
 function statusLabel(status: ProjectAttachment["status"]): string {
   if (status === "clean") return "Scanned · ready";
+  if (status === "unscanned") return "Unscanned · inspection allowed";
   if (status === "rejected") return "Rejected";
   return "Quarantined · scan required";
 }
@@ -75,14 +76,14 @@ export function ProjectAttachmentsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  const selected = items.filter((item) => selectedIds.includes(item.id) && item.status === "clean");
+  const selected = items.filter((item) => selectedIds.includes(item.id) && (item.status === "clean" || item.status === "unscanned"));
   const selectedBytes = selected.reduce((total, item) => total + item.size_bytes, 0);
 
   const toggleSelection = (item: ProjectAttachment, checked: boolean) => {
     setError(null);
     setNotice(null);
     if (checked) {
-      if (item.status !== "clean") return;
+      if (item.status !== "clean" && item.status !== "unscanned") return;
       if (selectedIds.length >= MAX_RUN_FILES) {
         setError(`A run can include at most ${MAX_RUN_FILES} files.`);
         return;
@@ -119,7 +120,7 @@ export function ProjectAttachmentsPanel({
         }
         const item = await api.attachments.upload(projectId, file);
         setItems((current) => [item, ...current.filter((old) => old.id !== item.id)]);
-        if (item.status === "clean") {
+        if (item.status === "clean" || item.status === "unscanned") {
           if (autoSelectedFiles < MAX_RUN_FILES && autoSelectedBytes + item.size_bytes <= MAX_RUN_BYTES) {
             autoSelectedIds.push(item.id);
             autoSelectedFiles += 1;
@@ -129,13 +130,13 @@ export function ProjectAttachmentsPanel({
             setNotice(`${item.name} passed scanning, but was not auto-selected because the run attachment limit would be exceeded.`);
           }
         } else {
-          setNotice(`${item.name} was uploaded but remains ${item.status}. Only clean-scanned files can be attached to a run.`);
+          setNotice(`${item.name} was not attached because its status is ${item.status}.`);
         }
         uploaded += 1;
       }
       if (autoSelectedIds.length > 0) {
         onSelectedIdsChange((current) => [...current, ...autoSelectedIds.filter((id) => !current.includes(id))]);
-        setNotice(`${autoSelectedCount} clean file${autoSelectedCount === 1 ? "" : "s"} scanned and auto-selected for the next run. Automatic reading currently supports TXT, MD, CSV, and JSON; PDF, image, audio, and video uploads still need a dedicated processing tool.`);
+        setNotice(`${autoSelectedCount} file${autoSelectedCount === 1 ? "" : "s"} uploaded and selected for the next run. TXT, Python source, MD, CSV, and JSON can be read directly; other formats require a dedicated parser or multimodal tool.`);
       }
       await refresh();
       if (uploaded > 0 && autoSelectedIds.length === 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
@@ -160,7 +161,7 @@ export function ProjectAttachmentsPanel({
         onSelectedIdsChange(selectedIds.filter((id) => id !== item.id));
         setNotice(`${item.name} was rejected by validation or scanning.`);
       } else {
-        setNotice("The scanner is unavailable or returned an uncertain result. The file remains quarantined.");
+        setNotice("The scanner is unavailable or returned an uncertain result. The file remains marked unscanned and can be inspected, but must not be treated as trusted code.");
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not rescan this attachment.");
@@ -230,7 +231,7 @@ export function ProjectAttachmentsPanel({
             <div>
               <h4 className="text-sm font-semibold text-studio-100">Project files</h4>
               <p className="mt-1 max-w-xl text-2xs leading-5 text-studio-400">
-                Uploads stay quarantined until the scanner reports clean. Only scanned files can be downloaded or attached to a run.
+                Valid uploads can be inspected even when antivirus is unavailable. Unscanned files remain marked as untrusted; rejected files cannot be attached.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -269,7 +270,7 @@ export function ProjectAttachmentsPanel({
 
           <ul className="mt-2 divide-y divide-line">
             {items.map((item) => {
-              const checked = selectedIds.includes(item.id) && item.status === "clean";
+              const checked = selectedIds.includes(item.id) && (item.status === "clean" || item.status === "unscanned");
               const busy = uploading || busyId === item.id || disabled;
               return (
                 <li key={item.id} className="flex flex-wrap items-center gap-3 py-3">
@@ -277,7 +278,7 @@ export function ProjectAttachmentsPanel({
                     type="checkbox"
                     aria-label={`Attach ${item.name} to the next run`}
                     checked={checked}
-                    disabled={busy || item.status !== "clean"}
+                    disabled={busy || (item.status !== "clean" && item.status !== "unscanned")}
                     onChange={(event) => toggleSelection(item, event.currentTarget.checked)}
                     className="h-4 w-4 accent-accent-500 disabled:opacity-40"
                   />
@@ -292,12 +293,12 @@ export function ProjectAttachmentsPanel({
                     {statusLabel(item.status)}
                   </span>
                   <div className="flex items-center gap-1">
-                    {item.status === "clean" && (
+                    {(item.status === "clean" || item.status === "unscanned") && (
                       <button type="button" aria-label={`Download ${item.name}`} onClick={() => void download(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
                         <Icon name="download" size={13} />
                       </button>
                     )}
-                    {item.status === "quarantined" && (
+                    {(item.status === "quarantined" || item.status === "unscanned") && (
                       <button type="button" aria-label={`Rescan ${item.name}`} onClick={() => void rescan(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
                         <Icon name="shield-check" size={13} />
                       </button>
