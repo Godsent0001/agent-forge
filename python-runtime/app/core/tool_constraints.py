@@ -72,7 +72,7 @@ def _normalize_alias(alias: str) -> str:
         "",
         alias.strip(),
         flags=re.IGNORECASE,
-    ).strip()
+    ).strip().casefold()
 
 
 def constrain_tools_for_task(
