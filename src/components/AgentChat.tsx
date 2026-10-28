@@ -31,15 +31,23 @@ function describeActiveStep(event: import("../types").ExecutionEvent): string {
   } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
     args = rawArgs as Record<string, unknown>;
   }
-  const detail = (["query", "url", "path", "file_path", "operation", "action"] as const)
-    .map((key) => args[key])
-    .find((value) => typeof value === "string" && value.trim());
+  const operation = [args.operation, args.action].find((value) => typeof value === "string") as string | undefined;
+  const filePath = [args.path, args.file_path].find((value) => typeof value === "string") as string | undefined;
+  const detail = [args.query, args.url, filePath, operation].find((value) => typeof value === "string" && value.trim());
   const suffix = typeof detail === "string" ? ` · ${detail.length > 64 ? detail.slice(0, 61) + "…" : detail}` : "";
   const name = rawName.toLowerCase();
   if (name.includes("web search")) return `Searching the web${suffix}`;
   if (name === "browser") return `Inspecting webpage${suffix}`;
-  if (name === "file" || name.includes("workspace files")) return `Working with project files${suffix}`;
-  if (name === "python") return `Running Python work${suffix}`;
+  if (name === "file" || name.includes("workspace files")) {
+    const target = filePath ? filePath.split(/[\\\\/]/).pop() : "";
+    if (operation === "read") return `Inspecting file ${target || "contents"} for the current task`;
+    if (operation === "write") return `Writing ${target || "a project file"}`;
+    if (operation === "list") return "Checking project files";
+    if (operation === "mkdir") return `Creating project directory ${target || ""}`.trim();
+    if (operation === "delete") return `Removing project file ${target || ""}`.trim();
+    return `Working with project files${suffix}`;
+  }
+  if (name === "python") return operation === "install" ? "Installing Python dependencies" : operation === "ensure" ? "Preparing the Python environment" : operation === "list" ? "Checking installed Python packages" : "Running Python work";
   if (name.includes("knowledge ingest")) return `Indexing document for retrieval${suffix}`;
   if (name.includes("knowledge search")) return `Searching indexed project knowledge${suffix}`;
   if (name.includes("shell") || name.includes("cmd")) return "Running a shell command";
@@ -298,7 +306,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       if (event.type === "span_started" && event.span_id) open.set(event.span_id, event);
       else if (event.type === "span_ended" && event.span_id) open.delete(event.span_id);
     }
-    const latest = [...open.values()].at(-1);
+    const openSpans = [...open.values()];
+    const latest = openSpans[openSpans.length - 1];
     return latest ? describeActiveStep(latest) : null;
   })();
 
