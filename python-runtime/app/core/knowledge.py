@@ -250,7 +250,13 @@ class KnowledgeIndex:
             # Same name and digest is idempotent; changed content replaces the indexed revision.
             old = db.execute("SELECT source_id FROM knowledge_sources WHERE name=? AND sha256=?", (document.name, document.sha256)).fetchone()
             if old:
-                return db.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE source_id=?", (old["source_id"],)).fetchone()[0]
+                existing = db.execute(
+                    "SELECT COUNT(*) AS total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded "
+                    "FROM knowledge_chunks WHERE source_id=?",
+                    (old["source_id"],),
+                ).fetchone()
+                self.last_ingest_embedded = bool(existing["total"]) and existing["embedded"] == existing["total"]
+                return existing["total"]
             old_rows = db.execute("SELECT source_id FROM knowledge_sources WHERE name=?", (document.name,)).fetchall()
             for old_row in old_rows:
                 db.execute("DELETE FROM knowledge_chunks WHERE source_id=?", (old_row["source_id"],))
