@@ -24,10 +24,8 @@ export function buildRunHistory(
       content: message.text,
     }));
 
-  // The active task is sent separately. Drop trailing unanswered user messages
-  // left by interrupted/crashed runs so they cannot override the next request.
-  while (history.length && history[history.length - 1].role !== "assistant") {
-    history.pop();
-  }
+  // The active task is sent separately. Preserve unanswered user messages too:
+  // the caller may need them for explicit transcript questions, and the system prompt
+  // makes the new task authoritative so old requests cannot silently take over.
   return history.slice(-Math.floor(limit));
 }
