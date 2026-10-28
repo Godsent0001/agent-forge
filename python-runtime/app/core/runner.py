@@ -767,12 +767,23 @@ class RunnerCore:
             if tc.arguments_error:
                 return f"ERROR: invalid arguments for '{tc.name}': {tc.arguments_error}"
 
-            needed_perms = getattr(tool_obj, "permissions", set())
+            permission_resolver = getattr(tool_obj, "permissions_for", None)
+            needed_perms = (
+                permission_resolver(tc.arguments)
+                if callable(permission_resolver)
+                else getattr(tool_obj, "permissions", set())
+            )
+            approval_resolver = getattr(tool_obj, "requires_approval", None)
+            force_approval = bool(approval_resolver(tc.arguments)) if callable(approval_resolver) else False
+            reason_resolver = getattr(tool_obj, "approval_reason", None)
+            approval_reason = reason_resolver(tc.arguments) if callable(reason_resolver) else ""
             allowed = await approvals.check(
                 tool=tc.name,
                 permissions=needed_perms,
                 args_preview=json.dumps(tc.arguments)[:500],
                 span_id=tool_span_id,
+                force=force_approval,
+                reason=approval_reason,
             )
             if not allowed:
                 return "ERROR: the user denied this action"
