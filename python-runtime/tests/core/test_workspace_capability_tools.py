@@ -10,8 +10,8 @@ from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
     WorkspaceCapabilityToolFactory,
-    WorkspaceFilesTool,
     WorkspaceEditTool,
+    WorkspaceFilesTool,
 )
 
 
