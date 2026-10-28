@@ -318,7 +318,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
   const activeTaskGoal = latestUserTask?.text
-    ? latestUserTask.text.replace(/\\s+/g, " ").trim().slice(0, 110)
+    ? latestUserTask.text.replace(/\s+/g, " ").trim().slice(0, 110)
     : null;
   const activeProgressBrief = (() => {
     const open = new Map<string, import("../types").ExecutionEvent>();
