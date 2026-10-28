@@ -883,10 +883,10 @@ class RunnerCore:
             (kind, tool_cls) for kind, tool_cls in builtin_knowledge
             if kind not in existing_kinds
         ]
-        raw_names.extend(kind for kind, _ in available_knowledge)
         available_workspace_files = "workspace_files" not in existing_kinds
         if available_workspace_files:
             raw_names.append("file")
+        raw_names.extend(kind for kind, _ in available_knowledge)
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
