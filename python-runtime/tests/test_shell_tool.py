@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import os\nfrom types import SimpleNamespace
+import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,7 +46,6 @@ async def test_shell_does_not_pass_provider_keys_to_child_process(tmp_path, monk
     )
 
     assert "must-not-leak" not in result
-
 
 
 def test_shell_prefers_project_virtual_environment(tmp_path, monkeypatch):
