@@ -85,3 +85,6 @@ def test_runner_collapses_legacy_python_bindings_into_one_model_tool():
     assert len(python_specs) == 1
     assert isinstance(instances["python"], PythonProjectTool)
     assert {"action", "code", "packages"} <= set(python_specs[0].parameters["properties"])
+    assert "file" in instances
+    assert "knowledge_search" in instances
+    assert "knowledge_ingest" in instances
