@@ -309,6 +309,7 @@ class WorkspaceCapabilityToolFactory:
         "knowledge_ingest": KnowledgeIngestTool,
         "knowledge_search": KnowledgeSearchTool,
         "workspace_edit": WorkspaceEditTool,
+        "workspace_files": WorkspaceFilesTool,
     }
 
     def __init__(self, delegate: ToolFactoryLike):
