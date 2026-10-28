@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from app.contracts.tools import (
     ToolError,
     ToolResult,
 )
+from app.core.embeddings import DEFAULT_EMBEDDING_MODEL, embed_many, embed_text
 from app.core.knowledge import KnowledgeIndex, extract_document
 from app.core.safe_editing import (
     EditConflict,
@@ -71,11 +73,17 @@ class KnowledgeIngestTool(Tool):
                 path.name, path.read_bytes(), media_type=args.media_type,
                 metadata={"workspace_path": ctx.workspace.relative(path), "execution_id": ctx.execution_id},
             )
-            count = _index(ctx).ingest(document)
+            index = _index(ctx)
+            model_id = os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+            count = index.ingest(
+                document,
+                embedding_fn=lambda texts: embed_many(texts, model_id),
+            )
             return ToolResult(content=json.dumps({
                 "source_id": document.source_id, "name": document.name, "sha256": document.sha256,
                 "characters": len(document.text), "chunks_indexed": count,
                 "index_scope": "project",
+                "retrieval_mode": "hybrid_vector_lexical" if index.last_ingest_embedded else "lexical_fallback",
             }, ensure_ascii=False), artifacts=[
                 ArtifactRef(path=args.path, mime=document.media_type, description="Indexed knowledge source")
             ])
@@ -95,15 +103,34 @@ class KnowledgeSearchTool(Tool):
     permissions: set[Permission] = set()
 
     async def run(self, args: KnowledgeSearchInput, ctx: ToolContext) -> ToolResult:
-        hits = _index(ctx).search(args.query, limit=args.limit)
-        return ToolResult(content=json.dumps([
-            {
-                "source": hit.chunk.source_name, "source_id": hit.chunk.source_id,
-                "chunk_id": hit.chunk.chunk_id, "score": round(hit.score, 5),
-                "start_char": hit.chunk.start_char, "end_char": hit.chunk.end_char,
-                "text": hit.chunk.text,
-            } for hit in hits
-        ], ensure_ascii=False))
+        index = _index(ctx)
+        model_id = os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+        query_embedding = None
+        try:
+            query_embedding = embed_text(args.query, model_id)
+        except Exception:
+            # A missing model/provider must not make the knowledge index unusable.
+            # The response below identifies lexical fallback rather than implying vectors ran.
+            query_embedding = None
+        hits = index.search(args.query, limit=args.limit, query_embedding=query_embedding)
+        retrieval_mode = (
+            "hybrid_vector_lexical"
+            if query_embedding and any(hit.semantic_score > 0 for hit in hits)
+            else "lexical_fallback"
+        )
+        return ToolResult(content=json.dumps({
+            "retrieval_mode": retrieval_mode,
+            "results": [
+                {
+                    "source": hit.chunk.source_name, "source_id": hit.chunk.source_id,
+                    "chunk_id": hit.chunk.chunk_id, "score": round(hit.score, 5),
+                    "lexical_score": round(hit.lexical_score, 5),
+                    "semantic_score": round(hit.semantic_score, 5),
+                    "start_char": hit.chunk.start_char, "end_char": hit.chunk.end_char,
+                    "text": hit.chunk.text,
+                } for hit in hits
+            ],
+        }, ensure_ascii=False))
 
 
 class WorkspaceEditTool(Tool):
