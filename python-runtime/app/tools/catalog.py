@@ -78,6 +78,12 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry("file_system", "File Operations", "general",
                  "Read, write, or list files within the current run workspace.",
                  "real", pack=None),
+    CatalogEntry("knowledge_search", "Project Knowledge Search", "general",
+                 "Search indexed project documents using hybrid lexical and semantic retrieval when embeddings are available.",
+                 "real", pack=None),
+    CatalogEntry("knowledge_ingest", "Project Knowledge Indexing", "general",
+                 "Extract and index workspace documents for later project-wide retrieval; reports when it must fall back to lexical search.",
+                 "real", pack=None),
 
     # --- Audio ---------------------------------------------------------
     CatalogEntry("voice_generator", "Voice Generator", "audio",
