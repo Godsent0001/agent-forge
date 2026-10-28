@@ -99,3 +99,24 @@ def test_forbidden_tool_is_removed_without_restricting_other_capabilities():
 
     assert requested is None
     assert [tool.name for tool in selected] == ["database_query"]
+
+
+def test_exact_python_tool_request_does_not_also_select_python_environment():
+    tools = [
+        _tool("python", "Execute Python code snippets."),
+        _tool("python_environment", "Create virtual environments and install Python packages."),
+    ]
+    selected, requested = constrain_tools_for_task("Use the Python tool to inspect this source.", tools)
+    assert requested == "python"
+    assert [tool.name for tool in selected] == ["python"]
+
+
+def test_forbidding_python_does_not_accidentally_forbid_python_environment():
+    tools = [
+        _tool("python", "Execute Python code snippets."),
+        _tool("python_environment", "Create virtual environments and install Python packages."),
+        _tool("shell", "Run a CMD or PowerShell command."),
+    ]
+    selected, requested = constrain_tools_for_task("Do not use the Python tool.", tools)
+    assert requested is None
+    assert [tool.name for tool in selected] == ["python_environment", "shell"]
