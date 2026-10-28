@@ -35,14 +35,14 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
 }
 
 function MermaidDiagram({ source }: { source: string }) {
-  if (/^\\s*xychart-beta\\b/i.test(source)) {
-    const labelsMatch = source.match(/x-axis\\s+(?:\"[^\"]*\"\\s*)?\\[([^\\]]+)\\]/i);
-    const valuesMatch = source.match(/(?:bar|line)\\s*\\[([^\\]]+)\\]/i);
-    const labels = labelsMatch ? labelsMatch[1].split(",").map((value) => value.trim().replace(/^\"|\"$/g, "")) : [];
+  if (/^\s*xychart-beta\b/i.test(source)) {
+    const labelsMatch = source.match(/x-axis\s+(?:"[^"]*"\s*)?\[([^\]]+)\]/i);
+    const valuesMatch = source.match(/(?:bar|line)\s*\[([^\]]+)\]/i);
+    const labels = labelsMatch ? labelsMatch[1].split(",").map((value) => value.trim().replace(/^"|"$/g, "")) : [];
     const values = valuesMatch ? valuesMatch[1].split(",").map((value) => Number(value.trim())) : [];
-    const titleMatch = source.match(/title\\s+\"([^\"]+)\"/i);
+    const titleMatch = source.match(/title\s+"([^"]+)"/i);
     if (labels.length && labels.length === values.length && values.every(Number.isFinite)) {
-      return <DataChart source={JSON.stringify({ title: titleMatch?.[1] ?? "Chart", labels, values, type: /^\\s*line\\b/im.test(source) ? "line" : "bar" })} />;
+      return <DataChart source={JSON.stringify({ title: titleMatch?.[1] ?? "Chart", labels, values, type: /^\s*line\b/im.test(source) ? "line" : "bar" })} />;
     }
   }
   const { nodes, edges, direction } = mermaidParts(source);
