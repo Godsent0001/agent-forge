@@ -392,7 +392,7 @@ class RunnerCore:
                 # JSON schemas are already supplied by the tool-calling API, so keep
                 # this additional self-awareness context compact and non-duplicative.
                 runtime_manifest = build_runtime_capability_manifest(native_tool_specs, str(workspace.root))
-                messages[0]["content"] += "\\n\\n<runtime_capabilities>\\n" + runtime_manifest + "\\n</runtime_capabilities>"
+                messages[0]["content"] += "\n\n<runtime_capabilities>\n" + runtime_manifest + "\n</runtime_capabilities>"
                 if requested_tool and requested_tool.startswith("missing capability:"):
                     missing_capabilities = requested_tool.removeprefix("missing capability:").strip()
                     messages[0]["content"] += (
