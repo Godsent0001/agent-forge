@@ -22,6 +22,7 @@ MAX_RUN_ATTACHMENT_BYTES = 100 * 1024 * 1024
 CHUNK_BYTES = 1024 * 1024
 ALLOWED_MIME_BY_EXTENSION: dict[str, str] = {
     ".txt": "text/plain",
+    ".py": "text/x-python",
     ".md": "text/markdown",
     ".csv": "text/csv",
     ".json": "application/json",
@@ -174,7 +175,7 @@ def validate_attachment(path: Path, original_name: str, declared_mime: str | Non
     if len(data) != size:
         raise AttachmentStorageError("Uploaded file was truncated while validating")
 
-    if extension in {".txt", ".md", ".csv", ".json"}:
+    if extension in {".txt", ".py", ".md", ".csv", ".json"}:
         _assert_safe_text(data, extension)
         mime = expected_mime
     elif extension == ".pdf":
@@ -405,8 +406,12 @@ def content_disposition(filename: str) -> str:
 
 
 def copy_clean_attachment_to_workspace(attachment, workspace) -> str:
-    """Verify blob integrity and copy it to a new, run-private workspace-relative path."""
-    source = resolve_blob(attachment.storage_key, clean=True)
+    """Verify blob integrity and copy a usable attachment to a run-private workspace path.
+
+    Unscanned attachments may be copied for inspection, but the caller must keep their
+    scan status visible so code is not treated as trusted merely because it was uploaded.
+    """
+    source = resolve_blob(attachment.storage_key, clean=attachment.status in {"clean", "unscanned"})
     if source.stat().st_size != attachment.size_bytes:
         raise AttachmentStorageError("Stored attachment size changed after scanning")
     extension = PurePosixPath(attachment.original_name.replace("\\\\", "/")).suffix.lower()
