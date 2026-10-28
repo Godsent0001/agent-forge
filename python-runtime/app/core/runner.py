@@ -42,7 +42,6 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
-from app.tools.python_project import PythonProjectTool
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
@@ -50,6 +49,7 @@ from app.core.tools.workspace_capabilities import (
     WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
+from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
 logger = logging.getLogger(__name__)
