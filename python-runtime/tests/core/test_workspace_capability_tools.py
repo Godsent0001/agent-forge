@@ -78,3 +78,25 @@ async def test_workspace_edit_tool_uses_expected_hash(tmp_path):
         replacements=[{"expected_text": "two", "replacement_text": "TWO"}],
     ), ctx)
     assert result.ok and target.read_text(encoding="utf-8") == "one\nTWO\n"
+
+
+
+def test_knowledge_index_persists_and_uses_chunk_embeddings(tmp_path):
+    from app.core.knowledge import KnowledgeIndex, extract_document
+
+    index_path = tmp_path / "knowledge.sqlite3"
+    index = KnowledgeIndex(index_path)
+    document = extract_document(
+        "orbit.md",
+        b"An orbital vehicle circles a planet and transmits telemetry to a ground station.",
+    )
+    count = index.ingest(document, embedding_fn=lambda texts: [[1.0, 0.0] for _ in texts])
+    assert count == 1
+    assert index.last_ingest_embedded is True
+
+    # A fresh index instance proves vectors were persisted rather than held only in memory.
+    reopened = KnowledgeIndex(index_path)
+    hits = reopened.search("celestial object", query_embedding=[1.0, 0.0], limit=3)
+    assert hits
+    assert hits[0].chunk.source_name == "orbit.md"
+    assert hits[0].semantic_score > 0
