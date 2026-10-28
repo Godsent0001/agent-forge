@@ -55,6 +55,17 @@ def _matches_alias(alias: str, tool: ToolSpec) -> bool:
     return bool(requested) and requested.issubset(_tool_terms(tool))
 
 
+def _tools_matching_alias(alias: str, tools: list[ToolSpec]) -> list[ToolSpec]:
+    """Resolve exact canonical names before falling back to descriptive token matches."""
+    matches = [tool for tool in tools if _matches_alias(alias, tool)]
+    normalized_alias = " ".join(alias.casefold().replace("_", " ").replace("-", " ").split())
+    exact = [
+        tool for tool in matches
+        if " ".join(tool.name.casefold().replace("_", " ").replace("-", " ").split()) == normalized_alias
+    ]
+    return exact or matches
+
+
 def _normalize_alias(alias: str) -> str:
     return re.sub(
         r"^(?:(?:the|a|an|my|your|its|our|their|it)\s+)+",
@@ -95,28 +106,19 @@ def constrain_tools_for_task(
         matched_tools: dict[str, ToolSpec] = {}
         missing_aliases: list[str] = []
         for alias in required_aliases:
-            matches = [tool for tool in tools if _matches_alias(alias, tool)]
-            # Prefer an exact canonical tool name when one exists. Without this,
-            # asking for "python" also matches "python_environment" because the
-            # token matcher sees only the shared word and exposes both interfaces.
-            normalized_alias = " ".join(alias.casefold().replace("_", " ").replace("-", " ").split())
-            exact_matches = [
-                tool for tool in matches
-                if " ".join(tool.name.casefold().replace("_", " ").replace("-", " ").split()) == normalized_alias
-            ]
-            if exact_matches:
-                matches = exact_matches
+            matches = _tools_matching_alias(alias, tools)
             if not matches:
                 missing_aliases.append(alias)
                 continue
             for tool in matches:
                 matched_tools[tool.name] = tool
 
-        allowed = [
-            tool
-            for tool in matched_tools.values()
-            if not any(_matches_alias(alias, tool) for alias in forbidden_aliases)
-        ]
+        forbidden_names = {
+            tool.name
+            for alias in forbidden_aliases
+            for tool in _tools_matching_alias(alias, tools)
+        }
+        allowed = [tool for tool in matched_tools.values() if tool.name not in forbidden_names]
         if missing_aliases:
             # Continue with explicitly requested capabilities that are available;
             # report missing capabilities rather than silently substituting tools.
@@ -126,9 +128,10 @@ def constrain_tools_for_task(
         return allowed, ", ".join(required_aliases)
 
     if forbidden_aliases:
-        tools = [
-            tool
-            for tool in tools
-            if not any(_matches_alias(alias, tool) for alias in forbidden_aliases)
-        ]
+        forbidden_names = {
+            tool.name
+            for alias in forbidden_aliases
+            for tool in _tools_matching_alias(alias, tools)
+        }
+        tools = [tool for tool in tools if tool.name not in forbidden_names]
     return tools, None
