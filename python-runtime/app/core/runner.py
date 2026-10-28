@@ -11,7 +11,7 @@ from uuid import uuid4
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec
 from app.contracts.memory import IntentStore, LessonStore, MemoryStore, RunHistory
-from app.contracts.naming import dedupe_names, sanitize_tool_name
+from app.contracts.naming import canonical_tool_names, sanitize_tool_name
 from app.contracts.run import RunRequest, RunResult
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
 from app.contracts.tools import (
@@ -897,7 +897,9 @@ class RunnerCore:
         if intents:
             raw_names.extend(["intent_create", "intent_list", "intent_cancel"])
 
-        deduped = dedupe_names(raw_names)
+        # Display names may contain spaces/case/punctuation; provider function names must
+        # be normalized before both schema creation and dispatch-key assignment.
+        deduped = canonical_tool_names(raw_names)
         idx = 0
 
         for tb in effective_tools:
