@@ -962,7 +962,28 @@ class RunnerCore:
                 if (getattr(m, "role", None) or m.get("role")) == "user"
             ]
 
-            llm_fn = self.fake_llm.complete if self.fake_llm else None
+            if self.fake_llm:
+                llm_fn = self.fake_llm.complete
+            else:
+                async def llm_fn(messages: list[dict[str, str]]):
+                    # Memory extraction is a small, separate production completion. It
+                    # must use the configured provider/model rather than silently disabling
+                    # persistence when no FakeLLM is injected.
+                    budget.check_limits()
+                    params = root_spec.params.model_copy(update={"max_tokens": 512, "temperature": 0})
+                    turn = await adapter_complete(
+                        messages=messages,
+                        params=params,
+                        model=litellm_model(root_spec.provider, root_spec.model),
+                    )
+                    budget.record_llm_call(
+                        input_tokens=turn.usage.input_tokens,
+                        output_tokens=turn.usage.output_tokens,
+                        cache_read_tokens=turn.usage.cache_read_tokens,
+                        cost_usd=turn.cost_usd,
+                    )
+                    return turn
+
             await extract_and_store_memories(
                 spec=root_spec,
                 user_messages=user_msgs,
