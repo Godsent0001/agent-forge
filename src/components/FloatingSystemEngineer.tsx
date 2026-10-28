@@ -82,7 +82,7 @@ export function FloatingSystemEngineer() {
             lessons_enabled: true,
           });
           allAgents = [...allAgents, engineer];
-        } else if (!engineer.system_prompt.includes("agentforge_control") || !engineer.memory_enabled) {
+        } else if (engineer.system_prompt !== ENGINEER_PROMPT || !engineer.memory_enabled) {
           engineer = await api.agents.update(engineer.id, {
             system_prompt: ENGINEER_PROMPT,
             memory_enabled: true,
