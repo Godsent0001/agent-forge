@@ -32,6 +32,9 @@ export function FloatingSystemEngineer() {
   const [engineerId, setEngineerId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessageRecord[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,14 +124,38 @@ export function FloatingSystemEngineer() {
     return () => { cancelled = true; };
   }, [open, project?.id, engineerId, selectedAgent?.id]);
 
+  const uploadFiles = async (files: FileList | null) => {
+    if (!files?.length || !project || uploadingAttachments) return;
+    setUploadingAttachments(true);
+    setError(null);
+    try {
+      const uploaded: Array<{ id: string; name: string; status: string }> = [];
+      for (const file of Array.from(files)) {
+        const attachment = await api.attachments.upload(project.id, file);
+        uploaded.push({ id: attachment.id, name: attachment.name, status: attachment.status });
+      }
+      setPendingAttachments((current) => [...current, ...uploaded]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "One or more attachments could not be uploaded.");
+    } finally {
+      setUploadingAttachments(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const send = async () => {
     const text = input.trim();
-    if (!text || !project || !engineerId || !conversationId || busy) return;
+    if ((!text && pendingAttachments.length === 0) || !project || !engineerId || !conversationId || busy || uploadingAttachments) return;
     setInput("");
     setBusy(true);
     setError(null);
     try {
-      const userMessage = await api.conversations.appendMessage(conversationId, { role: "user", content: text });
+      const attachmentLabel = pendingAttachments.length
+        ? `\n\n[Attached files: ${pendingAttachments.map((item) => item.name).join(", ")}]`
+        : "";
+      const displayText = `${text}${attachmentLabel}`.trim();
+      const taskText = text || `Please inspect and analyse the attached file(s): ${pendingAttachments.map((item) => item.name).join(", ")}.`;
+      const userMessage = await api.conversations.appendMessage(conversationId, { role: "user", content: displayText });
       const nextMessages = [...messages, userMessage];
       setMessages(nextMessages);
       const history = nextMessages.slice(-24).map((message) => ({
@@ -141,7 +168,8 @@ export function FloatingSystemEngineer() {
       while (priorHistory.length && priorHistory[priorHistory.length - 1].role !== "assistant") {
         priorHistory.pop();
       }
-      const started = await api.executions.run(project.id, engineerId, text, priorHistory);
+      const started = await api.executions.run(project.id, engineerId, taskText, priorHistory, pendingAttachments.map((item) => item.id));
+      setPendingAttachments([]);
       let finalResult: Awaited<ReturnType<typeof api.executions.get>> | null = null;
       for (let attempt = 0; attempt < 120; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -184,8 +212,28 @@ export function FloatingSystemEngineer() {
           </div>
           {error && <div role="alert" className="mx-3 mb-2 rounded-lg border border-red-900/70 bg-red-950/30 p-2 text-xs text-red-300">{error}</div>}
           <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="border-t border-line p-3">
-            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={3} placeholder="Ask the System Engineer…" disabled={initializing || busy || !engineerId} className="w-full resize-none rounded-xl border border-transparent bg-studio-900 p-3 text-sm text-studio-100 outline-none placeholder:text-studio-500 focus:border-accent-500/60 disabled:opacity-50" />
-            <div className="mt-2 flex items-center justify-between"><span className="text-[10px] text-studio-500">Enter to send · Shift+Enter for a new line</span><button type="submit" disabled={!input.trim() || initializing || busy || !engineerId} className="rounded-lg neu-accent px-3 py-2 text-xs font-semibold text-white transition-all hover:brightness-110 active:shadow-neu-pressed disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">Send ↑</button></div>
+            {pendingAttachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {pendingAttachments.map((attachment) => (
+                  <span key={attachment.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-studio-800 px-2.5 py-1 text-[11px] text-studio-200">
+                    <span className="max-w-[230px] truncate">{attachment.name}</span>
+                    {attachment.status !== "clean" && <span className="text-amber-300" title="File is not antivirus-scanned">unscanned</span>}
+                    <button type="button" aria-label={`Remove ${attachment.name}`} onClick={() => setPendingAttachments((items) => items.filter((item) => item.id !== attachment.id))} className="rounded-full px-1 text-studio-400 hover:text-white">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="rounded-2xl border border-line-strong bg-studio-900 focus-within:border-accent-500/60">
+              <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={3} placeholder="Ask the System Engineer…" disabled={initializing || busy || !engineerId} className="w-full resize-none rounded-t-2xl bg-transparent p-3 text-sm text-studio-100 outline-none placeholder:text-studio-500 disabled:opacity-50" />
+              <div className="flex items-center justify-between px-2 pb-2">
+                <div className="flex items-center gap-2">
+                  <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => { void uploadFiles(event.currentTarget.files); }} />
+                  <button type="button" aria-label="Attach files" title="Attach files" onClick={() => fileInputRef.current?.click()} disabled={initializing || busy || uploadingAttachments || !engineerId} className="flex h-9 w-9 items-center justify-center rounded-full bg-studio-800 text-lg text-studio-200 transition-all hover:brightness-125 disabled:opacity-40">＋</button>
+                  <span className="text-[10px] text-studio-500">{uploadingAttachments ? "Uploading…" : "Enter to send · Shift+Enter for a new line"}</span>
+                </div>
+                <button type="submit" aria-label="Send message" title="Send message" disabled={(!input.trim() && pendingAttachments.length === 0) || initializing || busy || uploadingAttachments || !engineerId} className="flex h-9 w-9 items-center justify-center rounded-full neu-accent text-base font-semibold text-white transition-all hover:brightness-110 active:shadow-neu-pressed disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">↑</button>
+              </div>
+            </div>
           </form>
         </section>
       )}
