@@ -44,9 +44,9 @@ function MermaidDiagram({ source }: { source: string }) {
   const gap = 48;
   const width = direction === "LR" ? 48 + nodes.length * (nodeW + gap) : 640;
   const height = direction === "LR" ? 180 : 40 + nodes.length * (nodeH + gap);
-  const positions = new Map(nodes.map((node, index) => [node.id, direction === "LR"
+  const positions = new Map<string, { x: number; y: number }>(nodes.map((node, index) => [node.id, direction === "LR"
     ? { x: 24 + index * (nodeW + gap), y: (height - nodeH) / 2 }
-    : { x: (width - nodeW) / 2, y: 20 + index * (nodeH + gap) }]));
+    : { x: (width - nodeW) / 2, y: 20 + index * (nodeH + gap) }] as const));
   return (
     <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid flowchart">
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height} role="presentation" className="max-w-none">
