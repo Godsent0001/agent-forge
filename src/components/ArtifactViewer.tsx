@@ -16,7 +16,7 @@ export function ArtifactViewer({ content, executionId }: { content: string; exec
       return () => { active = false; };
     }
     void api.artifacts.list(executionId).then((items) => {
-      if (active) setArtifacts(items.filter((item) => item.artifact_type !== "tool_result"));
+      if (active) setArtifacts(items.filter((item) => item.artifact_type === "tool_artifact"));
     }).catch(() => {
       if (active) setArtifacts([]);
     });
