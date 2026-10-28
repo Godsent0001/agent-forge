@@ -17,6 +17,13 @@ describe("RichMarkdown", () => {
     expect(screen.getByText("Monthly sales")).toBeTruthy();
   });
 
+
+  it("renders Mermaid sequence diagrams", () => {
+    render(<RichMarkdown content={"\\x60\\x60\\x60mermaid\\nsequenceDiagram\\n  participant U as User\\n  participant A as Agent\\n  U->>A: Inspect file\\n  A-->>U: Verify output\\n\\x60\\x60\\x60"} />);
+    expect(screen.getByRole("img", { name: "Rendered Mermaid sequence diagram" })).toBeTruthy();
+    expect(screen.getByText(/2 participants · 2 messages/)).toBeTruthy();
+  });
+
   it("renders structured chart JSON from a chart code fence", () => {
     render(<RichMarkdown content={"\x60\x60\x60chart\n{\"type\":\"line\",\"title\":\"Revenue\",\"labels\":[\"Q1\",\"Q2\"],\"values\":[10,15]}\n\x60\x60\x60"} />);
     expect(screen.getByRole("img", { name: "Revenue" })).toBeTruthy();
