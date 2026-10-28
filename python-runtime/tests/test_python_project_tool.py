@@ -61,3 +61,27 @@ def test_unified_python_tool_requires_approval_for_environment_mutations():
     assert tool.requires_approval({"action": "install"})
     assert tool.permissions_for({"action": "install"}) == {"subprocess", "net"}
     assert tool.permissions_for({"action": "execute"}) == {"subprocess"}
+
+
+def test_runner_collapses_legacy_python_bindings_into_one_model_tool():
+    from app.contracts.graph import AgentGraph, AgentSpec, ToolBinding
+    from app.core.runner import RunnerCore
+    from app.tools.python_project import PythonProjectTool
+    from app.tools.registry import DefaultToolFactory
+
+    spec = AgentSpec(
+        id="agent-1", name="Test agent", provider="venice", model="test-model",
+        tools=[
+            ToolBinding(id="python-id", kind="python", name="Python Execution"),
+            ToolBinding(id="python-env-id", kind="python_environment", name="Python Environment"),
+        ],
+    )
+    graph = AgentGraph(root_id=spec.id, agents={spec.id: spec})
+    tool_specs, instances = RunnerCore()._assemble_tools(
+        spec, graph, DefaultToolFactory(), memory=None, intents=None, run_history=None
+    )
+
+    python_specs = [tool for tool in tool_specs if tool.name == "python"]
+    assert len(python_specs) == 1
+    assert isinstance(instances["python"], PythonProjectTool)
+    assert {"action", "code", "packages"} <= set(python_specs[0].parameters["properties"])
