@@ -106,6 +106,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedExecutionRef = useRef<string | null>(null);
   const conversationLoadRef = useRef(0);
+  const conversationNavigationRef = useRef(0);
   const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
@@ -135,6 +136,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       return;
     }
     let cancelled = false;
+    const navigationId = conversationNavigationRef.current;
     setConversationLoading(true);
     setConversationError(null);
     setConversations([]);
@@ -147,13 +149,21 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     void (async () => {
       try {
         let items = await api.conversations.list(project.id, agent.id);
+        let createdId: string | null = null;
         if (items.length === 0) {
           const created = await api.conversations.create(project.id, agent.id);
+          createdId = created.id;
           items = [created];
-          setNewConversationIds((current) => new Set(current).add(created.id));
-          setReadyConversationIds((current) => new Set(current).add(created.id));
         }
-        if (cancelled) return;
+        if (cancelled || navigationId !== conversationNavigationRef.current) {
+          if (createdId) void api.conversations.remove(createdId).catch(() => undefined);
+          return;
+        }
+        if (createdId) {
+          const id = createdId;
+          setNewConversationIds((current) => new Set(current).add(id));
+          setReadyConversationIds((current) => new Set(current).add(id));
+        }
         setConversations(items);
         setActiveConversationId(items[0].id);
       } catch (cause) {
@@ -352,6 +362,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleNewConversation = async () => {
     if (!agent || !project || isProcessing) return;
+    conversationNavigationRef.current += 1;
     setEditingMessageId(null);
     setPromptInput("");
     setConversationError(null);
@@ -369,6 +380,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleClearChat = async () => {
     if (!agent || !project || isProcessing) return;
+    conversationNavigationRef.current += 1;
     if (!window.confirm(`Delete this conversation with ${agent.name}? This cannot be undone.`)) return;
     setConversationError(null);
     try {
@@ -581,6 +593,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             value={activeConversationId ?? ""}
             onChange={(event) => {
               const nextId = event.target.value || null;
+              conversationNavigationRef.current += 1;
               setEditingMessageId(null);
               setPromptInput("");
               if (nextId && !newConversationIds.has(nextId)) {
