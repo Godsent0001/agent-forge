@@ -62,3 +62,17 @@ def test_tool_schema_uses_a_valid_identifier_for_display_name():
     assert schema.name == "web_search__free_"
     assert " " not in schema.name
     assert "(" not in schema.name and ")" not in schema.name
+
+
+def test_browser_and_web_search_have_provider_safe_names_and_string_input_schemas():
+    from app.contracts.graph import ToolBinding
+    from app.contracts.naming import sanitize_tool_name
+    from app.tools.registry import DefaultToolFactory
+    from app.tools.specs import tool_spec
+
+    for kind, display_name in (("browser", "Browser Tool"), ("web_search", "Web Search")):
+        binding = ToolBinding(id=f"{kind}-binding", kind=kind, name=display_name)
+        schema = tool_spec(binding, DefaultToolFactory().build(binding))
+        assert schema.name == sanitize_tool_name(display_name)
+        assert schema.parameters["type"] == "object"
+        assert schema.parameters["properties"]["input"]["type"] == "string"
