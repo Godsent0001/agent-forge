@@ -44,3 +44,21 @@ def test_python_environment_is_internal_and_unified_python_is_catalogued():
     python_binding = ToolBinding(id="python", kind="python", name="python", description="")
     python_tool = DefaultToolFactory().build(python_binding)
     assert isinstance(python_tool, PythonProjectTool)
+
+
+def test_tool_schema_uses_a_valid_identifier_for_display_name():
+    from app.contracts.graph import ToolBinding
+    from app.tools.registry import DefaultToolFactory
+    from app.tools.specs import tool_spec
+
+    binding = ToolBinding(
+        id="web-search-id",
+        kind="web_search",
+        name="Web Search (free)",
+        description="Search the public web",
+    )
+    tool = DefaultToolFactory().build(binding)
+    schema = tool_spec(binding, tool)
+    assert schema.name == "web_search__free_"
+    assert " " not in schema.name
+    assert "(" not in schema.name and ")" not in schema.name
