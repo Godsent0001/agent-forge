@@ -72,7 +72,7 @@ def _normalize_alias(alias: str) -> str:
         "",
         alias.strip(),
         flags=re.IGNORECASE,
-    ).strip().casefold()
+    ).strip()
 
 
 def constrain_tools_for_task(
@@ -98,7 +98,14 @@ def constrain_tools_for_task(
         end = first.end() + clause_end.start() if clause_end else len(task)
         for match in _RELATED_TOOL.finditer(task, first.end(), end):
             required_aliases.append(_normalize_alias(match.group("alias")))
-    required_aliases = list(dict.fromkeys(alias for alias in required_aliases if alias))
+    deduplicated_aliases: list[str] = []
+    seen_aliases: set[str] = set()
+    for alias in required_aliases:
+        canonical = alias.casefold()
+        if canonical and canonical not in seen_aliases:
+            seen_aliases.add(canonical)
+            deduplicated_aliases.append(alias)
+    required_aliases = deduplicated_aliases
 
     forbidden_aliases = [
         _normalize_alias(match.group("alias"))
@@ -127,8 +134,8 @@ def constrain_tools_for_task(
             # report missing capabilities rather than silently substituting tools.
             return allowed, f"missing capability: {', '.join(missing_aliases)}"
         if not allowed:
-            return [], ", ".join(required_aliases)
-        return allowed, ", ".join(required_aliases)
+            return [], ", ".join(required_aliases).casefold()
+        return allowed, ", ".join(required_aliases).casefold()
 
     if forbidden_aliases:
         forbidden_names = {
