@@ -5,7 +5,6 @@ import { useStore } from "../store/useStore";
 import type { ChatMessage, ConversationMessageRecord, ConversationSummary } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
 import { ApprovalDialog } from "./run/ApprovalDialog";
-import { executionToolMessages } from "../utils/executionToolMessages";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { LogoMark } from "./ui/LogoMark";
@@ -134,10 +133,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     if (!selectedConversation) return;
 
     const loadId = ++conversationLoadRef.current;
+    let timeoutId: number | undefined;
     setConversationLoading(true);
     setConversationError(null);
     setChatMessages(agent.id, []);
-    void api.conversations.messages(activeConversationId)
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(
+        () => reject(new Error("Loading this conversation timed out. You can switch chats and try again.")),
+        15000,
+      );
+    });
+    void Promise.race([api.conversations.messages(activeConversationId), timeout])
       .then((records) => {
         if (conversationLoadRef.current !== loadId) return;
         setChatMessages(agent.id, records.map((record) => fromStoredMessage(record, agent.name)));
@@ -147,10 +153,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         setConversationError(cause instanceof Error ? cause.message : "Could not load this conversation.");
       })
       .finally(() => {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
         if (conversationLoadRef.current === loadId) setConversationLoading(false);
       });
 
     return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
     };
   }, [activeConversationId, conversations, agent?.id, agent?.name, project?.id, setChatMessages]);
@@ -183,10 +191,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     void (async () => {
       try {
         const [completedExecution] = await Promise.all([api.executions.get(executionId)]);
-        for (const toolMessage of executionToolMessages(activeExecutionEvents)) {
-          addChatMessage(agentId, toolMessage);
-        }
-
         const allowedStatuses = new Set(["completed", "error", "cancelled", "budget_exceeded", "interrupted"]);
         const status = allowedStatuses.has(completedExecution.status)
           ? completedExecution.status as "completed" | "error" | "cancelled" | "budget_exceeded" | "interrupted"
@@ -469,7 +473,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             aria-label="Saved conversations"
             value={activeConversationId ?? ""}
             onChange={(event) => setActiveConversationId(event.target.value || null)}
-            disabled={conversationLoading || isProcessing || conversations.length === 0}
+            disabled={isProcessing || conversations.length === 0}
             className="max-w-40 rounded-lg border border-transparent bg-studio-900 px-2.5 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
           >
             {conversations.map((conversation) => (
@@ -479,7 +483,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           <button
             type="button"
             onClick={() => void handleNewConversation()}
-            disabled={isProcessing || conversationLoading}
+            disabled={isProcessing}
             className="neu-btn px-2.5 py-1 text-2xs font-mono text-studio-300 transition-all disabled:opacity-50"
           >
             New chat
@@ -568,7 +572,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           </div>
         )}
 
-        {agentMessages.map((msg) => (
+        {agentMessages.filter((msg) => msg.sender !== "tool").map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
