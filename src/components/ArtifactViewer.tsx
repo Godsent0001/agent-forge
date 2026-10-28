@@ -33,11 +33,7 @@ export function ArtifactViewer({ content, executionId }: { content: string; exec
       </div>
 
       {(matches.length > 0 || artifacts.length > 0) && (
-        <div className="mt-3 pt-3 border-t border-line space-y-2">
-          <p className="text-2xs font-mono font-semibold uppercase tracking-wider text-studio-400 flex items-center gap-1.5">
-            <span>📁</span> Generated Files & Artifacts
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div aria-label="Files attached to this response" className="mt-3 flex flex-wrap items-start gap-2">
             {matches.map((filepath, idx) => (
               <ArtifactCard key={`file-${idx}`} filepath={filepath} executionId={executionId} />
             ))}
@@ -50,7 +46,6 @@ export function ArtifactViewer({ content, executionId }: { content: string; exec
                 artifactVersion={artifact.version}
               />
             ))}
-          </div>
         </div>
       )}
     </div>
