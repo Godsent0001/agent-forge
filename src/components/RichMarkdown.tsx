@@ -35,6 +35,16 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
 }
 
 function MermaidDiagram({ source }: { source: string }) {
+  if (/^\\s*xychart-beta\\b/i.test(source)) {
+    const labelsMatch = source.match(/x-axis\\s+(?:\"[^\"]*\"\\s*)?\\[([^\\]]+)\\]/i);
+    const valuesMatch = source.match(/(?:bar|line)\\s*\\[([^\\]]+)\\]/i);
+    const labels = labelsMatch ? labelsMatch[1].split(",").map((value) => value.trim().replace(/^\"|\"$/g, "")) : [];
+    const values = valuesMatch ? valuesMatch[1].split(",").map((value) => Number(value.trim())) : [];
+    const titleMatch = source.match(/title\\s+\"([^\"]+)\"/i);
+    if (labels.length && labels.length === values.length && values.every(Number.isFinite)) {
+      return <DataChart source={JSON.stringify({ title: titleMatch?.[1] ?? "Chart", labels, values, type: /^\\s*line\\b/im.test(source) ? "line" : "bar" })} />;
+    }
+  }
   const { nodes, edges, direction } = mermaidParts(source);
   if (!nodes.length) {
     return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
@@ -115,7 +125,7 @@ const markdownComponents: Components = {
       const language = /language-([\w-]+)/.exec(code.props.className ?? "")?.[1]?.toLowerCase();
       const source = String(code.props.children ?? "").replace(/\n$/, "");
       if (language === "mermaid") return <MermaidDiagram source={source} />;
-      if (language === "chart" || language === "graph-data") return <DataChart source={source} />;
+      if (language === "chart" || language === "graph-data" || language === "graph") return <DataChart source={source} />;
     }
     return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-studio-200">{children}</pre>;
   },
