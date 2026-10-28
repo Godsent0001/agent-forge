@@ -296,7 +296,7 @@ class KnowledgeIndex:
                 "SELECT c.*, s.name AS source_name FROM knowledge_chunks c JOIN knowledge_sources s USING(source_id)"
             ).fetchall()
         qtokens = set(_tokens(query))
-        if not qtokens:
+        if not qtokens and not query_embedding:
             return []
         tokenized = [(row, _tokens(row["text"])) for row in rows]
         document_frequency = {
