@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.contracts.tools import ToolError
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
@@ -114,7 +115,7 @@ async def test_workspace_files_tool_creates_reads_lists_and_overwrites_in_worksp
     assert '"written": true' in created.content
     assert (tmp_path / "calculator" / "main.py").read_text(encoding="utf-8") == "print(2 + 2)"
 
-    with pytest.raises(Exception, match="File already exists"):
+    with pytest.raises(ToolError, match="File already exists"):
         await tool.run(tool.Input(action="write", path="calculator/main.py", content="print(0)"), ctx)
 
     read = await tool.run(tool.Input(action="read", path="calculator/main.py"), ctx)
@@ -127,7 +128,7 @@ async def test_workspace_files_tool_creates_reads_lists_and_overwrites_in_worksp
 async def test_workspace_files_tool_rejects_path_traversal_and_requires_delete_approval(tmp_path):
     ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
     tool = WorkspaceFilesTool()
-    with pytest.raises(Exception, match="path escapes workspace|outside the project workspace"):
+    with pytest.raises(ToolError, match="path escapes workspace|outside the project workspace"):
         await tool.run(tool.Input(action="read", path="../outside.txt"), ctx)
     assert tool.requires_approval({"action": "delete"})
     assert not tool.requires_approval({"action": "read"})
