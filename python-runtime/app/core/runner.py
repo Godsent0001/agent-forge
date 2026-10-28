@@ -42,6 +42,7 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
+from app.tools.python_project import PythonProjectTool
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
@@ -847,9 +848,20 @@ class RunnerCore:
         tool_specs: list[ToolSpec] = []
         tool_instances: dict[str, Any] = {}
 
-        raw_names = []
-        for tb in spec.tools:
-            raw_names.append(tb.name or tb.kind)
+        # Treat Python execution and environment management as one capability.
+        # Projects that attached either historical Python tool receive the unified
+        # action-based interface, not two overlapping model-visible tools.
+        python_bindings = [
+            tb for tb in spec.tools
+            if tb.kind.casefold() in {"python", "python_environment"}
+        ]
+        effective_tools = [
+            tb for tb in spec.tools
+            if tb.kind.casefold() not in {"python", "python_environment"}
+        ]
+        raw_names = [tb.name or tb.kind for tb in effective_tools]
+        if python_bindings:
+            raw_names.append("python")
         existing_kinds = {tb.kind.casefold() for tb in spec.tools}
         builtin_knowledge = [
             ("knowledge_search", KnowledgeSearchTool),
@@ -873,13 +885,24 @@ class RunnerCore:
         deduped = dedupe_names(raw_names)
         idx = 0
 
-        for tb in spec.tools:
+        for tb in effective_tools:
             name = deduped[idx]
             idx += 1
             tool_inst = tools_factory.build(tb)
             tool_instances[name] = tool_inst
 
             tool_specs.append(tool_spec(tb, tool_inst, name=name))
+
+        if python_bindings:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = PythonProjectTool()
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
 
         # Project knowledge is a shared runtime capability, not an optional
         # tool-library decoration. Expose retrieval and ingestion to every agent;
