@@ -42,7 +42,11 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
-from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
+from app.core.tools.workspace_capabilities import (
+    KnowledgeIngestTool,
+    KnowledgeSearchTool,
+    WorkspaceCapabilityToolFactory,
+)
 from app.infra.paths import project_dir
 from app.tools.specs import tool_spec
 
@@ -843,6 +847,16 @@ class RunnerCore:
         raw_names = []
         for tb in spec.tools:
             raw_names.append(tb.name or tb.kind)
+        existing_kinds = {tb.kind.casefold() for tb in spec.tools}
+        builtin_knowledge = [
+            ("knowledge_search", KnowledgeSearchTool),
+            ("knowledge_ingest", KnowledgeIngestTool),
+        ]
+        available_knowledge = [
+            (kind, tool_cls) for kind, tool_cls in builtin_knowledge
+            if kind not in existing_kinds
+        ]
+        raw_names.extend(kind for kind, _ in available_knowledge)
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
@@ -863,6 +877,21 @@ class RunnerCore:
             tool_instances[name] = tool_inst
 
             tool_specs.append(tool_spec(tb, tool_inst, name=name))
+
+        # Project knowledge is a shared runtime capability, not an optional
+        # tool-library decoration. Expose retrieval and ingestion to every agent;
+        # this also lets an agent discover existing indexed documents without
+        # requiring the user to attach a special tool manually.
+        for kind, tool_cls in available_knowledge:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = tool_cls()
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
 
         if include_attachment_reader:
             name = deduped[idx]
