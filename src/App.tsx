@@ -11,7 +11,6 @@ import { WorkflowCanvas } from "./components/WorkflowCanvas";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ToolCatalogModal } from "./components/ToolCatalogModal";
 import { SystemEngineerWorkspace } from "./components/SystemEngineerWorkspace";
-import { FloatingSystemEngineer } from "./components/FloatingSystemEngineer";
 import { useStore } from "./store/useStore";
 import { Icon } from "./components/ui/Icon";
 
@@ -260,7 +259,6 @@ export default function App() {
           onSubmit={handleTriggerRun}
         />
       )}
-      <FloatingSystemEngineer />
     </div>
   );
 }
