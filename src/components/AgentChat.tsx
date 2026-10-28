@@ -51,6 +51,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const consumePendingTask = useStore((s) => s.consumePendingTask);
 
   const [promptInput, setPromptInput] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -295,6 +297,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleNewConversation = async () => {
     if (!agent || !project || isProcessing) return;
+    setEditingMessageId(null);
+    setPromptInput("");
     setConversationError(null);
     try {
       const created = await api.conversations.create(project.id, agent.id);
@@ -391,6 +395,29 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleSendMessage = () => void sendTask(promptInput, true);
 
+  const copyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setChatNotice("Message copied.");
+    } catch {
+      setChatError("Could not copy this message. Check clipboard permissions and try again.");
+    }
+  };
+
+  const beginEditMessage = (message: Extract<ChatMessage, { sender: "user" }>) => {
+    setEditingMessageId(message.id);
+    setPromptInput(message.text);
+    setChatError(null);
+    setChatNotice("Editing this message will remove later turns and restart the conversation from here.");
+    window.setTimeout(() => composerRef.current?.focus(), 0);
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setPromptInput("");
+    setChatNotice(null);
+  };
+
   const sendTask = async (rawText: string, fromComposer = false) => {
     if (!rawText.trim() || isProcessing || !agent || !project) return;
     if (!activeConversationId || conversationLoading) {
@@ -410,21 +437,38 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setIsProcessing(true);
 
     try {
-      const history = buildRunHistory(agentMessages);
-      const savedUser = await api.conversations.appendMessage(activeConversationId, {
-        role: "user",
-        content: userText,
-      });
-      const userMsg: ChatMessage = {
-        id: savedUser.id,
-        sender: "user",
-        text: savedUser.content,
-        timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      addChatMessage(agent.id, userMsg);
+      const editingIndex = editingMessageId
+        ? agentMessages.findIndex((message) => message.id === editingMessageId && message.sender === "user")
+        : -1;
+      const historyMessages = editingIndex >= 0 ? agentMessages.slice(0, editingIndex) : agentMessages;
+      const history = buildRunHistory(historyMessages);
+      let userMsg: ChatMessage;
+      if (editingIndex >= 0 && editingMessageId) {
+        const savedUser = await api.conversations.editUserMessage(editingMessageId, userText);
+        userMsg = {
+          id: savedUser.id,
+          sender: "user",
+          text: savedUser.content,
+          timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setChatMessages(agent.id, [...historyMessages, userMsg]);
+      } else {
+        const savedUser = await api.conversations.appendMessage(activeConversationId, {
+          role: "user",
+          content: userText,
+        });
+        userMsg = {
+          id: savedUser.id,
+          sender: "user",
+          text: savedUser.content,
+          timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        addChatMessage(agent.id, userMsg);
+      }
 
       const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
       setSelectedAttachmentIds([]);
+      setEditingMessageId(null);
       processedExecutionRef.current = null;
       activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
       setActiveExecutionId(execution.id);
@@ -472,7 +516,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             id="conversation-switcher"
             aria-label="Saved conversations"
             value={activeConversationId ?? ""}
-            onChange={(event) => setActiveConversationId(event.target.value || null)}
+            onChange={(event) => { setEditingMessageId(null); setPromptInput(""); setActiveConversationId(event.target.value || null); }}
             disabled={isProcessing || conversations.length === 0}
             className="max-w-40 rounded-lg border border-transparent bg-studio-900 px-2.5 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
           >
@@ -637,6 +681,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
                 )}
               </div>
             )}
+            {(msg.sender === "user" || msg.sender === "agent") && (
+              <div className={`mt-1 ml-1 flex items-center gap-3 text-[10px] text-studio-500 ${msg.sender === "user" ? "justify-end" : ""}`}>
+                <button type="button" onClick={() => void copyMessage(msg.text)} className="hover:text-studio-200" aria-label={msg.sender === "user" ? "Copy your message" : "Copy assistant response"}>Copy</button>
+                {msg.sender === "user" && (
+                  <button type="button" onClick={() => beginEditMessage(msg)} disabled={isProcessing || conversationLoading} className="hover:text-studio-200 disabled:opacity-40" aria-label="Edit and resend message">Edit</button>
+                )}
+              </div>
+            )}
 
             {msg.sender === "agent" && msg.executionStatus && msg.executionStatus !== "completed" && (
               <p className={`mt-1 ml-1 text-2xs font-mono ${msg.executionStatus === "error" || msg.executionStatus === "interrupted" ? "text-red-300" : msg.executionStatus === "budget_exceeded" ? "text-amber-300" : "text-studio-500"}`}>
@@ -712,6 +764,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             compact
           />
           <textarea
+            ref={composerRef}
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
             onKeyDown={(e) => {
@@ -722,10 +775,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             aria-label={`Task for ${agent.name}`}
-            placeholder={`Message ${agent.name}…`}
+            placeholder={editingMessageId ? "Edit your message and resend…" : `Message ${agent.name}…`}
             disabled={isProcessing}
             className="flex-1 bg-transparent shadow-none focus-visible:shadow-none text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
           />
+          {editingMessageId && !isProcessing && (
+            <button type="button" onClick={cancelEditMessage} className="h-10 w-10 shrink-0 rounded-full bg-studio-800 text-studio-400 hover:text-white" aria-label="Cancel editing" title="Cancel editing">×</button>
+          )}
           {isProcessing ? (
             <button
               onClick={handleCancelExecution}
@@ -741,7 +797,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               disabled={!promptInput.trim()}
               className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
             >
-              <span>Send</span> <Icon name="chevron-right" size={14} />
+              <span>{editingMessageId ? "Resend" : "Send"}</span> <Icon name="chevron-right" size={14} />
             </button>
           )}
         </div>
