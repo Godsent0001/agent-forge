@@ -96,6 +96,16 @@ def constrain_tools_for_task(
         missing_aliases: list[str] = []
         for alias in required_aliases:
             matches = [tool for tool in tools if _matches_alias(alias, tool)]
+            # Prefer an exact canonical tool name when one exists. Without this,
+            # asking for "python" also matches "python_environment" because the
+            # token matcher sees only the shared word and exposes both interfaces.
+            normalized_alias = " ".join(alias.casefold().replace("_", " ").replace("-", " ").split())
+            exact_matches = [
+                tool for tool in matches
+                if " ".join(tool.name.casefold().replace("_", " ").replace("-", " ").split()) == normalized_alias
+            ]
+            if exact_matches:
+                matches = exact_matches
             if not matches:
                 missing_aliases.append(alias)
                 continue
