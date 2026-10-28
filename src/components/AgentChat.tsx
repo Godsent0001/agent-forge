@@ -627,7 +627,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             {conversationError}
           </p>
         )}
-        {agentMessages.length === 0 && (
+        {agentMessages.every((message) => message.sender === "tool") && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
             <LogoMark size={48} className="mb-5 drop-shadow-lg" />
             <p className="font-semibold text-studio-100 text-base">What are we working on?</p>
@@ -797,9 +797,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <button
               onClick={handleSendMessage}
               disabled={!promptInput.trim()}
-              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
+              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white rounded-full transition-all flex items-center justify-center shrink-0 h-10 w-10 cursor-pointer"
+              aria-label={editingMessageId ? "Resend edited message" : "Send message"}
+              title={editingMessageId ? "Resend edited message" : "Send message"}
             >
-              <span>{editingMessageId ? "Resend" : "Send"}</span> <Icon name="chevron-right" size={14} />
+              <span className="sr-only">{editingMessageId ? "Resend" : "Send"}</span><Icon name="chevron-right" size={17} />
             </button>
           )}
         </div>
