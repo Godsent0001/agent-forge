@@ -47,6 +47,7 @@ from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
     WorkspaceCapabilityToolFactory,
+    WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
 from app.tools.specs import tool_spec
@@ -883,6 +884,9 @@ class RunnerCore:
             if kind not in existing_kinds
         ]
         raw_names.extend(kind for kind, _ in available_knowledge)
+        available_workspace_files = "workspace_files" not in existing_kinds
+        if available_workspace_files:
+            raw_names.append("file")
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
@@ -908,6 +912,17 @@ class RunnerCore:
             name = deduped[idx]
             idx += 1
             tool_inst = PythonProjectTool()
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
+
+        if available_workspace_files:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = WorkspaceFilesTool()
             tool_instances[name] = tool_inst
             tool_specs.append(ToolSpec(
                 name=name,
