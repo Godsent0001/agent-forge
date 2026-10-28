@@ -42,8 +42,8 @@ def build_runtime_capability_manifest(
     if len(manifest) <= _MAX_MANIFEST_CHARS:
         return manifest
 
-    # Keep every actual tool name visible, trimming descriptive prose before
-    # dropping any capabilities. Full schemas remain available to the model.
+    # Keep architectural facts and the workspace, then trim descriptions before
+    # dropping capability names. Full input schemas remain available separately.
     compact_header = [
         line for line in lines
         if line.startswith((
@@ -62,19 +62,14 @@ def build_runtime_capability_manifest(
         compact_lines.extend(f"  - {tool.name[:80]}" for tool in tools)
     else:
         compact_lines.append("- No tool calls are available in this run.")
-    if tools:
-        compact_lines.append("- Tools available in this run:")
-        compact_lines.extend(f"  - {tool.name}" for tool in tools)
-    else:
-        compact_lines.append("- No tool calls are available in this run.")
     compact = "\n".join(compact_lines)
     if len(compact) <= _MAX_MANIFEST_CHARS:
         return compact
 
-    # Extremely large custom-tool catalogs still stay bounded; preserve all names
-    # when possible and make the omission explicit rather than implying completeness.
-    names = [tool.name for tool in tools]
-    prefix = "\\n".join(compact_header + ["- Available tool names:"])
+    # An unusually large custom-tool catalog stays bounded; preserve as many names
+    # as fit and explicitly disclose any omitted tail rather than implying completeness.
+    names = [tool.name[:80] for tool in tools]
+    prefix = "\n".join(compact_header + ["- Available tool names:"])
     budget = max(0, _MAX_MANIFEST_CHARS - len(prefix) - 32)
     selected: list[str] = []
     used = 0
