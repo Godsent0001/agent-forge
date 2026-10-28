@@ -13,7 +13,7 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
   const tokenPattern = "([A-Za-z][A-Za-z0-9_-]*(?:\\[[^\\]]*\\]|\\([^)]*\\)|\\{[^}]*\\})?)";
   const edgePattern = new RegExp("^" + tokenPattern + "\\s*(?:-->|---|==>|-.->)(?:\\|([^|]*)\\|)?\\s*" + tokenPattern);
   const addNode = (token: string) => {
-    const match = /^([A-Za-z][A-Za-z0-9_-]*)(?:\\[([^\\]]*)\\]|\\(([^)]*)\\)|\\{([^}]*)\\})?$/.exec(token.trim());
+    const match = /^([A-Za-z][A-Za-z0-9_-]*)(?:\[([^\]]*)\]|\(([^)]*)\)|\{([^}]*)\})?$/.exec(token.trim());
     if (!match) return;
     const id = match[1];
     const label = (match[2] ?? match[3] ?? match[4] ?? id).trim();
@@ -28,7 +28,7 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
       edges.push({ from: edge[1].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[1], to: edge[3].match(/^[A-Za-z][A-Za-z0-9_-]*/)?.[0] ?? edge[3], label: edge[2]?.trim() || undefined });
       continue;
     }
-    const declaration = /^([A-Za-z][A-Za-z0-9_-]*(?:\\[[^\\]]*\\]|\\([^)]*\\)|\\{[^}]*\\})?)/.exec(line);
+    const declaration = /^([A-Za-z][A-Za-z0-9_-]*(?:\[[^\]]*\]|\([^)]*\)|\{[^}]*\})?)/.exec(line);
     if (declaration) addNode(declaration[1]);
   }
   return { nodes: [...nodes].map(([id, label]) => ({ id, label })), edges, direction };
