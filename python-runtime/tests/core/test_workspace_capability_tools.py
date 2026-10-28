@@ -9,6 +9,7 @@ from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
     WorkspaceCapabilityToolFactory,
+    WorkspaceFilesTool,
     WorkspaceEditTool,
 )
 
@@ -100,3 +101,33 @@ def test_knowledge_index_persists_and_uses_chunk_embeddings(tmp_path):
     assert hits
     assert hits[0].chunk.source_name == "orbit.md"
     assert hits[0].semantic_score > 0
+
+
+@pytest.mark.asyncio
+async def test_workspace_files_tool_creates_reads_lists_and_overwrites_in_workspace(tmp_path):
+    ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
+    tool = WorkspaceFilesTool()
+
+    made_dir = await tool.run(tool.Input(action="mkdir", path="calculator"), ctx)
+    assert '"created": true' in made_dir.content
+    created = await tool.run(tool.Input(action="write", path="calculator/main.py", content="print(2 + 2)"), ctx)
+    assert '"written": true' in created.content
+    assert (tmp_path / "calculator" / "main.py").read_text(encoding="utf-8") == "print(2 + 2)"
+
+    with pytest.raises(Exception, match="File already exists"):
+        await tool.run(tool.Input(action="write", path="calculator/main.py", content="print(0)"), ctx)
+
+    read = await tool.run(tool.Input(action="read", path="calculator/main.py"), ctx)
+    assert "print(2 + 2)" in read.content
+    listing = await tool.run(tool.Input(action="list", path="calculator"), ctx)
+    assert '"name": "main.py"' in listing.content
+
+
+@pytest.mark.asyncio
+async def test_workspace_files_tool_rejects_path_traversal_and_requires_delete_approval(tmp_path):
+    ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
+    tool = WorkspaceFilesTool()
+    with pytest.raises(Exception, match="path escapes workspace|outside the project workspace"):
+        await tool.run(tool.Input(action="read", path="../outside.txt"), ctx)
+    assert tool.requires_approval({"action": "delete"})
+    assert not tool.requires_approval({"action": "read"})
