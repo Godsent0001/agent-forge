@@ -703,15 +703,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-4 shrink-0">
-        <div className="max-w-4xl mx-auto mb-2">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-900 neu-inset border border-transparent rounded-2xl p-2.5 focus-within:border-accent-500/50 transition-colors">
           <ProjectAttachmentsPanel
             projectId={project.id}
             selectedIds={selectedAttachmentIds}
             onSelectedIdsChange={setSelectedAttachmentIds}
             disabled={isProcessing || conversationLoading}
+            compact
           />
-        </div>
-        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-900 neu-inset border border-transparent rounded-2xl p-2.5 focus-within:border-accent-500/50 transition-colors">
           <textarea
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
