@@ -647,11 +647,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           >
             <div className="flex items-center gap-2 mb-1 px-1">
               <span className="text-2xs font-mono font-semibold text-studio-400">
-                {msg.sender === "user"
-                  ? "You"
-                  : msg.sender === "tool"
-                  ? `Tool · ${msg.toolName}`
-                  : msg.agentName || "Agent"}
+                {msg.sender === "user" ? "You" : msg.agentName || "Agent"}
               </span>
               <span className="text-2xs font-mono text-studio-600">{msg.timestamp}</span>
               {msg.sender === "agent" && isSimulatedText(msg.text) && (
@@ -659,52 +655,21 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               )}
             </div>
 
-            {msg.sender === "tool" ? (
-              <div className="max-w-2xl w-full rounded-md border border-emerald-800/60 bg-emerald-950/30 p-3 shadow-studio">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-2xs font-mono font-semibold text-emerald-300">Tool Execution Result</span>
-                  <span
-                    className={`text-2xs font-mono font-semibold uppercase px-1.5 py-0.2 rounded border ${
-                      msg.toolStatus === "ok"
-                        ? "text-emerald-300 border-emerald-700 bg-emerald-950"
-                        : msg.toolStatus === "cancelled"
-                        ? "text-amber-300 border-amber-700 bg-amber-950"
-                        : "text-red-300 border-red-700 bg-red-950"
-                    }`}
-                  >
-                    {msg.toolStatus}
-                  </span>
-                </div>
-                {msg.toolInput && (
-                  <p className="text-2xs text-studio-400 mb-2 break-words font-mono">
-                    <span className="text-studio-500">Input args:</span> {msg.toolInput}
-                  </p>
-                )}
-                <pre className="whitespace-pre-wrap break-words text-xs text-emerald-200/90 font-mono leading-relaxed bg-studio-950/50 neu-inset p-2.5 rounded-lg">
-                  {msg.toolOutput}
-                </pre>
-              </div>
-            ) : (
-              <div
-                className={`max-w-3xl rounded-2xl px-4 py-3 border ${
-                  msg.sender === "user"
-                    ? "neu-accent text-white border-transparent rounded-br-md"
-                    : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
-                      ? "bg-red-950/45 neu-raised-sm text-red-100 border-red-500/20 rounded-bl-md"
-                      : msg.executionStatus === "budget_exceeded"
-                        ? "bg-amber-950/45 neu-raised-sm text-amber-100 border-amber-500/20 rounded-bl-md"
-                        : msg.executionStatus === "cancelled"
-                          ? "bg-studio-900 neu-raised-sm text-studio-400 border-transparent rounded-bl-md"
-                          : "bg-studio-900 neu-raised-sm text-studio-100 border-transparent rounded-bl-md"
-                }`}
-              >
-                {msg.sender === "user" ? (
-                  <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p>
-                ) : (
-                  <ArtifactViewer content={msg.text} executionId={msg.executionId} />
-                )}
-              </div>
-            )}
+            <div
+              className={`max-w-3xl rounded-2xl px-4 py-3 border ${
+                msg.sender === "user"
+                  ? "neu-accent text-white border-transparent rounded-br-md"
+                  : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
+                    ? "bg-red-950/45 neu-raised-sm text-red-100 border-red-500/20 rounded-bl-md"
+                    : msg.executionStatus === "budget_exceeded"
+                      ? "bg-amber-950/45 neu-raised-sm text-amber-100 border-amber-500/20 rounded-bl-md"
+                      : msg.executionStatus === "cancelled"
+                        ? "bg-studio-900 neu-raised-sm text-studio-400 border-transparent rounded-bl-md"
+                        : "bg-studio-900 neu-raised-sm text-studio-100 border-transparent rounded-bl-md"
+              }`}
+            >
+              {msg.sender === "user" ? <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p> : <ArtifactViewer content={msg.text} executionId={msg.executionId} />}
+            </div>
             {(msg.sender === "user" || msg.sender === "agent") && (
               <div className={`mt-1 ml-1 flex items-center gap-3 text-[10px] text-studio-500 ${msg.sender === "user" ? "justify-end" : ""}`}>
                 <button type="button" onClick={() => void copyMessage(msg.text)} className="hover:text-studio-200" aria-label={msg.sender === "user" ? "Copy your message" : "Copy assistant response"}>Copy</button>
