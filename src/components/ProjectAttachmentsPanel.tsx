@@ -26,11 +26,13 @@ export function ProjectAttachmentsPanel({
   selectedIds,
   onSelectedIdsChange,
   disabled = false,
+  compact = false,
 }: {
   projectId: string;
   selectedIds: string[];
   onSelectedIdsChange: Dispatch<SetStateAction<string[]>>;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ProjectAttachment[]>([]);
@@ -208,24 +210,50 @@ export function ProjectAttachmentsPanel({
   return (
     <div className="w-full">
       <div className="flex items-center justify-between gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_EXTENSIONS}
+          className="sr-only"
+          aria-label="Choose project files to upload"
+          onChange={(event) => void uploadFiles(event.currentTarget.files ?? [])}
+          disabled={disabled || uploading}
+        />
         <button
           type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-controls="project-attachments-panel"
-          disabled={disabled && !open}
-          className="inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"
+          onClick={() => compact ? inputRef.current?.click() : setOpen((value) => !value)}
+          aria-expanded={compact ? undefined : open}
+          aria-controls={compact ? undefined : "project-attachments-panel"}
+          aria-label={compact ? "Attach files" : "Open project attachments"}
+          title={compact ? "Attach files" : "Project attachments"}
+          disabled={disabled || uploading}
+          className={compact
+            ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
+            : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
-          <Icon name="paperclip" size={14} />
-          Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}
-          <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
+          <Icon name={uploading ? "loader-circle" : "paperclip"} size={compact ? 17 : 14} />
+          {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
         </button>
         {selectedIds.length > 0 && (
           <span className="text-2xs font-mono text-studio-400">{formatBytes(selectedBytes)} attached to next run</span>
         )}
       </div>
 
-      {open && (
+      {compact && selected.length > 0 && (
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {selected.map((item) => (
+            <span key={item.id} title={item.name} className="inline-flex max-w-44 items-center gap-1 rounded-full border border-line bg-studio-950 px-2 py-1 text-[10px] text-studio-300">
+              <Icon name="file" size={11} /><span className="truncate">{item.name}</span>
+              <button type="button" aria-label={`Remove ${item.name} from next message`} onClick={() => toggleSelection(item, false)} className="ml-0.5 text-studio-500 hover:text-white">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {compact && (error || notice) && (
+        <p role={error ? "alert" : "status"} className={`max-w-xs text-[10px] leading-4 ${error ? "text-red-300" : "text-studio-400"}`}>{error || notice}</p>
+      )}
+      {open && !compact && (
         <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div>
@@ -235,16 +263,6 @@ export function ProjectAttachmentsPanel({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                type="file"
-                multiple
-                accept={ACCEPTED_EXTENSIONS}
-                className="sr-only"
-                aria-label="Choose project files to upload"
-                onChange={(event) => void uploadFiles(event.currentTarget.files ?? [])}
-                disabled={disabled || uploading}
-              />
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
