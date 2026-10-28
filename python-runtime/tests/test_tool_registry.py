@@ -1,4 +1,10 @@
-from app.contracts.naming import dedupe_names, sanitize_tool_name
+from app.contracts.naming import canonical_tool_names, dedupe_names, sanitize_tool_name
+
+
+def test_model_visible_tool_names_are_valid_even_when_display_names_are_not():
+    names = canonical_tool_names(["Web Search", "Browser (public)", "web_search"])
+    assert names == ["web_search", "browser__public_", "web_search_2"]
+    assert all(name[0].islower() and " " not in name and "(" not in name for name in names)
 
 
 def test_tool_names_are_sanitized_and_deduplicated_deterministically():
