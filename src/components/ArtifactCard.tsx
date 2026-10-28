@@ -40,7 +40,7 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
   const isAudio = ["wav", "mp3", "ogg"].includes(ext);
 
   return (
-    <div className="bg-studio-850 border border-line-strong rounded-md p-2.5 shadow-studio space-y-2 text-xs">
+    <div className="bg-studio-850 border border-line-strong rounded-lg px-3 py-2 shadow-studio space-y-2 text-xs min-w-0 max-w-full">
       <div className="flex items-center justify-between">
         <span className="font-medium text-studio-200 truncate max-w-[180px]" title={filename}>
           {filename}
@@ -50,9 +50,10 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
             href={fileUrl}
             target="_blank"
             rel="noreferrer"
+            download={filename}
             className="text-accent-400 hover:text-accent-300 font-mono text-2xs hover:underline"
           >
-            Open ↗
+            Download ↓
           </a>
         ) : (
           <span className="text-2xs font-mono text-studio-500">Loading…</span>
@@ -78,8 +79,8 @@ export function ArtifactCard({ filepath, executionId, artifactId, artifactVersio
       )}
 
       {!isImage && !isVideo && !isAudio && (
-        <div className="bg-studio-900 border border-line rounded p-2 text-2xs font-mono text-studio-300 truncate">
-          {cleanPath}
+        <div className="text-[10px] text-studio-500 truncate max-w-56" title={cleanPath}>
+          {isRegisteredArtifact ? "Generated file" : "Workspace file"}
         </div>
       )}
     </div>
