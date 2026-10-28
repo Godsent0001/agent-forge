@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -34,7 +34,52 @@ function mermaidParts(source: string): { nodes: DiagramNode[]; edges: DiagramEdg
   return { nodes: [...nodes].map(([id, label]) => ({ id, label })), edges, direction };
 }
 
+function SequenceDiagram({ source }: { source: string }) {
+  const lines = source.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("%%"));
+  const names = new Map<string, string>();
+  const messages: { from: string; to: string; label: string; dashed: boolean }[] = [];
+  for (const line of lines) {
+    if (/^sequenceDiagram\b/i.test(line)) continue;
+    const participant = /^(?:participant|actor)\s+([A-Za-z][\w-]*)(?:\s+as\s+(.+))?$/i.exec(line);
+    if (participant) {
+      names.set(participant[1], participant[2]?.trim() || participant[1]);
+      continue;
+    }
+    const message = /^([A-Za-z][\w-]*)\s*(-{1,2}|={1,2})?>?>?([+-]?>?)\s*([A-Za-z][\w-]*)\s*:\s*(.+)$/.exec(line);
+    if (message) {
+      const from = message[1];
+      const to = message[4];
+      names.set(from, names.get(from) || from);
+      names.set(to, names.get(to) || to);
+      messages.push({ from, to, label: message[5].trim(), dashed: line.includes("-->>") || line.includes("-->") });
+    }
+  }
+  const participants = [...names.keys()];
+  if (!participants.length || !messages.length) {
+    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+  }
+  const width = Math.max(420, participants.length * 180 + 40);
+  const height = 72 + messages.length * 58;
+  const xFor = (id: string) => 90 + participants.indexOf(id) * 180;
+  return (
+    <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid sequence diagram">
+      <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
+        <defs><marker id="sequence-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
+        {participants.map((id) => <g key={id}><rect x={xFor(id) - 66} y="8" width="132" height="34" rx="7" fill="#202734" stroke="#64748b" /><text x={xFor(id)} y="29" textAnchor="middle" fontSize="11" fill="#f1f5f9">{names.get(id)}</text><line x1={xFor(id)} y1="42" x2={xFor(id)} y2={height - 10} stroke="currentColor" strokeOpacity=".35" strokeDasharray="4 4" /></g>)}
+        {messages.map((message, index) => {
+          const y = 70 + index * 58;
+          const x1 = xFor(message.from);
+          const x2 = xFor(message.to);
+          return <g key={index}><line x1={x1} y1={y} x2={x2} y2={y} stroke="currentColor" strokeWidth="1.4" strokeDasharray={message.dashed ? "5 4" : undefined} markerEnd="url(#sequence-arrow)" /><text x={(x1 + x2) / 2} y={y - 7} textAnchor="middle" fontSize="10" fill="currentColor">{message.label.slice(0, 42)}</text></g>;
+        })}
+      </svg>
+      <p className="mt-1 text-[10px] text-studio-500">Mermaid sequence diagram · {participants.length} participants · {messages.length} messages</p>
+    </div>
+  );
+}
+
 function MermaidDiagram({ source }: { source: string }) {
+  const arrowId = useId().replace(/:/g, "");
   if (/^\s*xychart-beta\b/i.test(source)) {
     const labelsMatch = source.match(/x-axis\s+(?:"[^"]*"\s*)?\[([^\]]+)\]/i);
     const valuesMatch = source.match(/(?:bar|line)\s*\[([^\]]+)\]/i);
@@ -44,6 +89,10 @@ function MermaidDiagram({ source }: { source: string }) {
     if (labels.length && labels.length === values.length && values.every(Number.isFinite)) {
       return <DataChart source={JSON.stringify({ title: titleMatch?.[1] ?? "Chart", labels, values, type: /^\s*line\b/im.test(source) ? "line" : "bar" })} />;
     }
+  }
+  if (/^\s*sequenceDiagram\b/i.test(source)) return <SequenceDiagram source={source} />;
+  if (!/^\s*(?:flowchart|graph)\b/i.test(source)) {
+    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
   }
   const { nodes, edges, direction } = mermaidParts(source);
   if (!nodes.length) {
@@ -60,7 +109,7 @@ function MermaidDiagram({ source }: { source: string }) {
   return (
     <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid flowchart">
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height} role="presentation" className="max-w-none">
-        <defs><marker id="mermaid-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
+        <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {edges.map((edge, index) => {
           const from = positions.get(edge.from);
           const to = positions.get(edge.to);
@@ -69,7 +118,7 @@ function MermaidDiagram({ source }: { source: string }) {
           const y1 = from.y + (direction === "LR" ? nodeH / 2 : nodeH);
           const x2 = to.x + (direction === "LR" ? 0 : nodeW / 2);
           const y2 = to.y + (direction === "LR" ? nodeH / 2 : 0);
-          return <g key={index}><line x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.5" markerEnd="url(#mermaid-arrow)" />{edge.label && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 5} fontSize="10" fill="currentColor" textAnchor="middle">{edge.label}</text>}</g>;
+          return <g key={index}><line x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.5" markerEnd={"url(#" + arrowId + ")"} />{edge.label && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 5} fontSize="10" fill="currentColor" textAnchor="middle">{edge.label}</text>}</g>;
         })}
         {nodes.map((node) => {
           const p = positions.get(node.id)!;
