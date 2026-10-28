@@ -869,11 +869,14 @@ class RunnerCore:
         ]
         effective_tools = [
             tb for tb in spec.tools
-            if tb.kind.casefold() not in {"python", "python_environment"}
+            if tb.kind.casefold() not in {"python", "python_environment", "workspace_files"}
         ]
         raw_names = [tb.name or tb.kind for tb in effective_tools]
         if python_bindings:
             raw_names.append("python")
+        # The workspace-scoped file interface is always available under one
+        # canonical name, even when an older project has a custom binding for it.
+        raw_names.append("file")
         existing_kinds = {tb.kind.casefold() for tb in spec.tools}
         builtin_knowledge = [
             ("knowledge_search", KnowledgeSearchTool),
@@ -883,9 +886,6 @@ class RunnerCore:
             (kind, tool_cls) for kind, tool_cls in builtin_knowledge
             if kind not in existing_kinds
         ]
-        available_workspace_files = "workspace_files" not in existing_kinds
-        if available_workspace_files:
-            raw_names.append("file")
         raw_names.extend(kind for kind, _ in available_knowledge)
         if include_attachment_reader:
             raw_names.append("read_attachment")
@@ -919,16 +919,15 @@ class RunnerCore:
                 parameters=tool_inst.Input.model_json_schema(),
             ))
 
-        if available_workspace_files:
-            name = deduped[idx]
-            idx += 1
-            tool_inst = WorkspaceFilesTool()
-            tool_instances[name] = tool_inst
-            tool_specs.append(ToolSpec(
-                name=name,
-                description=tool_inst.default_description,
-                parameters=tool_inst.Input.model_json_schema(),
-            ))
+        name = deduped[idx]
+        idx += 1
+        tool_inst = WorkspaceFilesTool()
+        tool_instances[name] = tool_inst
+        tool_specs.append(ToolSpec(
+            name=name,
+            description=tool_inst.default_description,
+            parameters=tool_inst.Input.model_json_schema(),
+        ))
 
         # Project knowledge is a shared runtime capability, not an optional
         # tool-library decoration. Expose retrieval and ingestion to every agent;
