@@ -232,7 +232,7 @@ export function ProjectAttachmentsPanel({
             ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
             : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
-          <Icon name={uploading ? "loader-circle" : "paperclip"} size={compact ? 17 : 14} />
+          <Icon name="paperclip" size={compact ? 17 : 14} />
           {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
         </button>
         {selectedIds.length > 0 && (
@@ -244,7 +244,7 @@ export function ProjectAttachmentsPanel({
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {selected.map((item) => (
             <span key={item.id} title={item.name} className="inline-flex max-w-44 items-center gap-1 rounded-full border border-line bg-studio-950 px-2 py-1 text-[10px] text-studio-300">
-              <Icon name="file" size={11} /><span className="truncate">{item.name}</span>
+              <Icon name="file-up" size={11} /><span className="truncate">{item.name}</span>
               <button type="button" aria-label={`Remove ${item.name} from next message`} onClick={() => toggleSelection(item, false)} className="ml-0.5 text-studio-500 hover:text-white">×</button>
             </span>
           ))}
