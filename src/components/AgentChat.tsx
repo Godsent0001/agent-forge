@@ -316,6 +316,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     })();
   }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
 
+  const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
+  const activeTaskGoal = latestUserTask?.text
+    ? latestUserTask.text.replace(/\\s+/g, " ").trim().slice(0, 110)
+    : null;
   const activeProgressBrief = (() => {
     const open = new Map<string, import("../types").ExecutionEvent>();
     for (const event of [...activeExecutionEvents].sort((a, b) => a.seq - b.seq)) {
@@ -765,8 +769,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit font-mono">
-            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeProgressBrief || `${agent.name} is working through the task…`}
+          <div role="status" aria-live="polite" className="flex items-start gap-3 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit max-w-3xl">
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-300 animate-pulse" />
+            <div className="min-w-0">
+              <p className="font-mono text-xs sm:text-sm">{activeProgressBrief || `${agent.name} is working through the task…`}</p>
+              {activeTaskGoal && <p className="mt-1 text-[10px] leading-4 text-studio-500">Goal: {activeTaskGoal}{latestUserTask && latestUserTask.text.trim().length > 110 ? "…" : ""}</p>}
+            </div>
           </div>
         )}
 
