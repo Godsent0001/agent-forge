@@ -180,6 +180,17 @@ def _tokens(text: str) -> list[str]:
     return re.findall(r"[\w'-]{2,}", text.casefold())
 
 
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or len(left) != len(right):
+        return 0.0
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if not left_norm or not right_norm:
+        return 0.0
+    return dot / (left_norm * right_norm)
+
+
 class KnowledgeIndex:
     """Persistent SQLite chunk index with lexical ranking and optional semantic reranking."""
 
@@ -195,10 +206,16 @@ class KnowledgeIndex:
                 CREATE TABLE IF NOT EXISTS knowledge_chunks (
                     chunk_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
                     text TEXT NOT NULL, start_char INTEGER NOT NULL, end_char INTEGER NOT NULL,
-                    metadata TEXT NOT NULL, FOREIGN KEY(source_id) REFERENCES knowledge_sources(source_id)
+                    metadata TEXT NOT NULL, embedding TEXT,
+                    FOREIGN KEY(source_id) REFERENCES knowledge_sources(source_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge_chunks(source_id, ordinal);
             """)
+            # Upgrade databases created before persistent chunk embeddings existed.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(knowledge_chunks)")}
+            if "embedding" not in columns:
+                db.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding TEXT")
+        self.last_ingest_embedded = False
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=15)
@@ -206,8 +223,28 @@ class KnowledgeIndex:
         db.execute("PRAGMA foreign_keys=ON")
         return db
 
-    def ingest(self, document: ExtractedDocument, *, chunk_chars: int = 2400, overlap_chars: int = 250) -> int:
+    def ingest(
+        self,
+        document: ExtractedDocument,
+        *,
+        chunk_chars: int = 2400,
+        overlap_chars: int = 250,
+        embedding_fn: Callable[[list[str]], list[list[float]]] | None = None,
+    ) -> int:
         chunks = chunk_document(document, chunk_chars=chunk_chars, overlap_chars=overlap_chars)
+        vectors: list[list[float] | None] = [None] * len(chunks)
+        self.last_ingest_embedded = False
+        if embedding_fn and chunks:
+            try:
+                generated = embedding_fn([chunk.text for chunk in chunks])
+                if len(generated) != len(chunks) or any(not vector for vector in generated):
+                    raise ValueError("Embedding provider returned an incomplete vector batch")
+                vectors = [[float(value) for value in vector] for vector in generated]
+                self.last_ingest_embedded = True
+            except Exception:
+                # Keep ingestion available when the local model is unavailable;
+                # lexical retrieval remains a valid, explicitly reported fallback.
+                vectors = [None] * len(chunks)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             # Same name and digest is idempotent; changed content replaces the indexed revision.
@@ -224,15 +261,24 @@ class KnowledgeIndex:
                  json.dumps(document.metadata, ensure_ascii=False), len(document.text)),
             )
             db.executemany(
-                "INSERT INTO knowledge_chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(c.chunk_id, c.source_id, c.ordinal, c.text, c.start_char, c.end_char,
-                  json.dumps(c.metadata, ensure_ascii=False)) for c in chunks],
+                """INSERT INTO knowledge_chunks
+                   (chunk_id, source_id, ordinal, text, start_char, end_char, metadata, embedding)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        chunk.chunk_id, chunk.source_id, chunk.ordinal, chunk.text,
+                        chunk.start_char, chunk.end_char, json.dumps(chunk.metadata, ensure_ascii=False),
+                        json.dumps(vectors[index]) if vectors[index] is not None else None,
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
             )
         return len(chunks)
 
     def search(
         self, query: str, *, limit: int = 8,
         semantic_score: Callable[[str, str], float] | None = None,
+        query_embedding: list[float] | None = None,
         semantic_weight: float = 0.35,
     ) -> list[SearchHit]:
         if not query.strip() or limit < 1:
@@ -255,9 +301,17 @@ class KnowledgeIndex:
         for row, tokens in tokenized:
             token_set = set(tokens)
             overlap = len(qtokens & token_set)
-            semantic = float(semantic_score(query, row["text"])) if semantic_score else 0.0
-            # A semantic adapter may retrieve related chunks with no literal term overlap.
-            if not overlap and not semantic_score:
+            semantic = 0.0
+            if query_embedding and row["embedding"]:
+                try:
+                    stored_vector = json.loads(row["embedding"])
+                    semantic = _cosine_similarity(query_embedding, stored_vector)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    semantic = 0.0
+            elif semantic_score:
+                semantic = float(semantic_score(query, row["text"]))
+            # Semantic retrieval can surface related chunks with no literal term overlap.
+            if not overlap and not semantic_score and not (query_embedding and row["embedding"]):
                 continue
             tf = sum(min(tokens.count(t), 4) for t in qtokens)
             idf = sum(
