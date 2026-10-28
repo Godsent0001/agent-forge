@@ -95,6 +95,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
   const [conversationReloadKey, setConversationReloadKey] = useState(0);
+  const [conversationListReloadKey, setConversationListReloadKey] = useState(0);
   const [readyConversationIds, setReadyConversationIds] = useState<Set<string>>(new Set());
   const [newConversationIds, setNewConversationIds] = useState<Set<string>>(new Set());
   const [conversationError, setConversationError] = useState<string | null>(null);
@@ -177,7 +178,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       cancelled = true;
       conversationLoadRef.current += 1;
     };
-  }, [agent?.id, project?.id, setChatMessages]);
+  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages]);
 
   useEffect(() => {
     if (!agent || !project || !activeConversationId) return;
@@ -375,13 +376,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setActiveConversationId(created.id);
     } catch (cause) {
       setConversationError(cause instanceof Error ? cause.message : "Could not create a conversation.");
+      setConversationListReloadKey((value) => value + 1);
     }
   };
 
   const handleClearChat = async () => {
     if (!agent || !project || isProcessing) return;
-    conversationNavigationRef.current += 1;
     if (!window.confirm(`Delete this conversation with ${agent.name}? This cannot be undone.`)) return;
+    conversationNavigationRef.current += 1;
     setConversationError(null);
     try {
       const created = await api.conversations.create(project.id, agent.id);
@@ -393,6 +395,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setActiveConversationId(created.id);
     } catch (cause) {
       setConversationError(cause instanceof Error ? cause.message : "Could not delete this conversation.");
+      setConversationListReloadKey((value) => value + 1);
     }
   };
 
