@@ -336,7 +336,7 @@ class KnowledgeIndex:
         for row, lexical, semantic in raw:
             lex_norm = lexical / max_lex
             sem_norm = (semantic - sem_min) / (sem_max - sem_min) if sem_max > sem_min else (1.0 if (semantic_score or query_embedding) and semantic > 0 else 0.0)
-            weight = semantic_weight if semantic_score else 0.0
+            weight = semantic_weight if (semantic_score or query_embedding) else 0.0
             score = (1 - weight) * lex_norm + weight * sem_norm
             chunk = KnowledgeChunk(
                 chunk_id=row["chunk_id"], source_id=row["source_id"], source_name=row["source_name"],
