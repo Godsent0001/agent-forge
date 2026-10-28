@@ -86,6 +86,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
+  const [readyConversationIds, setReadyConversationIds] = useState<Set<string>>(new Set());
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -176,6 +177,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       .then((records) => {
         if (conversationLoadRef.current !== loadId) return;
         setChatMessages(agent.id, records.map((record) => fromStoredMessage(record, agent.name)));
+        setReadyConversationIds((current) => new Set(current).add(activeConversationId));
       })
       .catch((cause) => {
         if (conversationLoadRef.current !== loadId) return;
@@ -327,6 +329,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     try {
       const created = await api.conversations.create(project.id, agent.id);
       setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setReadyConversationIds((current) => new Set(current).add(created.id));
       setChatMessages(agent.id, []);
       setActiveConversationId(created.id);
     } catch (cause) {
@@ -342,6 +345,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       const created = await api.conversations.create(project.id, agent.id);
       if (activeConversationId) await api.conversations.remove(activeConversationId);
       setConversations((current) => [created, ...current.filter((item) => item.id !== activeConversationId && item.id !== created.id)]);
+      setReadyConversationIds((current) => new Set(current).add(created.id));
       setChatMessages(agent.id, []);
       setActiveConversationId(created.id);
     } catch (cause) {
@@ -444,7 +448,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const sendTask = async (rawText: string, fromComposer = false) => {
     if (!rawText.trim() || isProcessing || !agent || !project) return;
-    if (!activeConversationId || conversationLoading) {
+    if (!activeConversationId || (conversationLoading && !readyConversationIds.has(activeConversationId))) {
       setChatError("Wait for the saved conversation to finish loading, then try again.");
       return;
     }
