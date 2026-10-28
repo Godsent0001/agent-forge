@@ -49,6 +49,6 @@ def test_manifest_stays_bounded_for_large_custom_tool_catalogs():
 
     manifest = build_runtime_capability_manifest(tools, "/workspace")
 
-    assert len(manifest) <= 2400
+    assert len(manifest) <= 1800
     assert "Available tool names" in manifest or "Tools available in this run" in manifest
     assert "custom_tool_0" in manifest
