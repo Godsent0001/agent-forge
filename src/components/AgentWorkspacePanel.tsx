@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type ExecutionArtifact } from "../api/client";
+import { api, type ExecutionArtifact, type PreviewStatus } from "../api/client";
 import type { ExecutionEvent } from "../types";
 import { Icon } from "./ui/Icon";
 
@@ -69,6 +69,9 @@ export function AgentWorkspacePanel({
   const [previewText, setPreviewText] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [previewServer, setPreviewServer] = useState<PreviewStatus | null>(null);
+  const [previewServerBusy, setPreviewServerBusy] = useState(false);
+  const [previewServerError, setPreviewServerError] = useState<string | null>(null);
   const lastSeq = useRef(0);
 
   useEffect(() => {
@@ -189,6 +192,58 @@ export function AgentWorkspacePanel({
     setSelectedKey(preferred.key);
   }, [entries, selectedKey]);
 
+  const packageEntry = entries
+    .filter((entry) => entry.source === "run" && extension(entry.path) === "json" && entry.path.split("/").pop() === "package.json")
+    .sort((a, b) => Number(a.path !== "package.json") - Number(b.path !== "package.json"))[0] ?? null;
+
+  useEffect(() => {
+    let active = true;
+    if (!observedExecutionId || !packageEntry) {
+      setPreviewServer(null);
+      return () => { active = false; };
+    }
+    const poll = async () => {
+      try {
+        const status = await api.executions.previewStatus(observedExecutionId);
+        if (active) setPreviewServer(status);
+      } catch {
+        if (active) setPreviewServer(null);
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1200);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [observedExecutionId, packageEntry?.path]);
+
+  const startAppPreview = async () => {
+    if (!observedExecutionId || !packageEntry || previewServerBusy) return;
+    setPreviewServerBusy(true);
+    setPreviewServerError(null);
+    try {
+      const status = await api.executions.startPreview(observedExecutionId, packageEntry.path);
+      setPreviewServer(status);
+    } catch (error) {
+      setPreviewServerError(error instanceof Error ? error.message : "Could not start the app preview.");
+    } finally {
+      setPreviewServerBusy(false);
+    }
+  };
+
+  const stopAppPreview = async () => {
+    if (!observedExecutionId || previewServerBusy) return;
+    setPreviewServerBusy(true);
+    try {
+      setPreviewServer(await api.executions.stopPreview(observedExecutionId));
+    } catch (error) {
+      setPreviewServerError(error instanceof Error ? error.message : "Could not stop the app preview.");
+    } finally {
+      setPreviewServerBusy(false);
+    }
+  };
+
   const selected = entries.find((entry) => entry.key === selectedKey) ?? null;
   useEffect(() => {
     let active = true;
@@ -271,7 +326,20 @@ export function AgentWorkspacePanel({
             {selected && <span className="shrink-0">{formatBytes(selected.size)}</span>}
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-xl bg-studio-950 neu-inset p-3">
-            {loadingPreview ? <span className="text-xs text-studio-500">Loading preview…</span> :
+            {previewServer?.status === "ready" && previewServer.url ? <iframe title="Running app preview" src={previewServer.url} sandbox="allow-scripts allow-same-origin allow-forms" className="h-full min-h-0 w-full rounded-lg bg-white" /> :
+              packageEntry ? <div className="flex max-w-sm flex-col items-center gap-3 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-studio-900 neu-raised-sm text-accent-300"><Icon name="play" size={22} /></span>
+                <p className="text-sm font-medium text-studio-200">{previewServer?.status === "starting" ? "Starting app…" : previewServer?.status === "failed" ? "App preview failed" : "App ready to preview"}</p>
+                <p className="text-[11px] text-studio-500">{packageEntry.path}</p>
+                {previewServerError && <p role="alert" className="text-[11px] text-red-300">{previewServerError}</p>}
+                {previewServer?.log && previewServer.status === "failed" && <pre className="max-h-28 w-full overflow-auto whitespace-pre-wrap break-words rounded-lg bg-studio-900 p-2 text-left font-mono text-[10px] text-studio-400">{previewServer.log}</pre>}
+                <div className="flex gap-2">
+                  {previewServer?.status !== "ready" && <button type="button" disabled={previewServerBusy || previewServer?.status === "starting"} onClick={() => void startAppPreview()} className="neu-btn rounded-lg px-3 py-2 text-xs text-accent-200 disabled:opacity-50">{previewServerBusy ? "Starting…" : previewServer?.status === "starting" ? "Starting…" : previewServer?.status === "failed" ? "Retry preview" : "Start preview"}</button>}
+                  {previewServer?.status === "ready" && <button type="button" disabled={previewServerBusy} onClick={() => void stopAppPreview()} className="neu-btn rounded-lg px-3 py-2 text-xs text-studio-300">Stop preview</button>}
+                </div>
+                {previewServer?.status === "starting" && <p className="text-[10px] text-studio-600">Waiting for the local server…</p>}
+              </div> :
+              loadingPreview ? <span className="text-xs text-studio-500">Loading preview…</span> :
               fileError ? <p role="alert" className="max-w-xs text-center text-xs text-red-300">{fileError}</p> :
               !selected ? <div className="text-center"><Icon name="editor" size={25} className="mx-auto mb-3 text-studio-600" /><p className="text-sm font-medium text-studio-300">Nothing to preview</p><p className="mt-1 text-[11px] text-studio-500">Choose a file in Files.</p></div> :
               isImage && previewUrl ? <img src={previewUrl} alt={selected.name} className="max-h-full max-w-full object-contain" /> :
