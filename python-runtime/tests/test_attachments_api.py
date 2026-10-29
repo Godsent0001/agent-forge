@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from app import models
 from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
