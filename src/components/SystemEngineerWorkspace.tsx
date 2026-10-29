@@ -129,7 +129,7 @@ export function SystemEngineerWorkspace({ onOpenToolCatalog }: { onOpenToolCatal
     try {
       await updateProjectSettings({ settings: { ...(project.settings ?? {}), skills: next } });
       setSkills(next);
-      setNotice("Skills saved. Assigned skills are loaded into RunnerCore when the agent starts a new execution.");
+      setNotice("Skills saved. Agents see a compact catalogue and load full instructions only when relevant.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save skills.");
     } finally {
