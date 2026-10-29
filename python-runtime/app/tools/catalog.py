@@ -72,17 +72,8 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry("http_request", "HTTP Request", "general",
                  "Make a bounded HTTP GET or POST request to a public URL.",
                  "real", pack=None),
-    CatalogEntry("file_system", "File Operations", "general",
-                 "Read, write, or list files within the current run workspace.",
-                 "real", pack=None),
     CatalogEntry("workspace_files", "Workspace Files", "general",
                  "List, read, write, create directories, and delete individual files inside the persistent project workspace with validated path handling.",
-                 "real", pack=None),
-    CatalogEntry("knowledge_search", "Project Knowledge Search", "general",
-                 "Search indexed project documents using hybrid lexical and semantic retrieval when embeddings are available.",
-                 "real", pack=None),
-    CatalogEntry("knowledge_ingest", "Project Knowledge Indexing", "general",
-                 "Extract and index workspace documents for later project-wide retrieval; reports when it must fall back to lexical search.",
                  "real", pack=None),
 
     # --- Audio ---------------------------------------------------------
