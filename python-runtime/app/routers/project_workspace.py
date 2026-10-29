@@ -87,7 +87,7 @@ def read_project_workspace_file(
     """Serve one file from a project's workspace without allowing path escape."""
     root = _workspace(project_id, db)
     try:
-        relative = Path(path.replace("\\\\", "/"))
+        relative = Path(path)
         if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
             raise ValueError("invalid relative path")
         candidate = root
