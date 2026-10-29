@@ -6,39 +6,47 @@ from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
 from app.contracts.naming import dedupe_names, sanitize_tool_name
 
 
-def _with_assigned_skills(system_prompt: str, agent_id: str, skills: object) -> str:
-    """Append bounded, project-persisted skill instructions for this agent only."""
+def _assigned_skills(agent_id: str, skills: object) -> list[dict]:
+    """Return bounded skill records assigned to one agent."""
     if not isinstance(skills, list):
-        return system_prompt
-    blocks: list[str] = []
-    total_chars = 0
+        return []
+    assigned_skills: list[dict] = []
     for skill in skills:
         if not isinstance(skill, dict) or skill.get("enabled", True) is not True:
             continue
         assigned = skill.get("assigned_agent_ids", [])
+        skill_id = skill.get("id")
         instructions = skill.get("instructions")
-        name = skill.get("name")
         if not isinstance(assigned, list) or agent_id not in assigned:
+            continue
+        if not isinstance(skill_id, str) or not skill_id.strip():
             continue
         if not isinstance(instructions, str) or not instructions.strip():
             continue
-        if not isinstance(name, str) or not name.strip():
-            name = "Untitled skill"
-        block = f"### {name.strip()[:120]}\n{instructions.strip()}"
-        remaining = 16000 - total_chars
-        if remaining <= 0:
+        assigned_skills.append({
+            "id": skill_id[:200],
+            "name": str(skill.get("name") or "Untitled skill")[:120],
+            "description": str(skill.get("description") or "")[:500],
+            "instructions": instructions.strip()[:16000],
+        })
+        if len(assigned_skills) >= 10:
             break
-        blocks.append(block[:remaining])
-        total_chars += min(len(block), remaining)
-        if len(blocks) >= 10:
-            break
-    if not blocks:
+    return assigned_skills
+
+
+def _with_assigned_skills(system_prompt: str, skills: list[dict]) -> str:
+    """Add only a compact skill index; full procedures are loaded by the skill tool."""
+    if not skills:
         return system_prompt
+    lines = [
+        f"- id={skill['id']!r} | {skill['name']}: {skill['description'] or 'No description provided.'}"
+        for skill in skills
+    ]
     skill_context = (
-        "\n\n[AgentForge Assigned Skills]\n"
-        "Use these user-assigned procedures when relevant to the task. They are guidance, "
-        "not permission to bypass safety, access controls, or tool approvals.\n\n"
-        + "\n\n".join(blocks)
+        "\n\n[Assigned project skills]\n"
+        "These are compact descriptions of user-assigned procedures. When a skill is relevant, "
+        "call load_skill with its exact ID to read the full instructions. Do not load unrelated skills.\n"
+        + "\n".join(lines)
     )
     return (system_prompt or "").rstrip() + skill_context
 
@@ -91,13 +99,23 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
             children.append(ChildLink(agent_id=child.id, description=link.description or None))
             pending.append(child)
 
+        assigned_skills = _assigned_skills(row.id, skills)
+        if assigned_skills:
+            bindings.append(ToolBinding(
+                id=f"project-skill:{row.id}",
+                kind="project_skill",
+                name="load_skill",
+                description="Load full instructions for one relevant assigned skill by its ID.",
+                config={"skills": assigned_skills},
+            ))
+
         agents[row.id] = AgentSpec(
             id=row.id,
             name=row.name,
             description=row.description,
             provider=row.provider,
             model=row.model,
-            system_prompt=_with_assigned_skills(row.system_prompt, row.id, skills),
+            system_prompt=_with_assigned_skills(row.system_prompt, assigned_skills),
             tool_guidance=row.tool_use_schema,
             memory_enabled=row.memory_enabled,
             lessons_enabled=row.lessons_enabled,
