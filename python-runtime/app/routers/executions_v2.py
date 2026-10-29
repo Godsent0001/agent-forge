@@ -34,6 +34,7 @@ from app.infra.attachment_storage import (
 from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
 from app.infra.workspace import RunWorkspace
+from app.services.core_adapters import Workspace
 from app.services.executions import manager
 from app.services.previews import preview_manager
 from app.tools.base import ToolExecutionError
@@ -73,7 +74,8 @@ def _execution_detail(row: models.Execution) -> dict:
 @router.post("")
 async def create_execution(payload: CreateExecutionRequest, db: Session = Depends(get_db)):
     execution_id = str(uuid4())
-    workspace: RunWorkspace | None = None
+    workspace: Workspace | None = None
+    copied_attachment_paths: list[str] = []
     try:
         attachment_refs = []
         if payload.attachment_ids:
@@ -97,11 +99,12 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
                 raise HTTPException(status_code=413, detail="Run attachments exceed the 100 MiB combined limit")
 
             by_id = {row.id: row for row in rows}
-            workspace = RunWorkspace(execution_id)
+            workspace = Workspace(execution_id, payload.project_id)
             for attachment_id in payload.attachment_ids:
                 row = by_id[attachment_id]
                 try:
                     relative_path = copy_clean_attachment_to_workspace(row, workspace)
+                    copied_attachment_paths.append(relative_path)
                 except (AttachmentStorageError, OSError) as exc:
                     raise HTTPException(status_code=409, detail="Attachment failed integrity verification") from exc
                 attachment_refs.append({
@@ -120,18 +123,33 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
             attachments=attachment_refs,
             options=payload.options,
         )
-        return manager.start(req)
+        started = manager.start(req)
+        # The copied attachments now belong to the persistent project workspace.
+        copied_attachment_paths.clear()
+        return started
     except HTTPException:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise
     except ValueError as exc:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise
 
 
@@ -310,7 +328,7 @@ def start_execution_preview(execution_id: str, payload: StartPreviewRequest):
     finally:
         db.close()
     try:
-        return preview_manager.start(execution_id, payload.package_path)
+        return preview_manager.start(execution_id, payload.package_path, project_id=project_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
