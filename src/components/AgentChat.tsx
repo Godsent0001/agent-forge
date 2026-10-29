@@ -77,7 +77,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
-  const activeConversationByScope = useStore((s) => s.activeConversationByScope);
   const setActiveConversationForScope = useStore((s) => s.setActiveConversationForScope);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
@@ -169,7 +168,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         }
         setConversations(items);
         const scope = `${project.id}:${agent.id}`;
-        const rememberedId = activeConversationByScope[scope];
+        const rememberedId = useStore.getState().activeConversationByScope[scope];
         const selectedConversation = items.find((item) => item.id === rememberedId) ?? items[0];
         setActiveConversationId(selectedConversation.id);
         setActiveConversationForScope(scope, selectedConversation.id);
@@ -184,7 +183,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       cancelled = true;
       conversationLoadRef.current += 1;
     };
-  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages, activeConversationByScope, setActiveConversationForScope]);
+  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages, setActiveConversationForScope]);
 
   useEffect(() => {
     if (!agent || !project || !activeConversationId) return;
