@@ -180,6 +180,8 @@ def build_tool(kind: str, config: dict) -> Tool:
 # v2 registry contract (D-08). Keep build_tool() above unchanged: the legacy
 # engine calls it directly and must retain its historical behavior.
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {
+    "web_search": WebSearchCapability,
+    "browser": BrowserCapability,
     "agentforge_control": AgentForgeControlTool,
     "video_transcript": VideoTranscriptTool,
     "clip_finder": ClipFinderTool,
@@ -199,6 +201,7 @@ _CONFIG_DRIVEN_KINDS = frozenset({
 def known_tool_kinds() -> frozenset[str]:
     """Every tool kind the v2 factory can build (used to validate new Tool rows)."""
     from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
+from app.core.tools.web_capabilities import BrowserCapability, WebSearchCapability
 
     return frozenset(_SIMPLE_FACTORIES) | _CONFIG_DRIVEN_KINDS | frozenset(NATIVE_TOOLS) | {
         "custom_http", *WorkspaceCapabilityToolFactory._BUILTINS,
