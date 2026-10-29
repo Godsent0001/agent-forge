@@ -263,7 +263,7 @@ export default function App() {
           </>}
           <button type="button" onClick={toggleWorkspace} aria-label="Agent Workspace" aria-pressed={isWorkspaceOpen} title="Agent Workspace"
             className={`rounded-lg p-2 transition-all ${isWorkspaceOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
-            <Icon name="editor" />
+            <Icon name="folder-open" />
           </button>
         </aside>
       </div>
