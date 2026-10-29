@@ -154,10 +154,9 @@ def _assert_safe_text(data: bytes, extension: str) -> str:
 
 
 def validate_attachment(path: Path, original_name: str, declared_mime: str | None) -> str:
-    extension = Path(original_name).suffix.lower()
-    expected_mime = ALLOWED_MIME_BY_EXTENSION.get(extension)
-    if expected_mime is None:
-        raise AttachmentStorageError("Unsupported file type")
+    """Validate upload size/readability, not extension or content; arbitrary file types are attachable."""
+    import mimetypes
+
     try:
         size = path.stat().st_size
         if size <= 0:
@@ -165,77 +164,15 @@ def validate_attachment(path: Path, original_name: str, declared_mime: str | Non
         if size > MAX_ATTACHMENT_BYTES:
             raise AttachmentStorageError("Attachment exceeds the 25 MiB file limit")
         with path.open("rb") as handle:
-            head = handle.read(64)
-            handle.seek(max(0, size - 2048))
-            tail = handle.read(2048)
-            handle.seek(0)
-            data = handle.read(MAX_ATTACHMENT_BYTES + 1)
+            # Read a small prefix to verify the staged file is accessible; do not scan it.
+            handle.read(64)
     except OSError as exc:
         raise AttachmentStorageError("Uploaded file could not be read") from exc
-    if len(data) != size:
-        raise AttachmentStorageError("Uploaded file was truncated while validating")
-
-    if extension in {".txt", ".py", ".md", ".csv", ".json"}:
-        _assert_safe_text(data, extension)
-        mime = expected_mime
-    elif extension == ".pdf":
-        if not head.startswith(b"%PDF-") or b"%%EOF" not in tail:
-            raise AttachmentStorageError("Malformed PDF or extension/signature mismatch")
-        mime = "application/pdf"
-    elif extension == ".png":
-        if not head.startswith(bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])):
-            raise AttachmentStorageError("PNG signature mismatch")
-        _verify_image(path, "PNG")
-        mime = "image/png"
-    elif extension in {".jpg", ".jpeg"}:
-        if not head.startswith(bytes([0xFF, 0xD8, 0xFF])):
-            raise AttachmentStorageError("JPEG signature mismatch")
-        _verify_image(path, "JPEG")
-        mime = "image/jpeg"
-    elif extension == ".webp":
-        if head[:4] != b"RIFF" or head[8:12] != b"WEBP":
-            raise AttachmentStorageError("WebP signature mismatch")
-        _verify_image(path, "WEBP")
-        mime = "image/webp"
-    elif extension == ".wav":
-        if head[:4] != b"RIFF" or head[8:12] != b"WAVE":
-            raise AttachmentStorageError("WAV signature mismatch")
-        mime = "audio/wav"
-    elif extension == ".mp3":
-        if not (head.startswith(b"ID3") or (len(head) >= 2 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0)):
-            raise AttachmentStorageError("MP3 signature mismatch")
-        mime = "audio/mpeg"
-    elif extension == ".mp4":
-        if len(head) < 12 or head[4:8] != b"ftyp":
-            raise AttachmentStorageError("MP4 signature mismatch")
-        mime = "video/mp4"
-    elif extension == ".webm":
-        if not head.startswith(bytes([0x1A, 0x45, 0xDF, 0xA3])):
-            raise AttachmentStorageError("WebM signature mismatch")
-        mime = "video/webm"
-    else:
-        raise AttachmentStorageError("Unsupported file type")
-
-    claimed = (declared_mime or "").split(";", 1)[0].strip().lower()
-    mime_aliases = {
-        "text/x-markdown": "text/markdown",
-        "application/x-pdf": "application/pdf",
-        "image/jpg": "image/jpeg",
-        "audio/x-wav": "audio/wav",
-        "audio/wave": "audio/wav",
-        "application/octet-stream": "",
-        "binary/octet-stream": "",
-    }
-    claimed = mime_aliases.get(claimed, claimed)
-    # Browsers frequently label source/data files as text/plain even when the
-    # extension and validated content identify a more specific text MIME type.
-    if extension in {".txt", ".py", ".md", ".csv", ".json"} and claimed == "text/plain":
-        claimed = mime
-    if claimed and claimed != mime:
-        raise AttachmentStorageError("Declared MIME type does not match the detected file type")
-    if expected_mime != mime:
-        raise AttachmentStorageError("File extension and detected MIME type do not match")
-    return mime
+    return (
+        mimetypes.guess_type(original_name)[0]
+        or (declared_mime.split(";", 1)[0].strip() if declared_mime else "")
+        or "application/octet-stream"
+    )
 
 
 def _verify_image(path: Path, expected_format: str) -> None:
