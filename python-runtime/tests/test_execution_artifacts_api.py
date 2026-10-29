@@ -145,8 +145,8 @@ def test_execution_workspace_files_are_listed_and_readable(
     db_session.add(execution)
     db_session.commit()
 
-    from app.infra.workspace import RunWorkspace
-    workspace = RunWorkspace(execution.id)
+    from app.services.core_adapters import Workspace
+    workspace = Workspace(execution.id, project.id)
     target = workspace.resolve("src/main.py")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("print('hello')", encoding="utf-8")
