@@ -51,6 +51,7 @@ from app.core.tools.workspace_capabilities import (
 )
 from app.infra.paths import project_dir
 from app.tools.python_project import PythonProjectTool
+from app.tools.shell import ShellTool
 from app.tools.specs import tool_spec
 
 logger = logging.getLogger(__name__)
@@ -910,15 +911,21 @@ class RunnerCore:
             tb for tb in spec.tools
             if tb.kind.casefold() in {"python", "python_environment"}
         ]
+        shell_bindings = [
+            tb for tb in spec.tools
+            if tb.kind.casefold() == "shell"
+        ]
         effective_tools = [
             tb for tb in spec.tools
             if tb.kind.casefold() not in {
-                "python", "python_environment", "workspace_files", "file_system",
+                "python", "python_environment", "workspace_files", "file_system", "shell",
             }
         ]
         raw_names = [tb.name or tb.kind for tb in effective_tools]
-        if python_bindings:
+        if python_bindings or True: # Python is exposed
             raw_names.append("python")
+        if shell_bindings or True: # Shell is exposed by default
+            raw_names.append("shell")
         # The workspace-scoped file interface is always available under one
         # canonical name, even when an older project has a custom binding for it.
         raw_names.append("file")
@@ -955,16 +962,25 @@ class RunnerCore:
 
             tool_specs.append(tool_spec(tb, tool_inst, name=name))
 
-        if python_bindings:
-            name = deduped[idx]
-            idx += 1
-            tool_inst = PythonProjectTool()
-            tool_instances[name] = tool_inst
-            tool_specs.append(ToolSpec(
-                name=name,
-                description=tool_inst.default_description,
-                parameters=tool_inst.Input.model_json_schema(),
-            ))
+        name = deduped[idx]
+        idx += 1
+        tool_inst = PythonProjectTool()
+        tool_instances[name] = tool_inst
+        tool_specs.append(ToolSpec(
+            name=name,
+            description=tool_inst.default_description,
+            parameters=tool_inst.Input.model_json_schema(),
+        ))
+
+        name = deduped[idx]
+        idx += 1
+        tool_inst = ShellTool()
+        tool_instances[name] = tool_inst
+        tool_specs.append(ToolSpec(
+            name=name,
+            description=tool_inst.default_description,
+            parameters=tool_inst.Input.model_json_schema() if hasattr(tool_inst, "Input") else {"type": "object", "properties": {"input": {"type": "string", "description": "Command string to execute in shell"}}, "required": ["input"]},
+        ))
 
         name = deduped[idx]
         idx += 1

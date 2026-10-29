@@ -123,6 +123,7 @@ class ShellTool(Tool):
         "Run a CMD/PowerShell command on Windows or a shell command on Unix in the "
         "persistent project workspace. Returns bounded output, exit code, and absolute paths for files/logs."
     )
+    default_description = description
 
     async def execute(self, input: str, *, context: Any) -> str:
         command_text = input.strip()

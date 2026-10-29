@@ -118,7 +118,35 @@ class PythonExecTool(Tool):
     description = "Execute a short Python snippet in a restricted subprocess."
 
     async def execute(self, input: str, *, context: Any) -> str:
-        script = _strip_markdown_fence(input)
+        raw_code = ""
+        if isinstance(input, str):
+            raw = input.strip()
+            if raw.startswith("{") and raw.endswith("}"):
+                try:
+                    import json
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        raw_code = str(
+                            parsed.get("code")
+                            or parsed.get("script")
+                            or parsed.get("input")
+                            or parsed.get("source")
+                            or ""
+                        ).strip()
+                except Exception:
+                    raw_code = raw
+            else:
+                raw_code = raw
+        elif isinstance(input, dict):
+            raw_code = str(
+                input.get("code")
+                or input.get("script")
+                or input.get("input")
+                or input.get("source")
+                or ""
+            ).strip()
+
+        script = _strip_markdown_fence(raw_code or (input if isinstance(input, str) else ""))
         workspace = getattr(context, "workspace", None)
         workspace_root = getattr(workspace, "root", None)
         owned_tmp = workspace_root is None

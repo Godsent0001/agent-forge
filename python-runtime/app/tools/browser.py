@@ -58,7 +58,36 @@ class BrowserTool(Tool):
         self._http = http_tool or HttpRequestTool()
 
     async def execute(self, input: str, *, context: Any) -> str:
-        url = input.strip()
+        url = ""
+        if isinstance(input, str):
+            raw = input.strip()
+            if raw.startswith("{") and raw.endswith("}"):
+                try:
+                    import json
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        url = str(
+                            parsed.get("url")
+                            or parsed.get("link")
+                            or parsed.get("href")
+                            or parsed.get("input")
+                            or parsed.get("uri")
+                            or ""
+                        ).strip()
+                except Exception:
+                    url = raw
+            else:
+                url = raw
+        elif isinstance(input, dict):
+            url = str(
+                input.get("url")
+                or input.get("link")
+                or input.get("href")
+                or input.get("input")
+                or input.get("uri")
+                or ""
+            ).strip()
+
         if not url:
             raise ToolExecutionError("browser requires an absolute public HTTP(S) URL")
         response = await self._http.execute(f"GET {url}", context=context)
