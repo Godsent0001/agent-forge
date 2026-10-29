@@ -113,7 +113,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const processedExecutionRef = useRef<string | null>(null);
   const conversationLoadRef = useRef(0);
   const conversationNavigationRef = useRef(0);
-  const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
+  const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string; executionId: string } | null>(null);
   const activeExecutionIdRef = useRef<string | null>(null);
   const activeScopeRef = useRef<string | null>(null);
   const currentScope = agent && project ? `${project.id}:${agent.id}` : null;
@@ -128,7 +128,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     const nextExecutionId = saved?.executionId ?? null;
     activeExecutionIdRef.current = nextExecutionId;
     activeExecutionAgentRef.current = saved
-      ? { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId }
+      ? { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId, executionId: saved.executionId }
       : null;
     processedExecutionRef.current = null;
     setActiveExecutionId(nextExecutionId);
@@ -306,7 +306,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   useEffect(() => {
     const targetAgent = activeExecutionAgentRef.current;
-    if (!activeExecutionId || !targetAgent) return;
+    if (!activeExecutionId || !targetAgent || targetAgent.executionId !== activeExecutionId) return;
     const ended = activeExecutionEvents.some(
       (event) => event.execution_id === activeExecutionId && event.type === "execution_ended",
     );
@@ -639,7 +639,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       });
       if (activeScopeRef.current === runScope) {
         processedExecutionRef.current = null;
-        activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
+        activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId, executionId: execution.id };
         activeExecutionIdRef.current = execution.id;
         setActiveExecutionId(execution.id);
         setIsProcessing(true);
