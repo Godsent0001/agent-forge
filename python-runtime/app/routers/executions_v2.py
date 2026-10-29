@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import shutil
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -292,6 +294,56 @@ def download_execution_artifact(
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )
+
+
+@router.get("/{execution_id}/files")
+def list_execution_files(execution_id: str):
+    """List files created in this execution's actual RunWorkspace."""
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+
+    workspace = RunWorkspace(execution_id)
+    root = workspace.root.resolve()
+    ignored_dirs = {".agentforge", ".git", "node_modules", "__pycache__", ".venv"}
+    files: list[dict[str, object]] = []
+    total_bytes = 0
+    for current, dirs, names in os.walk(root, followlinks=False):
+        base = Path(current)
+        dirs[:] = [
+            name for name in dirs
+            if name not in ignored_dirs and not (base / name).is_symlink()
+        ]
+        for name in names:
+            candidate = base / name
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            try:
+                resolved = candidate.resolve(strict=True)
+                relative = resolved.relative_to(root).as_posix()
+                size = resolved.stat().st_size
+            except (OSError, ValueError):
+                continue
+            if relative.startswith(".results/"):
+                continue
+            if len(files) >= 20_000 or total_bytes + size > 512 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Execution workspace is too large to browse (limit: 20,000 files / 512 MiB).",
+                )
+            files.append({"path": relative, "size_bytes": size})
+            total_bytes += size
+
+    files.sort(key=lambda item: str(item["path"]).casefold())
+    return {
+        "execution_id": execution_id,
+        "files": files,
+        "file_count": len(files),
+        "total_bytes": total_bytes,
+    }
 
 
 @router.get("/{execution_id}/files/{relpath:path}")
