@@ -50,3 +50,31 @@ def test_project_tool_delete_removes_only_project_instance(client):
     # Global definitions are independent from project tool instances.
     from app.tools.catalog import CATALOG
     assert any(item.kind == "web_search" for item in CATALOG)
+
+
+
+def test_project_workspace_file_can_be_read_safely(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    project_id = client.post("/projects", json={"name": "Preview"}).json()["id"]
+    workspace = project_dir(project_id) / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "README.md").write_text("# Hello", encoding="utf-8")
+
+    response = client.get(
+        f"/projects/{project_id}/workspace/file",
+        params={"path": "README.md"},
+    )
+    assert response.status_code == 200
+    assert response.text == "# Hello"
+
+    traversal = client.get(
+        f"/projects/{project_id}/workspace/file",
+        params={"path": "../outside.txt"},
+    )
+    assert traversal.status_code == 404
+
+    missing = client.get(
+        f"/projects/{project_id}/workspace/file",
+        params={"path": "missing.txt"},
+    )
+    assert missing.status_code == 404
