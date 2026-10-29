@@ -11,6 +11,9 @@ interface StoreState {
   tools: Tool[];
   selectedAgentId: string | null;
   chatMessages: Record<string, ChatMessage[]>;
+  /** Last active persisted conversation, keyed by project and agent. */
+  activeConversationByScope: Record<string, string>;
+  setActiveConversationForScope: (scope: string, conversationId: string) => void;
   addChatMessage: (agentId: string, msg: ChatMessage) => void;
   setChatMessages: (agentId: string, messages: ChatMessage[]) => void;
   clearChat: (agentId: string) => void;
@@ -53,6 +56,12 @@ export const useStore = create<StoreState>()(
   tools: [],
   selectedAgentId: null,
   chatMessages: {},
+  activeConversationByScope: {},
+  setActiveConversationForScope: (scope, conversationId) => set((state) => (
+    state.activeConversationByScope[scope] === conversationId
+      ? state
+      : { activeConversationByScope: { ...state.activeConversationByScope, [scope]: conversationId } }
+  )),
   pendingTask: null,
 
   clearChat: (agentId) => {
@@ -252,6 +261,7 @@ export const useStore = create<StoreState>()(
             messages.slice(-MAX_PERSISTED_MESSAGES_PER_AGENT),
           ]),
         ),
+        activeConversationByScope: state.activeConversationByScope,
       }),
     },
   ),
