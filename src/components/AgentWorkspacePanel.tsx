@@ -326,7 +326,7 @@ export function AgentWorkspacePanel({
             {selected && <span className="shrink-0">{formatBytes(selected.size)}</span>}
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-xl bg-studio-950 neu-inset p-3">
-            {previewServer?.status === "ready" && previewServer.url ? <iframe title="Running app preview" src={previewServer.url} sandbox="allow-scripts allow-same-origin allow-forms" className="h-full min-h-0 w-full rounded-lg bg-white" /> :
+            {previewServer?.status === "ready" && previewServer.url ? <div className="flex h-full min-h-0 w-full flex-col gap-2"><div className="flex shrink-0 justify-end"><button type="button" disabled={previewServerBusy} onClick={() => void stopAppPreview()} className="neu-btn rounded-lg px-2.5 py-1 text-[10px] text-studio-300">{previewServerBusy ? "Stopping…" : "Stop preview"}</button></div><iframe title="Running app preview" src={previewServer.url} sandbox="allow-scripts allow-same-origin allow-forms" className="h-full min-h-0 w-full flex-1 rounded-lg bg-white" /></div> :
               packageEntry ? <div className="flex max-w-sm flex-col items-center gap-3 text-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-studio-900 neu-raised-sm text-accent-300"><Icon name="play" size={22} /></span>
                 <p className="text-sm font-medium text-studio-200">{previewServer?.status === "starting" ? "Starting app…" : previewServer?.status === "failed" ? "App preview failed" : "App ready to preview"}</p>
