@@ -35,7 +35,7 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 function shortEvent(event: ExecutionEvent) {
-  const name = event.name || event.type.replaceAll("_", " ");
+  const name = event.name || event.type.replace(/_/g, " ");
   const data = event.data ?? {};
   if (event.kind === "tool_call" || name.toLowerCase().includes("shell")) {
     const args = data.args;
@@ -322,7 +322,7 @@ export function AgentWorkspacePanel({
                 const isDone = event.type === "span_ended" || event.type === "execution_ended" || event.type === "artifact_persisted";
                 return <div key={`${event.execution_id}:${event.seq}`} className="flex items-start gap-2 rounded-md px-1.5 py-2">
                   <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${isError ? "bg-red-400" : isDone ? "bg-emerald-400" : "bg-amber-400"}`} />
-                  <div className="min-w-0 flex-1"><p className="truncate text-[11px] text-studio-200">{event.name || event.type.replaceAll("_", " ")}</p><p className="mt-0.5 break-words text-[10px] leading-relaxed text-studio-500">{shortEvent(event)}</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-[11px] text-studio-200">{event.name || event.type.replace(/_/g, " ")}</p><p className="mt-0.5 break-words text-[10px] leading-relaxed text-studio-500">{shortEvent(event)}</p></div>
                   <span className="shrink-0 pt-0.5 text-[9px] text-studio-600">{new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>;
               })}
