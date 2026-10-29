@@ -48,19 +48,23 @@ def _venv_python(root: Path) -> Path:
     return root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
 
 
-def _base_python() -> list[str]:
-    """Find a compatible system Python for project-local virtual environments."""
-    if not getattr(sys, "frozen", False):
-        candidate = [sys.executable]
-    elif os.name == "nt" and shutil.which("py"):
-        # The Windows launcher selects an installed Python 3.11+ without relying
-        # on whichever older Python happens to appear first on PATH.
-        candidate = [shutil.which("py") or "py", "-3"]
-    else:
-        executable = shutil.which("python3") or shutil.which("python")
-        candidate = [executable] if executable else []
+class PythonInterpreterUnavailable(ToolError):
+    """No supported external Python interpreter could be discovered."""
 
-    if candidate:
+
+def _base_python() -> list[str]:
+    """Find any compatible system Python; a broken launcher must not hide other installs."""
+    candidates: list[list[str]] = []
+    if os.name == "nt":
+        launcher = shutil.which("py")
+        if launcher:
+            candidates.append([launcher, "-3"])
+    for command_name in ("python3", "python"):
+        executable = shutil.which(command_name)
+        if executable and all(candidate[0].casefold() != executable.casefold() for candidate in candidates):
+            candidates.append([executable])
+
+    for candidate in candidates:
         try:
             result = subprocess.run(
                 [*candidate, "--version"],
@@ -75,12 +79,12 @@ def _base_python() -> list[str]:
             if result.returncode == 0 and match and (int(match.group(1)), int(match.group(2))) >= (3, 11):
                 return candidate
         except (OSError, subprocess.SubprocessError):
-            pass
+            continue
 
-    raise ToolError(
-        "AgentForge needs Python 3.11 or newer to create a project environment, but a compatible "
-        "installation was not found. Install Python 3.11+ from https://www.python.org/downloads/ "
-        "and enable the Python launcher or add Python to PATH, then retry."
+    raise PythonInterpreterUnavailable(
+        "No compatible system Python 3.11+ was found. AgentForge tried the Windows "
+        "Python launcher and Python executables on PATH. Install Python 3.11+ or fix "
+        "the launcher/PATH, then retry environment setup."
     )
 
 async def _run(command: list[str], *, cwd: Path) -> tuple[int, str]:
