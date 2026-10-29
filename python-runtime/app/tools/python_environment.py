@@ -55,7 +55,7 @@ def _base_python() -> list[str]:
     elif os.name == "nt" and shutil.which("py"):
         # The Windows launcher selects an installed Python 3.11+ without relying
         # on whichever older Python happens to appear first on PATH.
-        candidate = [shutil.which("py") or "py", "-3.11"]
+        candidate = [shutil.which("py") or "py", "-3"]
     else:
         executable = shutil.which("python3") or shutil.which("python")
         candidate = [executable] if executable else []
