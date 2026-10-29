@@ -50,7 +50,6 @@ def test_upload_file_lists_and_downloads_without_scanning(client, db_session, mo
 
 def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
 
     content = b"Project brief\r\nOwner:\tKenny\r\n"
@@ -99,7 +98,6 @@ def test_uploads_are_available_without_invoking_scanner(client, db_session, tmp_
 
 def test_python_source_attachment_is_validated_and_available_for_inspection(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
     project = _project(db_session)
     source = b"def add(a, b):\n    return a + b\n"
     response = _upload(client, project.id, "calculator.py", source)
@@ -138,7 +136,6 @@ def test_upload_accepts_active_or_mismatched_content_as_untrusted_input(client, 
 
 def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     other = _project(db_session, "Other")
     response = _upload(client, project.id)
@@ -176,7 +173,6 @@ def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_
 
 def test_delete_removes_metadata_and_blobs(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     response = _upload(client, project.id)
     attachment = response.json()
