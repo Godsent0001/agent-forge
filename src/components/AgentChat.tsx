@@ -279,8 +279,26 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         const durationSeconds = Number.isFinite(startTime) && Number.isFinite(endTime)
           ? Math.max(0, (endTime - startTime) / 1000)
           : null;
+        const orderedEvents = [...activeExecutionEvents].sort((a, b) => a.seq - b.seq);
+        const endedSpans = new Set(
+          orderedEvents.filter((event) => event.type === "span_ended" && event.span_id)
+            .map((event) => event.span_id as string),
+        );
+        const openStep = [...orderedEvents].reverse().find(
+          (event) => event.type === "span_started" && event.span_id && !endedSpans.has(event.span_id),
+        );
+        const lastCompletedTool = [...orderedEvents].reverse().find(
+          (event) => event.type === "span_ended" && event.kind === "tool_call",
+        );
+        const cancellationDetails = status === "cancelled"
+          ? [
+              openStep ? `Stopped during: ${describeActiveStep(openStep)}.` : "",
+              lastCompletedTool ? `Last completed tool: ${describeActiveStep(lastCompletedTool)}.` : "",
+              `Original task: ${targetAgent.conversationId ? (chatMessages[agentId] || []).slice().reverse().find((message) => message.sender === "user")?.text || "See the preceding user message." : "See the preceding user message."}`,
+            ].filter(Boolean).join("\n")
+          : "";
         const fallback = status === "cancelled"
-          ? "Stopped."
+          ? `Stopped. Progress at cancellation:\n${cancellationDetails || "The execution stopped before any detailed progress event was recorded."}`
           : status === "budget_exceeded"
             ? "Stopped: budget reached."
             : status === "interrupted"
@@ -334,7 +352,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         setActiveExecutionId(null);
       }
     })();
-  }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
+  }, [activeExecutionId, activeExecutionEvents, addChatMessage, chatMessages]);
 
   const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
   const activeTaskGoal = latestUserTask?.text
