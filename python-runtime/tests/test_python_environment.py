@@ -82,3 +82,25 @@ def test_packaged_environment_explains_missing_python(monkeypatch):
 
     with pytest.raises(ToolError, match="Install Python 3.11"):
         python_environment._base_python()
+
+
+def test_packaged_environment_falls_back_when_launcher_is_incompatible(monkeypatch):
+    monkeypatch.setattr(python_environment.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(python_environment.os, "name", "nt")
+    monkeypatch.setattr(
+        python_environment.shutil,
+        "which",
+        lambda command: {
+            "py": r"C:\\Windows\\py.exe",
+            "python3": r"C:\\Python312\\python.exe",
+            "python": None,
+        }.get(command),
+    )
+
+    def fake_run(command, **kwargs):
+        if command[0].endswith("py.exe"):
+            return SimpleNamespace(returncode=1, stdout="", stderr="No suitable Python runtime found")
+        return SimpleNamespace(returncode=0, stdout="Python 3.12.4", stderr="")
+
+    monkeypatch.setattr(python_environment.subprocess, "run", fake_run)
+    assert python_environment._base_python() == [r"C:\\Python312\\python.exe"]
