@@ -43,6 +43,7 @@ from app.routers import conversations as conversations_router
 from app.routers import memory as memory_router
 from app.routers import usage as usage_router
 from app.services.executions import manager
+from app.services.previews import preview_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
     await manager.shutdown()
+    preview_manager.shutdown()
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
