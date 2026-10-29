@@ -1,5 +1,6 @@
 from app.core.llm.types import ToolSpec
 from app.core.tool_constraints import constrain_tools_for_task
+from app.core.runner import _safe_tool_arguments
 
 
 def _tool(name: str, description: str) -> ToolSpec:
@@ -120,3 +121,18 @@ def test_forbidding_python_does_not_accidentally_forbid_python_environment():
     selected, requested = constrain_tools_for_task("Do not use the Python tool.", tools)
     assert requested is None
     assert [tool.name for tool in selected] == ["python_environment", "shell"]
+
+
+def test_tool_diagnostic_arguments_are_bounded_and_redact_secrets():
+    preview = _safe_tool_arguments({
+        "query": "find a file",
+        "api_key": "do-not-log-this",
+        "nested": {"Authorization": "bearer-secret", "path": "report.txt"},
+        "large": "x" * 5000,
+    })
+    assert "find a file" in preview
+    assert "report.txt" in preview
+    assert "do-not-log-this" not in preview
+    assert "bearer-secret" not in preview
+    assert "REDACTED" in preview
+    assert len(preview) <= 1620
