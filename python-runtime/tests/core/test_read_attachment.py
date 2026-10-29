@@ -91,3 +91,16 @@ def test_runner_marks_unscanned_attachments_as_untrusted():
     task = _with_attachment_context("Inspect this source", [attachment])
     assert 'scan_status="unscanned"' in task
     assert "do not execute or import it" in task
+
+
+@pytest.mark.asyncio
+async def test_reads_uploaded_typescript_source_without_executing_it(tmp_path: Path):
+    attachment_dir = tmp_path / "attachments"
+    attachment_dir.mkdir()
+    source = "export const answer: number = 42;\n"
+    (attachment_dir / "App.tsx").write_text(source, encoding="utf-8")
+    result = await ReadAttachmentTool().run(
+        ReadAttachmentInput(path="attachments/App.tsx"), SimpleNamespace(workspace=Workspace(tmp_path))
+    )
+    assert "export const answer" in result.content
+    assert "42" in result.content
