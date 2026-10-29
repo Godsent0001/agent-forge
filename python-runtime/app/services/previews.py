@@ -16,7 +16,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.infra.workspace import RunWorkspace, safe_id
+from app.infra.workspace import safe_id
+from app.services.core_adapters import Workspace
 
 
 @dataclass
@@ -97,9 +98,10 @@ class PreviewManager:
         except subprocess.TimeoutExpired:
             item.process.kill()
 
-    def start(self, execution_id: str, package_path: str) -> dict:
+    def start(self, execution_id: str, package_path: str, *, project_id: str) -> dict:
         safe_id(execution_id)
-        workspace = RunWorkspace(execution_id)
+        safe_id(project_id)
+        workspace = Workspace(execution_id, project_id)
         try:
             package_file = workspace.resolve(package_path)
         except (ValueError, OSError, RuntimeError) as exc:
