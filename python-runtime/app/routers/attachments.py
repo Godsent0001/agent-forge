@@ -25,6 +25,7 @@ from app.infra.attachment_storage import (
     remove_attachment_blobs,
     resolve_blob,
     safe_original_name,
+    scan_attachment,
     stream_to_staging,
     validate_attachment,
 )
