@@ -6,7 +6,6 @@ import { Icon } from "./ui/Icon";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_RUN_BYTES = 100 * 1024 * 1024;
 const MAX_RUN_FILES = 20;
-const ACCEPTED_EXTENSIONS = ".txt,.py,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.wav,.mp3,.mp4,.webm";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -116,10 +115,6 @@ export function ProjectAttachmentsPanel({
         if (file.size > MAX_FILE_BYTES) {
           throw new Error(`${file.name} exceeds the 25 MiB per-file limit.`);
         }
-        const extension = file.name.includes(".") ? `.${file.name.split(".").pop()?.toLowerCase()}` : "";
-        if (!ACCEPTED_EXTENSIONS.split(",").includes(extension)) {
-          throw new Error(`${file.name} has an unsupported file extension.`);
-        }
         const item = await api.attachments.upload(projectId, file);
         setItems((current) => [item, ...current.filter((old) => old.id !== item.id)]);
         if (item.status === "clean" || item.status === "unscanned") {
@@ -214,7 +209,6 @@ export function ProjectAttachmentsPanel({
           ref={inputRef}
           type="file"
           multiple
-          accept={ACCEPTED_EXTENSIONS}
           className="sr-only"
           aria-label="Choose project files to upload"
           onChange={(event) => void uploadFiles(event.currentTarget.files ?? [])}
