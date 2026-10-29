@@ -70,7 +70,7 @@ async def test_web_search_surfaces_backend_failure_instead_of_empty_success():
     async def broken_search(query: str):
         raise RuntimeError("upstream timeout")
 
-    with pytest.raises(ToolExecutionError, match="backend failed: upstream timeout"):
+    with pytest.raises(ToolExecutionError, match="web_search failed: RuntimeError: upstream timeout"):
         await WebSearchTool(search_fn=broken_search).execute(
             "power tank price Nigeria",
             context=types.SimpleNamespace(),
