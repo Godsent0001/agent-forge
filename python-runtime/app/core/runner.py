@@ -887,7 +887,9 @@ class RunnerCore:
         ]
         effective_tools = [
             tb for tb in spec.tools
-            if tb.kind.casefold() not in {"python", "python_environment", "workspace_files"}
+            if tb.kind.casefold() not in {
+                "python", "python_environment", "workspace_files", "file_system",
+            }
         ]
         raw_names = [tb.name or tb.kind for tb in effective_tools]
         if python_bindings:
