@@ -376,6 +376,12 @@ export const api = {
         body: JSON.stringify({ project_id, root_agent_id, task, history, attachment_ids }),
       }),
     get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
+    workspaceFiles: (id: string) => request<{
+      execution_id: string; files: { path: string; size_bytes: number }[];
+      file_count: number; total_bytes: number;
+    }>(`/v2/executions/${encodeURIComponent(id)}/files`),
+    readFile: (id: string, path: string) =>
+      requestAttachmentBlob(`/v2/executions/${encodeURIComponent(id)}/files/${path.split(/[\\\\/]/).map(encodeURIComponent).join("/")}`),
     getEvents: (id: string, after_seq = 0) =>
       request<import("../types").ExecutionEvent[]>(
         `/v2/executions/${id}/events?after_seq=${after_seq}`,
