@@ -95,6 +95,18 @@ def test_uploads_are_available_without_invoking_scanner(client, db_session, monk
     run_file = project_dir(project.id) / "workspace" / captured["req"].attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
 
+    # The same path must be visible through the project's normal workspace API,
+    # not just in an execution-private directory the agent cannot access.
+    relative_path = captured["req"].attachments[0].path
+    workspace_listing = client.get(f"/v2/projects/{project.id}/workspace")
+    assert workspace_listing.status_code == 200
+    assert relative_path in [item["path"] for item in workspace_listing.json()["files"]]
+    workspace_read = client.get(
+        f"/v2/projects/{project.id}/workspace/file", params={"path": relative_path}
+    )
+    assert workspace_read.status_code == 200
+    assert workspace_read.content == b"Project brief"
+
 
 
 def test_python_source_attachment_is_validated_and_available_for_inspection(client, db_session, monkeypatch, tmp_path):
