@@ -33,7 +33,6 @@ from app.infra.attachment_storage import (
 )
 from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
-from app.infra.workspace import RunWorkspace
 from app.services.core_adapters import Workspace
 from app.services.executions import manager
 from app.services.previews import preview_manager
@@ -323,8 +322,10 @@ def download_execution_artifact(
 def start_execution_preview(execution_id: str, payload: StartPreviewRequest):
     db = SessionLocal()
     try:
-        if db.get(models.Execution, execution_id) is None:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
             raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
     finally:
         db.close()
     try:
@@ -362,12 +363,14 @@ def list_execution_files(execution_id: str):
     """List files created in this execution's actual RunWorkspace."""
     db = SessionLocal()
     try:
-        if db.get(models.Execution, execution_id) is None:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
             raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
     finally:
         db.close()
 
-    workspace = RunWorkspace(execution_id)
+    workspace = Workspace(execution_id, project_id)
     root = workspace.root.resolve()
     ignored_dirs = {".agentforge", ".git", "node_modules", "__pycache__", ".venv"}
     files: list[dict[str, object]] = []
@@ -411,13 +414,15 @@ def list_execution_files(execution_id: str):
 def get_execution_file(execution_id: str, relpath: str):
     db = SessionLocal()
     try:
-        if db.get(models.Execution, execution_id) is None:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
             raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
     finally:
         db.close()
 
     try:
-        workspace = RunWorkspace(execution_id)
+        workspace = Workspace(execution_id, project_id)
         path = workspace.resolve(relpath)
     except (ToolExecutionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Workspace file not found") from exc
