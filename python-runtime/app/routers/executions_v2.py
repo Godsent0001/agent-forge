@@ -86,8 +86,6 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
             if len(rows) != len(payload.attachment_ids):
                 # Unknown IDs and IDs from another project are deliberately indistinguishable.
                 raise HTTPException(status_code=404, detail="Attachment not found in this project")
-            if any(row.status not in {"clean", "unscanned"} for row in rows):
-                raise HTTPException(status_code=409, detail="Rejected attachments cannot be used in a run")
             if sum(row.size_bytes for row in rows) > MAX_RUN_ATTACHMENT_BYTES:
                 raise HTTPException(status_code=413, detail="Run attachments exceed the 100 MiB combined limit")
 
@@ -103,7 +101,7 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
                     "path": relative_path,
                     "mime": row.detected_mime,
                     "name": row.original_name,
-                    "scan_status": row.status,
+                    "scan_status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
                 })
 
         req = RunRequest(
