@@ -140,10 +140,8 @@ export default function App() {
     else { setIsExecutionTreeOpen(true); setIsPropertiesOpen(false); }
   };
   const toggleWorkspace = () => {
-    setIsWorkspaceOpen((open) => {
-      if (!open) setInspectorWidth((width) => Math.max(width, 420));
-      return !open;
-    });
+    if (!isWorkspaceOpen) setInspectorWidth((width) => Math.max(width, 420));
+    setIsWorkspaceOpen((open) => !open);
     setIsPropertiesOpen(false);
     setIsExecutionTreeOpen(false);
   };
