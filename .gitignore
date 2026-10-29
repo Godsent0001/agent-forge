@@ -108,7 +108,6 @@ Desktop.ini
 
 python-runtime/build/
 python-runtime/dist/
-python-runtime/python-interpreter/
 
 # ================================
 # Temporary files
