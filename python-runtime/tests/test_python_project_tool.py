@@ -93,3 +93,26 @@ def test_runner_collapses_legacy_python_bindings_into_one_model_tool():
     assert "file" in instances
     assert "knowledge_search" in instances
     assert "knowledge_ingest" in instances
+
+
+@pytest.mark.asyncio
+async def test_unified_python_tool_falls_back_to_packaged_runtime_only_when_no_system_python(monkeypatch, tmp_path):
+    from app.tools.python_environment import PythonInterpreterUnavailable
+
+    tool = PythonProjectTool()
+    context = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path), span_id="python-fallback-test")
+    calls = {}
+
+    async def ensure(args, ctx):
+        raise PythonInterpreterUnavailable("No compatible system Python was found")
+
+    async def execute(code, *, context):
+        calls["code"] = code
+        return "bundled-python-result"
+
+    monkeypatch.setattr(tool._environment, "run", ensure)
+    monkeypatch.setattr(tool._executor, "execute", execute)
+    result = await tool.run(PythonProjectInput(action="execute", code="print(2 + 2)"), context)
+
+    assert result.content == "bundled-python-result"
+    assert calls["code"] == "print(2 + 2)"
