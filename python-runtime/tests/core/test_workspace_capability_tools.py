@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import threading
 
 import pytest
 
@@ -132,3 +133,67 @@ async def test_workspace_files_tool_rejects_path_traversal_and_requires_delete_a
         await tool.run(tool.Input(action="read", path="../outside.txt"), ctx)
     assert tool.requires_approval({"action": "delete"})
     assert not tool.requires_approval({"action": "read"})
+
+
+@pytest.mark.asyncio
+async def test_knowledge_search_skips_embedding_model_when_index_has_no_vectors(tmp_path, monkeypatch):
+    from app.core import knowledge as knowledge_module
+    from app.core.tools import workspace_capabilities
+    from app.infra.paths import project_dir
+
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    ctx = SimpleNamespace(
+        workspace=Workspace(tmp_path), execution_id="lexical-only-run",
+        project_id="lexical-only-project", agent_id="agent-1",
+    )
+    index = knowledge_module.KnowledgeIndex(
+        project_dir(ctx.project_id) / ".agentforge" / "knowledge.sqlite3"
+    )
+    document = knowledge_module.extract_document(
+        "brief.md", b"The workspace stores durable execution checkpoints and task plans."
+    )
+    index.ingest(document)
+
+    def unexpected_embedding(*args, **kwargs):
+        raise AssertionError("embedding model should not load for a lexical-only index")
+
+    monkeypatch.setattr(workspace_capabilities, "embed_text", unexpected_embedding)
+    result = await workspace_capabilities.KnowledgeSearchTool().run(
+        workspace_capabilities.KnowledgeSearchInput(query="execution checkpoints"), ctx
+    )
+    assert '"retrieval_mode": "lexical_fallback"' in result.content
+    assert "durable execution checkpoints" in result.content
+
+
+@pytest.mark.asyncio
+async def test_knowledge_search_runs_embedding_inference_off_event_loop(tmp_path, monkeypatch):
+    from app.core import knowledge as knowledge_module
+    from app.core.tools import workspace_capabilities
+    from app.infra.paths import project_dir
+
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    ctx = SimpleNamespace(
+        workspace=Workspace(tmp_path), execution_id="threaded-search-run",
+        project_id="threaded-search-project", agent_id="agent-1",
+    )
+    index = knowledge_module.KnowledgeIndex(
+        project_dir(ctx.project_id) / ".agentforge" / "knowledge.sqlite3"
+    )
+    document = knowledge_module.extract_document(
+        "orbit.md", b"An orbital vehicle transmits telemetry to a ground station."
+    )
+    index.ingest(document, embedding_fn=lambda texts: [[1.0, 0.0] for _ in texts])
+
+    main_thread = threading.current_thread()
+    called_off_loop = []
+
+    def fake_embed(_query, _model_id):
+        called_off_loop.append(threading.current_thread() is not main_thread)
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(workspace_capabilities, "embed_text", fake_embed)
+    result = await workspace_capabilities.KnowledgeSearchTool().run(
+        workspace_capabilities.KnowledgeSearchInput(query="space telemetry"), ctx
+    )
+    assert called_off_loop == [True]
+    assert "hybrid_vector_lexical" in result.content
