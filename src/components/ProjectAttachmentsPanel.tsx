@@ -203,7 +203,7 @@ export function ProjectAttachmentsPanel({
             ? "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
             : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
-          <Icon name={compact && uploading ? "loader-circle" : "paperclip"} size={compact ? 17 : 14} />
+          <Icon name="paperclip" size={compact ? 17 : 14} />
           {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
         </button>
         {compact && selectedIds.length > 0 && (
