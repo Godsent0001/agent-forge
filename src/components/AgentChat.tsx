@@ -78,6 +78,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
   const setActiveConversationForScope = useStore((s) => s.setActiveConversationForScope);
+  const activeExecutionByScope = useStore((s) => s.activeExecutionByScope);
+  const setActiveExecutionForScope = useStore((s) => s.setActiveExecutionForScope);
+  const clearActiveExecutionForScope = useStore((s) => s.clearActiveExecutionForScope);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
   const setChatMessages = useStore((s) => s.setChatMessages);
@@ -111,6 +114,16 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const conversationNavigationRef = useRef(0);
   const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
+
+  useEffect(() => {
+    if (!agent || !project) return;
+    const scope = project.id + ":" + agent.id;
+    const saved = activeExecutionByScope[scope];
+    if (!saved || activeExecutionId) return;
+    activeExecutionAgentRef.current = { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId };
+    setActiveExecutionId(saved.executionId);
+    setIsProcessing(true);
+  }, [agent?.id, project?.id, activeExecutionByScope, activeExecutionId]);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
   const rawBudget = project?.settings?.budget;
@@ -349,10 +362,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         setIsCancelling(false);
         setNewConversationIds((current) => { if (!current.has(targetAgent.conversationId)) return current; const next = new Set(current); next.delete(targetAgent.conversationId); return next; });
         activeExecutionAgentRef.current = null;
+        clearActiveExecutionForScope(project?.id + ":" + agentId, executionId);
         setActiveExecutionId(null);
       }
     })();
-  }, [activeExecutionId, activeExecutionEvents, addChatMessage, chatMessages]);
+  }, [activeExecutionId, activeExecutionEvents, addChatMessage, chatMessages, clearActiveExecutionForScope, project?.id]);
 
   const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
   const activeTaskGoal = latestUserTask?.text
@@ -574,6 +588,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setEditingMessageId(null);
       processedExecutionRef.current = null;
       activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
+      setActiveExecutionForScope(project.id + ":" + agent.id, {
+        executionId: execution.id, agentId: agent.id, agentName: agent.name, conversationId: activeConversationId,
+      });
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
       // The stream owns completion now; do not poll the execution endpoint.
@@ -584,6 +601,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setIsProcessing(false);
       setIsCancelling(false);
       activeExecutionAgentRef.current = null;
+      clearActiveExecutionForScope(project.id + ":" + agent.id);
       setActiveExecutionId(null);
     }
   };
