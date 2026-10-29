@@ -140,7 +140,10 @@ export default function App() {
     else { setIsExecutionTreeOpen(true); setIsPropertiesOpen(false); }
   };
   const toggleWorkspace = () => {
-    setIsWorkspaceOpen((open) => !open);
+    setIsWorkspaceOpen((open) => {
+      if (!open) setInspectorWidth((width) => Math.max(width, 420));
+      return !open;
+    });
     setIsPropertiesOpen(false);
     setIsExecutionTreeOpen(false);
   };
@@ -235,8 +238,8 @@ export default function App() {
 
         {(isWorkspaceOpen || (((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && activeTab !== "engineer")) && (
           <div className={`relative h-full shrink-0 rounded-panel bg-studio-900 neu-raised ${isCompactViewport ? "absolute inset-y-2.5 right-16 z-40 h-auto shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
-            {!isCompactViewport && !isWorkspaceOpen && (
-              <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
+            {!isCompactViewport && (
+              <div role="separator" aria-label={isWorkspaceOpen ? "Resize workspace" : "Resize inspector"} aria-orientation="vertical" tabIndex={0}
                 onPointerDown={(event) => beginResize("inspector", event)} onPointerMove={moveResize}
                 onPointerUp={endResize} onPointerCancel={endResize}
                 onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setInspectorWidth((width) => Math.max(240, Math.min(560, width + (event.key === "ArrowLeft" ? 12 : -12)))); } }}
