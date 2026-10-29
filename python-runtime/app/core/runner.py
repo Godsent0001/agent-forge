@@ -56,6 +56,31 @@ from app.tools.specs import tool_spec
 logger = logging.getLogger(__name__)
 
 
+_SENSITIVE_ARGUMENT_KEY = re.compile(r"(?:api.?key|token|secret|password|passwd|authorization|cookie|credential)", re.IGNORECASE)
+
+
+def _safe_tool_arguments(arguments: dict[str, Any], *, max_chars: int = 1600) -> str:
+    """Bound and redact tool arguments before they reach diagnostic logs."""
+    def clean(value: Any, key: str = "") -> Any:
+        if _SENSITIVE_ARGUMENT_KEY.search(key):
+            return "[REDACTED]"
+        if isinstance(value, str):
+            return value[:300] + ("…" if len(value) > 300 else "")
+        if isinstance(value, dict):
+            return {str(k)[:80]: clean(v, str(k)) for k, v in list(value.items())[:20]}
+        if isinstance(value, (list, tuple)):
+            return [clean(item, key) for item in value[:20]]
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        return f"<{type(value).__name__}>"
+
+    try:
+        encoded = json.dumps(clean(arguments), ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return "<arguments unavailable>"
+    return encoded[:max_chars] + ("…[truncated]" if len(encoded) > max_chars else "")
+
+
 
 def _with_attachment_context(task: str, attachments: list[Any]) -> str:
     """Tell every agent in a run which clean, run-private files are available."""
@@ -836,8 +861,8 @@ class RunnerCore:
                 if not res.ok:
                     detail = res.content.strip() or "Tool reported failure without details."
                     logger.warning(
-                        "Tool returned failure execution_id=%s tool=%s tool_call_id=%s error=%s",
-                        req.execution_id, tc.name, tc.id, detail[:1200],
+                        "Tool returned failure execution_id=%s tool=%s tool_call_id=%s arguments=%s error=%s",
+                        req.execution_id, tc.name, tc.id, _safe_tool_arguments(tc.arguments), detail[:1200],
                     )
                     return f"ERROR: {detail}"
                 content = res.content
@@ -854,14 +879,14 @@ class RunnerCore:
 
             except ToolError as te:
                 logger.warning(
-                    "Tool failed execution_id=%s tool=%s tool_call_id=%s error_type=%s message=%s",
-                    req.execution_id, tc.name, tc.id, type(te).__name__, te.message[:1200],
+                    "Tool failed execution_id=%s tool=%s tool_call_id=%s arguments=%s error_type=%s message=%s",
+                    req.execution_id, tc.name, tc.id, _safe_tool_arguments(tc.arguments), type(te).__name__, te.message[:1200],
                 )
                 return f"ERROR: {te.message}"
             except Exception as exc:
                 logger.exception(
-                    "Unhandled tool crash execution_id=%s tool=%s tool_call_id=%s argument_keys=%s",
-                    req.execution_id, tc.name, tc.id, sorted(str(key) for key in tc.arguments.keys())[:80],
+                    "Unhandled tool crash execution_id=%s tool=%s tool_call_id=%s arguments=%s",
+                    req.execution_id, tc.name, tc.id, _safe_tool_arguments(tc.arguments),
                 )
                 return f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
