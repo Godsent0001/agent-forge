@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
-from app.tools.python_environment import PythonEnvironmentInput, PythonEnvironmentTool
+from app.tools.python_environment import (
+    PythonEnvironmentInput,
+    PythonEnvironmentTool,
+    PythonInterpreterUnavailable,
+)
 from app.tools.python_exec import PythonExecTool
 
 logger = logging.getLogger(__name__)
@@ -75,12 +79,11 @@ class PythonProjectTool(Tool):
             # Python execution then selects .venv when it exists; no separate user action.
             try:
                 await self._environment.run(PythonEnvironmentInput(action="ensure"), ctx)
-            except ToolError as exc:
+            except PythonInterpreterUnavailable as exc:
                 # A frozen desktop build can execute snippets through its bundled
                 # runtime even when no standalone interpreter is available to create
-                # a venv. Preserve basic Python execution rather than breaking it.
-                if "No system Python interpreter was found" not in str(exc):
-                    raise
+                # a project venv. Only this specific discovery failure permits fallback;
+                # real environment-creation errors still surface to the agent.
                 logger.warning(
                     "Project .venv unavailable for execution_id=%s; falling back to bundled Python runtime: %s",
                     getattr(ctx, "execution_id", "unknown"), exc,
