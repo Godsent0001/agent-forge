@@ -159,5 +159,14 @@ def test_execution_workspace_files_are_listed_and_readable(
     assert read.status_code == 200
     assert read.text == "print('hello')"
 
+    preview_status = client.get(f"/v2/executions/{execution.id}/preview")
+    assert preview_status.status_code == 200
+    assert preview_status.json()["status"] == "stopped"
+    invalid_preview = client.post(
+        f"/v2/executions/{execution.id}/preview",
+        json={"package_path": "src/main.py"},
+    )
+    assert invalid_preview.status_code == 422
+
     traversal = client.get(f"/v2/executions/{execution.id}/files/../outside.txt")
     assert traversal.status_code in {404, 307}
