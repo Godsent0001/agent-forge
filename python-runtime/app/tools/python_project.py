@@ -1,6 +1,7 @@
 """Unified agent-facing Python capability for execution and project environments."""
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -9,6 +10,8 @@ from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolRe
 from app.tools.base import ToolExecutionError
 from app.tools.python_environment import PythonEnvironmentInput, PythonEnvironmentTool
 from app.tools.python_exec import PythonExecTool
+
+logger = logging.getLogger(__name__)
 
 
 class PythonProjectInput(BaseModel):
@@ -72,6 +75,17 @@ class PythonProjectTool(Tool):
             # Python execution then selects .venv when it exists; no separate user action.
             try:
                 await self._environment.run(PythonEnvironmentInput(action="ensure"), ctx)
+            except ToolError as exc:
+                # A frozen desktop build can execute snippets through its bundled
+                # runtime even when no standalone interpreter is available to create
+                # a venv. Preserve basic Python execution rather than breaking it.
+                if "No system Python interpreter was found" not in str(exc):
+                    raise
+                logger.warning(
+                    "Project .venv unavailable for execution_id=%s; falling back to bundled Python runtime: %s",
+                    getattr(ctx, "execution_id", "unknown"), exc,
+                )
+            try:
                 output = await self._executor.execute(args.code, context=ctx)
             except ToolExecutionError as exc:
                 raise ToolError(str(exc)) from exc
