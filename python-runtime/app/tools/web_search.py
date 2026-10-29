@@ -191,7 +191,36 @@ class WebSearchTool(Tool):
         self._search_fn = search_fn or _ddgs_search_backend
 
     async def execute(self, input: str, *, context: Any) -> str:
-        query = input.strip()
+        query = ""
+        if isinstance(input, str):
+            raw = input.strip()
+            if raw.startswith("{") and raw.endswith("}"):
+                try:
+                    import json
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        query = str(
+                            parsed.get("query")
+                            or parsed.get("search_term")
+                            or parsed.get("q")
+                            or parsed.get("input")
+                            or parsed.get("text")
+                            or ""
+                        ).strip()
+                except Exception:
+                    query = raw
+            else:
+                query = raw
+        elif isinstance(input, dict):
+            query = str(
+                input.get("query")
+                or input.get("search_term")
+                or input.get("q")
+                or input.get("input")
+                or input.get("text")
+                or ""
+            ).strip()
+
         if not query:
             raise ToolExecutionError("web_search requires a non-empty query")
         try:

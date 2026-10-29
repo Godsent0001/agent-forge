@@ -28,6 +28,11 @@ class PythonProjectInput(BaseModel):
         max_length=200_000,
         description="Python source code when action='execute'. Keep substantial programs in workspace files.",
     )
+    input: str = Field(
+        default="",
+        max_length=200_000,
+        description="Alternative field for Python source code or direct text input.",
+    )
     packages: list[str] = Field(
         default_factory=list,
         max_length=30,
@@ -68,8 +73,9 @@ class PythonProjectTool(Tool):
         return "Create or initialize the project's persistent Python virtual environment."
 
     async def run(self, args: PythonProjectInput, ctx: ToolContext) -> ToolResult:
+        code_to_run = (args.code or args.input or "").strip()
         if args.action == "execute":
-            if not args.code.strip():
+            if not code_to_run:
                 raise ToolError("Provide Python source code for action='execute'.")
             # Initialize the persistent project environment automatically on first use.
             # Python execution then selects .venv when it exists; no separate user action.
@@ -86,7 +92,7 @@ class PythonProjectTool(Tool):
                     getattr(ctx, "execution_id", "unknown"), exc,
                 )
             try:
-                output = await self._executor.execute(args.code, context=ctx)
+                output = await self._executor.execute(code_to_run, context=ctx)
             except ToolExecutionError as exc:
                 raise ToolError(str(exc)) from exc
             return ToolResult(ok=not output.startswith("ERROR:"), content=output)

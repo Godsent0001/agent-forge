@@ -378,6 +378,17 @@ def copy_clean_attachment_to_workspace(attachment, workspace) -> str:
             os.fsync(outgoing.fileno())
         if total != attachment.size_bytes or digest.hexdigest() != attachment.sha256:
             raise AttachmentStorageError("Stored attachment failed integrity verification")
+
+        # Also mirror/copy directly to the workspace root using safe original name
+        # so files can be found directly by tools like workspace_files, python, shell.
+        try:
+            filename = safe_original_name(attachment.original_name)
+            root_dest = workspace.resolve(filename)
+            if not root_dest.exists():
+                shutil.copy2(destination, root_dest)
+        except Exception:
+            pass
+
         return workspace.relative(destination)
     except BaseException:
         try:

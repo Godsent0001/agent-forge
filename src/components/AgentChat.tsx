@@ -120,10 +120,32 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     const scope = project.id + ":" + agent.id;
     const saved = activeExecutionByScope[scope];
     if (!saved || activeExecutionId) return;
-    activeExecutionAgentRef.current = { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId };
-    setActiveExecutionId(saved.executionId);
-    setIsProcessing(true);
-  }, [agent?.id, project?.id, activeExecutionByScope, activeExecutionId]);
+
+    let ignore = false;
+    void (async () => {
+      try {
+        const statusRes = await api.executions.get(saved.executionId);
+        if (ignore) return;
+        if (TERMINAL_RUN_STATUSES.includes(statusRes.status as TerminalRunStatus)) {
+          clearActiveExecutionForScope(scope, saved.executionId);
+          setIsProcessing(false);
+          return;
+        }
+        activeExecutionAgentRef.current = { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId };
+        setActiveExecutionId(saved.executionId);
+        setIsProcessing(true);
+      } catch {
+        if (!ignore) {
+          clearActiveExecutionForScope(scope, saved.executionId);
+          setIsProcessing(false);
+        }
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [agent?.id, project?.id, activeExecutionByScope, activeExecutionId, clearActiveExecutionForScope]);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
   const rawBudget = project?.settings?.budget;
