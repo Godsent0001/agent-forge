@@ -24,9 +24,9 @@ def _assigned_skills(agent_id: str, skills: object) -> list[dict]:
         if not isinstance(instructions, str) or not instructions.strip():
             continue
         assigned_skills.append({
-            "id": skill_id[:200],
-            "name": str(skill.get("name") or "Untitled skill")[:120],
-            "description": str(skill.get("description") or "")[:500],
+            "id": " ".join(skill_id.split())[:200],
+            "name": " ".join(str(skill.get("name") or "Untitled skill").split())[:120],
+            "description": " ".join(str(skill.get("description") or "").split())[:500],
             "instructions": instructions.strip()[:16000],
         })
         if len(assigned_skills) >= 10:
