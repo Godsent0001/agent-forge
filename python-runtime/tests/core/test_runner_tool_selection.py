@@ -1,6 +1,6 @@
 from app.core.llm.types import ToolSpec
-from app.core.tool_constraints import constrain_tools_for_task
 from app.core.runner import _safe_tool_arguments
+from app.core.tool_constraints import constrain_tools_for_task
 
 
 def _tool(name: str, description: str) -> ToolSpec:
