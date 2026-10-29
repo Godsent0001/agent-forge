@@ -242,7 +242,7 @@ export function AgentWorkspacePanel({
               isVideo && previewUrl ? <video controls src={previewUrl} className="max-h-full max-w-full" /> :
               isAudio && previewUrl ? <audio controls src={previewUrl} className="w-full" /> :
               isPdf && previewUrl ? <iframe title={selected.name} src={previewUrl} className="h-full min-h-0 w-full rounded-lg bg-white" /> :
-              isHtml && previewUrl ? <iframe title={selected.name} src={previewUrl} sandbox="allow-scripts" className="h-full min-h-0 w-full rounded-lg bg-white" /> :
+              isHtml && previewText !== null ? <iframe title={selected.name} srcDoc={previewText} sandbox="allow-scripts" className="h-full min-h-0 w-full rounded-lg bg-white" /> :
               previewText !== null ? <pre className="h-full w-full overflow-auto whitespace-pre-wrap break-words text-left font-mono text-[11px] leading-relaxed text-studio-200">{previewText}{previewText.length >= 1_000_000 ? "\n…preview limited to 1 MB…" : ""}</pre> :
               selected ? <div className="text-center"><Icon name="download" size={22} className="mx-auto mb-2 text-studio-500" /><p className="text-xs text-studio-300">Preview unavailable</p><p className="mt-1 text-[10px] text-studio-500">{selected.name}</p></div> : null}
           </div>
