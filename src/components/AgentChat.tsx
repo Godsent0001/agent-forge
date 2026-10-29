@@ -104,6 +104,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const [newConversationIds, setNewConversationIds] = useState<Set<string>>(new Set());
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [terminalExecutionId, setTerminalExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
@@ -113,17 +114,57 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const conversationLoadRef = useRef(0);
   const conversationNavigationRef = useRef(0);
   const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
+  const activeExecutionIdRef = useRef<string | null>(null);
+  const activeScopeRef = useRef<string | null>(null);
+  const currentScope = agent && project ? `${project.id}:${agent.id}` : null;
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
 
   useEffect(() => {
-    if (!agent || !project) return;
-    const scope = project.id + ":" + agent.id;
-    const saved = activeExecutionByScope[scope];
-    if (!saved || activeExecutionId) return;
-    activeExecutionAgentRef.current = { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId };
-    setActiveExecutionId(saved.executionId);
-    setIsProcessing(true);
-  }, [agent?.id, project?.id, activeExecutionByScope, activeExecutionId]);
+    // Run state is scoped to the selected project/agent. A long-running or stuck
+    // run for one agent must never lock the composer or navigation for every agent.
+    if (activeScopeRef.current === currentScope) return;
+    activeScopeRef.current = currentScope;
+    const saved = currentScope ? activeExecutionByScope[currentScope] : undefined;
+    const nextExecutionId = saved?.executionId ?? null;
+    activeExecutionIdRef.current = nextExecutionId;
+    activeExecutionAgentRef.current = saved
+      ? { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId }
+      : null;
+    processedExecutionRef.current = null;
+    setActiveExecutionId(nextExecutionId);
+    setTerminalExecutionId(null);
+    setIsProcessing(Boolean(saved));
+    setIsCancelling(false);
+  }, [currentScope, activeExecutionByScope]);
+
+  // Reconcile against the durable execution record as well as websocket events.
+  // If a terminal event is missed during disconnect/cancellation, the UI still
+  // releases the composer and records the final state.
+  useEffect(() => {
+    if (!activeExecutionId) return;
+    let active = true;
+    let inFlight = false;
+    const reconcile = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const execution = await api.executions.get(activeExecutionId);
+        if (active && TERMINAL_RUN_STATUSES.includes(execution.status as TerminalRunStatus)) {
+          setTerminalExecutionId(activeExecutionId);
+        }
+      } catch {
+        // The event stream remains the primary path; transient status errors retry.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void reconcile();
+    const timer = window.setInterval(() => void reconcile(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeExecutionId]);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
   const rawBudget = project?.settings?.budget;
@@ -269,7 +310,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     const ended = activeExecutionEvents.some(
       (event) => event.execution_id === activeExecutionId && event.type === "execution_ended",
     );
-    if (!ended || processedExecutionRef.current === activeExecutionId) return;
+    if (!(ended || terminalExecutionId === activeExecutionId) || processedExecutionRef.current === activeExecutionId) return;
 
     processedExecutionRef.current = activeExecutionId;
     const executionId = activeExecutionId;
@@ -358,15 +399,21 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       } catch (error) {
         setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
       } finally {
-        setIsProcessing(false);
-        setIsCancelling(false);
         setNewConversationIds((current) => { if (!current.has(targetAgent.conversationId)) return current; const next = new Set(current); next.delete(targetAgent.conversationId); return next; });
-        activeExecutionAgentRef.current = null;
         clearActiveExecutionForScope(project?.id + ":" + agentId, executionId);
-        setActiveExecutionId(null);
+        // A user may have switched agents or started another run while this
+        // completion was being persisted. Never clear that newer run's UI state.
+        if (activeExecutionIdRef.current === executionId) {
+          activeExecutionIdRef.current = null;
+          activeExecutionAgentRef.current = null;
+          setIsProcessing(false);
+          setIsCancelling(false);
+          setTerminalExecutionId(null);
+          setActiveExecutionId(null);
+        }
       }
     })();
-  }, [activeExecutionId, activeExecutionEvents, addChatMessage, chatMessages, clearActiveExecutionForScope, project?.id]);
+  }, [activeExecutionId, terminalExecutionId, activeExecutionEvents, addChatMessage, chatMessages, clearActiveExecutionForScope, project?.id]);
 
   const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
   const activeTaskGoal = latestUserTask?.text
@@ -591,6 +638,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setActiveExecutionForScope(project.id + ":" + agent.id, {
         executionId: execution.id, agentId: agent.id, agentName: agent.name, conversationId: activeConversationId,
       });
+      activeExecutionIdRef.current = execution.id;
       setActiveExecutionId(execution.id);
       onRunExecution(execution.id);
       // The stream owns completion now; do not poll the execution endpoint.
@@ -602,7 +650,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       setIsCancelling(false);
       activeExecutionAgentRef.current = null;
       clearActiveExecutionForScope(project.id + ":" + agent.id);
+      activeExecutionIdRef.current = null;
       setActiveExecutionId(null);
+      setTerminalExecutionId(null);
     }
   };
 
