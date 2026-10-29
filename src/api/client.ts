@@ -120,6 +120,16 @@ async function requestAttachmentBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+export interface PreviewStatus {
+  execution_id: string;
+  status: "stopped" | "starting" | "ready" | "failed";
+  url: string | null;
+  package_path?: string;
+  pid?: number;
+  log: string;
+  error?: string | null;
+}
+
 export interface ExecutionArtifact {
   artifact_id: string;
   project_id: string;
@@ -364,6 +374,14 @@ export const api = {
       ),
   },
   executions: {
+    previewStatus: (id: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`),
+    startPreview: (id: string, package_path: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`, {
+        method: "POST", body: JSON.stringify({ package_path }),
+      }),
+    stopPreview: (id: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`, { method: "DELETE" }),
     run: (
       project_id: string,
       root_agent_id: string,
