@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from app import models
 from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
@@ -167,6 +168,46 @@ def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_
     assert req.attachments[0].path.startswith("attachments/")
     run_file = data_dir() / "runs" / req.execution_id / req.attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
+
+
+def test_legacy_quarantined_attachment_is_available_as_untrusted_input(client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
+    project = _project(db_session)
+    response = _upload(client, project.id, "legacy.bin", b"legacy content")
+    assert response.status_code == 201, response.text
+    attachment = response.json()
+    row = db_session.get(models.ProjectAttachment, attachment["id"])
+    assert row is not None
+    _, quarantine, objects = upload_dirs()
+    os.replace(objects / f"{row.storage_key}.blob", quarantine / f"{row.storage_key}.blob")
+    row.status = "rejected"
+    db_session.commit()
+
+    listed = client.get(f"/v2/projects/{project.id}/attachments")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["status"] == "unscanned"
+    downloaded = client.get(f"/v2/projects/{project.id}/attachments/{row.id}/content")
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"legacy content"
+
+    agent = models.Agent(project_id=project.id, name="Legacy upload agent")
+    db_session.add(agent)
+    db_session.commit()
+    captured = {}
+
+    def capture(req):
+        captured["req"] = req
+        return {"id": req.execution_id, "status": "running"}
+
+    monkeypatch.setattr(executions_v2.manager, "start", capture)
+    started = client.post("/v2/executions", json={
+        "project_id": project.id,
+        "root_agent_id": agent.id,
+        "task": "Inspect the attached legacy file",
+        "attachment_ids": [row.id],
+    })
+    assert started.status_code == 200, started.text
+    assert captured["req"].attachments[0].scan_status == "unscanned"
 
 
 def test_delete_removes_metadata_and_blobs(client, db_session, monkeypatch, tmp_path):
