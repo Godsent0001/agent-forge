@@ -32,7 +32,7 @@ async def _unavailable_scan(path: Path):
     return "unavailable", None
 
 
-def test_upload_clean_file_lists_and_downloads_as_attachment(client, db_session, monkeypatch, tmp_path):
+def test_upload_file_lists_and_downloads_without_scanning(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
@@ -40,7 +40,7 @@ def test_upload_clean_file_lists_and_downloads_as_attachment(client, db_session,
     response = _upload(client, project.id)
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "clean"
+    assert attachment["status"] == "unscanned"
     assert attachment["name"] == "brief.txt"
     assert "storage_key" not in attachment
     assert "path" not in attachment
@@ -73,7 +73,7 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
     assert download.status_code == 200
     assert download.content == content
 
-def test_unavailable_scanner_keeps_valid_attachment_available_for_inspection(client, db_session, monkeypatch, tmp_path):
+def test_uploads_are_available_without_invoking_scanner(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
     project = _project(db_session)
@@ -128,29 +128,31 @@ def test_python_source_attachment_is_validated_and_available_for_inspection(clie
     assert download.content == source
 
 
-def test_infected_file_is_rejected_and_cannot_be_downloaded(client, db_session, monkeypatch, tmp_path):
+def test_upload_does_not_run_antivirus_or_quarantine(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    async def infected(path: Path):
-        return "infected", "test-scanner/1"
-    monkeypatch.setattr(attachments_router, "scan_attachment", infected)
+    async def forbidden_scan(path: Path):
+        raise AssertionError("upload must not invoke antivirus")
+    monkeypatch.setattr(attachments_router, "scan_attachment", forbidden_scan)
     project = _project(db_session)
 
-    response = _upload(client, project.id)
-    assert response.status_code == 201
+    response = _upload(client, project.id, "sample.bin", b"\x00\x01arbitrary binary")
+    assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "rejected"
-    assert client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content").status_code == 409
-    assert client.post(f"/v2/projects/{project.id}/attachments/{attachment['id']}/scan").status_code == 409
+    assert attachment["status"] == "unscanned"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == b"\x00\x01arbitrary binary"
 
 
-def test_upload_validation_rejects_active_or_mismatched_content(client, db_session, monkeypatch, tmp_path):
+def test_upload_accepts_active_or_mismatched_content_as_untrusted_input(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     html = _upload(client, project.id, "readme.txt", b"<html><script>alert(1)</script></html>")
     mismatch = _upload(client, project.id, "portrait.png", b"plain text")
-    assert html.status_code == 422
-    assert mismatch.status_code == 422
+    assert html.status_code == 201, html.text
+    assert mismatch.status_code == 201, mismatch.text
+    assert html.json()["status"] == "unscanned"
+    assert mismatch.json()["status"] == "unscanned"
 
 
 def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_session, monkeypatch, tmp_path):
