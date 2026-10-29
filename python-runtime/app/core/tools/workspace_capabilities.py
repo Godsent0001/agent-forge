@@ -1,6 +1,7 @@
 """Built-in workspace tools that expose shared knowledge and safe-editing services."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -125,21 +126,28 @@ class KnowledgeIngestTool(Tool):
                 raise ToolError(f"Source file does not exist: {args.path}")
             if path.stat().st_size > 50 * 1024 * 1024:
                 raise ToolError("Source file exceeds the 50 MiB ingestion limit.")
-            document = extract_document(
-                path.name, path.read_bytes(), media_type=args.media_type,
-                metadata={"workspace_path": ctx.workspace.relative(path), "execution_id": ctx.execution_id},
-            )
-            index = _index(ctx)
             model_id = os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-            count = index.ingest(
-                document,
-                embedding_fn=lambda texts: embed_many(texts, model_id),
-            )
+
+            def ingest_file():
+                # File extraction, model initialization/inference and SQLite indexing
+                # are synchronous work; never block FastAPI's event loop while doing them.
+                document = extract_document(
+                    path.name, path.read_bytes(), media_type=args.media_type,
+                    metadata={"workspace_path": ctx.workspace.relative(path), "execution_id": ctx.execution_id},
+                )
+                index = _index(ctx)
+                count = index.ingest(
+                    document,
+                    embedding_fn=lambda texts: embed_many(texts, model_id),
+                )
+                return document, count, index.last_ingest_embedded
+
+            document, count, embedded = await asyncio.to_thread(ingest_file)
             return ToolResult(content=json.dumps({
                 "source_id": document.source_id, "name": document.name, "sha256": document.sha256,
                 "characters": len(document.text), "chunks_indexed": count,
                 "index_scope": "project",
-                "retrieval_mode": "hybrid_vector_lexical" if index.last_ingest_embedded else "lexical_fallback",
+                "retrieval_mode": "hybrid_vector_lexical" if embedded else "lexical_fallback",
             }, ensure_ascii=False), artifacts=[
                 ArtifactRef(path=args.path, mime=document.media_type, description="Indexed knowledge source")
             ])
@@ -159,16 +167,24 @@ class KnowledgeSearchTool(Tool):
     permissions: set[Permission] = set()
 
     async def run(self, args: KnowledgeSearchInput, ctx: ToolContext) -> ToolResult:
-        index = _index(ctx)
+        index = await asyncio.to_thread(_index, ctx)
         model_id = os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
         query_embedding = None
-        try:
-            query_embedding = embed_text(args.query, model_id)
-        except Exception:
-            # A missing model/provider must not make the knowledge index unusable.
-            # The response below identifies lexical fallback rather than implying vectors ran.
-            query_embedding = None
-        hits = index.search(args.query, limit=args.limit, query_embedding=query_embedding)
+
+        # Most new projects have no indexed vectors yet. A lexical query is instant
+        # and useful in that state; do not initialize/download a large embedding model
+        # for an empty index or a legacy lexical-only index.
+        has_vectors = await asyncio.to_thread(index.has_embeddings)
+        if has_vectors:
+            try:
+                query_embedding = await asyncio.to_thread(embed_text, args.query, model_id)
+            except Exception:
+                # A missing model/provider must not make the knowledge index unusable.
+                query_embedding = None
+
+        hits = await asyncio.to_thread(
+            index.search, args.query, limit=args.limit, query_embedding=query_embedding,
+        )
         retrieval_mode = (
             "hybrid_vector_lexical"
             if query_embedding and any(hit.semantic_score > 0 for hit in hits)
