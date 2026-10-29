@@ -5,6 +5,7 @@ import os
 from app import models
 from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
+from app.infra.paths import project_dir
 from app.routers import executions_v2
 
 
@@ -91,7 +92,7 @@ def test_uploads_are_available_without_invoking_scanner(client, db_session, monk
     })
     assert start.status_code == 200, start.text
     assert captured["req"].attachments[0].scan_status == "unscanned"
-    run_file = data_dir() / "runs" / captured["req"].execution_id / captured["req"].attachments[0].path
+    run_file = project_dir(project.id) / "workspace" / captured["req"].attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
 
 
@@ -167,7 +168,7 @@ def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_
     req = captured["req"]
     assert len(req.attachments) == 1
     assert req.attachments[0].path.startswith("attachments/")
-    run_file = data_dir() / "runs" / req.execution_id / req.attachments[0].path
+    run_file = project_dir(project.id) / "workspace" / req.attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
 
 
