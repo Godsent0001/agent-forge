@@ -58,6 +58,7 @@ export function AgentWorkspacePanel({
 }) {
   const [tab, setTab] = useState<"preview" | "files">("preview");
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
+  const [runFiles, setRunFiles] = useState<WorkspaceFile[]>([]);
   const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
   const [observedExecutionId, setObservedExecutionId] = useState<string | null>(executionId);
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
@@ -82,6 +83,16 @@ export function AgentWorkspacePanel({
       } catch {
         if (active) setWorkspaceFiles([]);
       }
+      if (observedExecutionId) {
+        try {
+          const runWorkspace = await api.executions.workspaceFiles(observedExecutionId);
+          if (active) setRunFiles(runWorkspace.files);
+        } catch {
+          if (active) setRunFiles([]);
+        }
+      } else if (active) {
+        setRunFiles([]);
+      }
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 2500);
@@ -89,7 +100,7 @@ export function AgentWorkspacePanel({
       active = false;
       window.clearInterval(timer);
     };
-  }, [projectId]);
+  }, [projectId, observedExecutionId]);
 
   useEffect(() => {
     let active = true;
@@ -137,12 +148,22 @@ export function AgentWorkspacePanel({
   }, [observedExecutionId, projectId]);
 
   const entries = useMemo<Entry[]>(() => {
-    const files: Entry[] = workspaceFiles.map((file) => ({
-      key: `file:${file.path}`,
-      name: file.path.split("/").pop() || file.path,
-      path: file.path,
-      size: file.size_bytes,
-    }));
+    const files: Entry[] = [
+      ...runFiles.map((file) => ({
+        key: `run-file:${file.path}`,
+        name: file.path.split("/").pop() || file.path,
+        path: file.path,
+        size: file.size_bytes,
+        source: "run" as const,
+      })),
+      ...workspaceFiles.map((file) => ({
+        key: `project-file:${file.path}`,
+        name: file.path.split("/").pop() || file.path,
+        path: file.path,
+        size: file.size_bytes,
+        source: "project" as const,
+      })),
+    ];
     const generated: Entry[] = artifacts.map((artifact) => ({
       key: `artifact:${artifact.artifact_id}:${artifact.version}`,
       name: artifact.name,
@@ -153,7 +174,7 @@ export function AgentWorkspacePanel({
       version: artifact.version,
     }));
     return [...generated, ...files].sort((a, b) => a.path.localeCompare(b.path));
-  }, [workspaceFiles, artifacts]);
+  }, [workspaceFiles, runFiles, artifacts]);
 
   const selected = entries.find((entry) => entry.key === selectedKey) ?? null;
   useEffect(() => {
@@ -172,7 +193,9 @@ export function AgentWorkspacePanel({
       try {
         let blob = selected.artifactId && observedExecutionId
           ? await api.artifacts.download(observedExecutionId, selected.artifactId, selected.version)
-          : await api.projects.readWorkspaceFile(projectId, selected.path);
+          : selected.source === "run" && observedExecutionId
+            ? await api.executions.readFile(observedExecutionId, selected.path)
+            : await api.projects.readWorkspaceFile(projectId, selected.path);
         if (!active) return;
         const ext = extension(selected.path);
         const type = selected.mediaType || blob.type || "application/octet-stream";
@@ -256,7 +279,7 @@ export function AgentWorkspacePanel({
               <div className="min-h-0 flex-1 overflow-auto px-1.5 pb-2">
                 {entries.length === 0 ? <p className="px-2 py-3 text-[11px] text-studio-500">No files yet</p> : entries.map((entry) => (
                   <button type="button" key={entry.key} onClick={() => setSelectedKey(entry.key)} title={entry.path} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-[11px] ${selectedKey === entry.key ? "neu-selected text-accent-200" : "text-studio-300 hover:bg-white/[0.03]"}`}>
-                    <Icon name={entry.artifactId ? "download" : "editor"} size={13} className="shrink-0 text-studio-500" />
+                    <Icon name={entry.artifactId ? "download" : entry.source === "run" ? "play" : "folder-open"} size={13} className="shrink-0 text-studio-500" />
                     <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                     <span className="shrink-0 text-[9px] text-studio-600">{formatBytes(entry.size)}</span>
                   </button>
