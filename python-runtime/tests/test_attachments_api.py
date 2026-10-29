@@ -57,7 +57,7 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
 
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "clean"
+    assert attachment["status"] == "unscanned"
     download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
     assert download.status_code == 200
     assert download.content == content
