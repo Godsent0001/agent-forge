@@ -51,8 +51,22 @@ def _venv_python(root: Path) -> Path:
 def _base_python() -> list[str]:
     if not getattr(sys, "frozen", False):
         return [sys.executable]
-    # A PyInstaller executable is not a general-purpose interpreter for creating
-    # virtual environments. Prefer a separately installed Python on the host.
+
+    # Packaged desktop builds ship a standalone interpreter next to the PyInstaller
+    # backend. Use it first so persistent project environments work on clean machines.
+    bundled_home = os.environ.get("AGENTFORGE_PYTHON_HOME")
+    if bundled_home:
+        home = Path(bundled_home)
+        candidates = (
+            [home / "python.exe", home / "bin" / "python.exe"]
+            if os.name == "nt"
+            else [home / "bin" / "python3.11", home / "bin" / "python3", home / "bin" / "python"]
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return [str(candidate)]
+
+    # Older installations may not contain the bundled interpreter yet.
     if os.name == "nt":
         launcher = shutil.which("py")
         if launcher:
@@ -63,7 +77,8 @@ def _base_python() -> list[str]:
     if candidate:
         return [candidate]
     raise ToolError(
-        "No system Python interpreter was found. Install Python 3.11+ and enable its PATH/py launcher, then retry."
+        "No Python interpreter is available. Reinstall AgentForge to install its bundled Python runtime, "
+        "or install Python 3.11+ and enable it on PATH."
     )
 
 
