@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from app import models
 from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
@@ -62,7 +60,7 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
     assert download.status_code == 200
     assert download.content == content
 
-def test_uploads_are_available_without_invoking_scanner(client, db_session, tmp_path):
+def test_uploads_are_available_without_invoking_scanner(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     project = _project(db_session)
 
@@ -123,7 +121,7 @@ def test_upload_does_not_run_antivirus_or_quarantine(client, db_session, monkeyp
     assert download.content == b"\x00\x01arbitrary binary"
 
 
-def test_upload_accepts_active_or_mismatched_content_as_untrusted_input(client, db_session, tmp_path, monkeypatch):
+def test_upload_accepts_active_or_mismatched_content_as_untrusted_input(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     project = _project(db_session)
     html = _upload(client, project.id, "readme.txt", b"<html><script>alert(1)</script></html>")
