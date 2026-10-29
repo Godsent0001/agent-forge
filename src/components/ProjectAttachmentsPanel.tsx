@@ -133,7 +133,7 @@ export function ProjectAttachmentsPanel({
       }
       if (autoSelectedIds.length > 0) {
         onSelectedIdsChange((current) => [...current, ...autoSelectedIds.filter((id) => !current.includes(id))]);
-        setNotice(`${autoSelectedCount} file${autoSelectedCount === 1 ? "" : "s"} uploaded and selected for the next run. TXT, Python source, MD, CSV, and JSON can be read directly; other formats require a dedicated parser or multimodal tool.`);
+        setNotice(`${autoSelectedCount} file${autoSelectedCount === 1 ? "" : "s"} uploaded and selected for the next run.`);
       }
       await refresh();
       if (uploaded > 0 && autoSelectedIds.length === 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
@@ -219,41 +219,27 @@ export function ProjectAttachmentsPanel({
           onClick={() => compact ? inputRef.current?.click() : setOpen((value) => !value)}
           aria-expanded={compact ? undefined : open}
           aria-controls={compact ? undefined : "project-attachments-panel"}
-          aria-label={compact ? "Attach files" : undefined}
-          title={compact ? "Attach files" : "Project attachments"}
+          aria-label={compact ? `Attach files${selectedIds.length ? ` (${selectedIds.length} selected)` : ""}` : undefined}
+          title={compact ? (selectedIds.length ? `${selectedIds.length} file(s) attached to next run` : "Attach files") : "Project attachments"}
           disabled={disabled || uploading}
           className={compact
-            ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
+            ? "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
             : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
           <Icon name="paperclip" size={compact ? 17 : 14} />
           {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
         </button>
-        {selectedIds.length > 0 && (
-          <span className="text-2xs font-mono text-studio-400">{formatBytes(selectedBytes)} attached to next run</span>
+        {compact && selectedIds.length > 0 && (
+          <span aria-label={`${selectedIds.length} files attached`} className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] text-white">{selectedIds.length}</span>
         )}
       </div>
-
-      {compact && selected.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {selected.map((item) => (
-            <span key={item.id} title={item.name} className="inline-flex max-w-44 items-center gap-1 rounded-full border border-line bg-studio-950 px-2 py-1 text-[10px] text-studio-300">
-              <Icon name="file-up" size={11} /><span className="truncate">{item.name}</span>
-              <button type="button" aria-label={`Remove ${item.name} from next message`} onClick={() => toggleSelection(item, false)} className="ml-0.5 text-studio-500 hover:text-white">×</button>
-            </span>
-          ))}
-        </div>
-      )}
-      {compact && (error || notice) && (
-        <p role={error ? "alert" : "status"} className={`max-w-xs text-[10px] leading-4 ${error ? "text-red-300" : "text-studio-400"}`}>{error || notice}</p>
-      )}
       {open && !compact && (
         <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div>
               <h4 className="text-sm font-semibold text-studio-100">Project files</h4>
               <p className="mt-1 max-w-xl text-2xs leading-5 text-studio-400">
-                Valid uploads can be inspected even when antivirus is unavailable. Unscanned files remain marked as untrusted; rejected files cannot be attached.
+                Upload files of any type to the project. Files are passed as untrusted inputs; supported tools determine how their contents can be inspected.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -308,11 +294,6 @@ export function ProjectAttachmentsPanel({
                     {(item.status === "clean" || item.status === "unscanned") && (
                       <button type="button" aria-label={`Download ${item.name}`} onClick={() => void download(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
                         <Icon name="download" size={13} />
-                      </button>
-                    )}
-                    {(item.status === "quarantined" || item.status === "unscanned") && (
-                      <button type="button" aria-label={`Rescan ${item.name}`} onClick={() => void rescan(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
-                        <Icon name="shield-check" size={13} />
                       </button>
                     )}
                     <button type="button" aria-label={`Delete ${item.name}`} onClick={() => void remove(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-red-950 hover:text-red-200 disabled:opacity-40">
