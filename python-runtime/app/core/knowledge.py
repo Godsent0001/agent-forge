@@ -217,6 +217,14 @@ class KnowledgeIndex:
                 db.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding TEXT")
         self.last_ingest_embedded = False
 
+    def has_embeddings(self) -> bool:
+        """Return whether this index has any persisted vectors without loading the model."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM knowledge_chunks WHERE embedding IS NOT NULL LIMIT 1"
+            ).fetchone()
+        return row is not None
+
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=15)
         db.row_factory = sqlite3.Row
