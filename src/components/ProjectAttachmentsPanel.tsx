@@ -205,13 +205,12 @@ export function ProjectAttachmentsPanel({
         >
           <Icon name="paperclip" size={compact ? 17 : 14} />
           {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
+          {compact && selectedIds.length > 0 && (
+            <span aria-label={`${selectedIds.length} files attached`} className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] text-white">{selectedIds.length}</span>
+          )}
         </button>
-        {compact && selectedIds.length > 0 && (
-          <span aria-label={`${selectedIds.length} files attached`} className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] text-white">{selectedIds.length}</span>
-        )}
       </div>
-      {compact && error && <p role="alert" className="max-w-36 text-[10px] leading-3 text-red-300">{error}</p>}
-      {compact && <span className="sr-only" role="status">{uploading ? "Uploading attachments" : notice || ""}</span>}
+      {compact && <span className="sr-only" role={error ? "alert" : "status"}>{uploading ? "Uploading attachments" : error || notice || ""}</span>}
       {open && !compact && (
         <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
