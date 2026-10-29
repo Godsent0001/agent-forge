@@ -35,6 +35,7 @@ from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
 from app.infra.workspace import RunWorkspace
 from app.services.executions import manager
+from app.services.previews import preview_manager
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
@@ -47,6 +48,10 @@ class CreateExecutionRequest(BaseModel):
     history: list[dict] = Field(default_factory=list)
     options: RunOptions = Field(default_factory=RunOptions)
     attachment_ids: list[str] = Field(default_factory=list, max_length=MAX_RUN_ATTACHMENTS)
+
+
+class StartPreviewRequest(BaseModel):
+    package_path: str = Field(min_length=1, max_length=1024)
 
 
 class ResolveApprovalRequest(BaseModel):
@@ -294,6 +299,44 @@ def download_execution_artifact(
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )
+
+
+@router.post("/{execution_id}/preview")
+def start_execution_preview(execution_id: str, payload: StartPreviewRequest):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+    try:
+        return preview_manager.start(execution_id, payload.package_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/{execution_id}/preview")
+def get_execution_preview(execution_id: str):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+    return preview_manager.status(execution_id)
+
+
+@router.delete("/{execution_id}/preview")
+def stop_execution_preview(execution_id: str):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+    return preview_manager.stop(execution_id)
 
 
 @router.get("/{execution_id}/files")
