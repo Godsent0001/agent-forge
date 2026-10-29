@@ -20,8 +20,13 @@ async def test_unified_python_tool_dispatches_execution(monkeypatch, tmp_path):
         return "python-result"
 
     monkeypatch.setattr(tool._executor, "execute", execute)
+    async def ensure(args, ctx):
+        calls["ensure_action"] = args.action
+        return ToolResult(content="environment-ready")
+    monkeypatch.setattr(tool._environment, "run", ensure)
     result = await tool.run(PythonProjectInput(action="execute", code="print(1 + 1)"), context)
 
+    assert calls["ensure_action"] == "ensure"
     assert result.ok
     assert result.content == "python-result"
     assert calls["code"] == "print(1 + 1)"
@@ -57,7 +62,7 @@ async def test_unified_python_tool_dispatches_environment_actions(monkeypatch, t
 def test_unified_python_tool_requires_approval_for_environment_mutations():
     tool = PythonProjectTool()
     assert not tool.requires_approval({"action": "execute"})
-    assert tool.requires_approval({"action": "ensure"})
+    assert not tool.requires_approval({"action": "ensure"})
     assert tool.requires_approval({"action": "install"})
     assert tool.permissions_for({"action": "install"}) == {"subprocess", "net"}
     assert tool.permissions_for({"action": "execute"}) == {"subprocess"}
