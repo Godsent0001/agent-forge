@@ -122,7 +122,7 @@ export function ProjectAttachmentsPanel({
             autoSelectedBytes += item.size_bytes;
             autoSelectedCount += 1;
           } else {
-            setNotice(`${item.name} passed scanning, but was not auto-selected because the run attachment limit would be exceeded.`);
+            setNotice(`${item.name} was uploaded, but not auto-selected because the run attachment limit would be exceeded.`);
           }
         } else {
           setNotice(`${item.name} was not attached because its status is ${item.status}.`);
@@ -264,7 +264,7 @@ export function ProjectAttachmentsPanel({
                   </div>
                   <span
                     className={`rounded border px-2 py-1 text-2xs ${item.status === "clean" ? "border-emerald-800 bg-emerald-950/40 text-emerald-300" : item.status === "rejected" ? "border-red-800 bg-red-950/40 text-red-300" : "border-amber-800 bg-amber-950/40 text-amber-200"}`}
-                    title={item.scanned_at ?? "No clean scanner verdict yet"}
+                    title="Attachment status"
                   >
                     {statusLabel(item.status)}
                   </span>
