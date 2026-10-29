@@ -77,6 +77,8 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
+  const activeConversationByScope = useStore((s) => s.activeConversationByScope);
+  const setActiveConversationForScope = useStore((s) => s.setActiveConversationForScope);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
   const setChatMessages = useStore((s) => s.setChatMessages);
@@ -166,7 +168,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           setReadyConversationIds((current) => new Set(current).add(id));
         }
         setConversations(items);
-        setActiveConversationId(items[0].id);
+        const scope = `${project.id}:${agent.id}`;
+        const rememberedId = activeConversationByScope[scope];
+        const selectedConversation = items.find((item) => item.id === rememberedId) ?? items[0];
+        setActiveConversationId(selectedConversation.id);
+        setActiveConversationForScope(scope, selectedConversation.id);
       } catch (cause) {
         if (cancelled) return;
         setConversationError(cause instanceof Error ? cause.message : "Could not load saved conversations.");
@@ -178,10 +184,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       cancelled = true;
       conversationLoadRef.current += 1;
     };
-  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages]);
+  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages, activeConversationByScope, setActiveConversationForScope]);
 
   useEffect(() => {
     if (!agent || !project || !activeConversationId) return;
+    setActiveConversationForScope(`${project.id}:${agent.id}`, activeConversationId);
     const loadId = ++conversationLoadRef.current;
     if (newConversationIds.has(activeConversationId)) {
       setConversationError(null);
@@ -226,7 +233,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
     };
-  }, [activeConversationId, newConversationIds, conversationReloadKey, agent?.id, agent?.name, project?.id, setChatMessages]);
+  }, [activeConversationId, newConversationIds, conversationReloadKey, agent?.id, agent?.name, project?.id, setChatMessages, setActiveConversationForScope]);
 
   // Position the chat at its latest content before paint. Avoid smooth scrolling
   // from the first message, which makes every newly opened conversation visibly loop.
