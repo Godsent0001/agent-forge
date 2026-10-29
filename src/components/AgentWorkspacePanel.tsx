@@ -177,6 +177,18 @@ export function AgentWorkspacePanel({
     return [...generated, ...files].sort((a, b) => a.path.localeCompare(b.path));
   }, [workspaceFiles, runFiles, artifacts]);
 
+  useEffect(() => {
+    if (selectedKey && entries.some((entry) => entry.key === selectedKey)) return;
+    if (!entries.length) return;
+    const preferred = entries.find((entry) => entry.artifactId) ??
+      entries.find((entry) => DOCUMENT_EXTENSIONS.has(extension(entry.path)) ||
+        IMAGE_EXTENSIONS.has(extension(entry.path)) || VIDEO_EXTENSIONS.has(extension(entry.path)) ||
+        AUDIO_EXTENSIONS.has(extension(entry.path))) ??
+      entries.find((entry) => extension(entry.path) === "index.html") ??
+      entries.find((entry) => entry.source === "run") ?? entries[0];
+    setSelectedKey(preferred.key);
+  }, [entries, selectedKey]);
+
   const selected = entries.find((entry) => entry.key === selectedKey) ?? null;
   useEffect(() => {
     let active = true;
