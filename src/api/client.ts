@@ -208,6 +208,8 @@ export const api = {
       project_id: string; workspace_path: string; file_count: number; total_bytes: number;
       files: { path: string; size_bytes: number }[];
     }>(`/projects/${encodeURIComponent(id)}/workspace`),
+    readWorkspaceFile: (id: string, path: string) =>
+      requestAttachmentBlob(`/projects/${encodeURIComponent(id)}/workspace/file?path=${encodeURIComponent(path)}`),
     openWorkspace: (id: string) =>
       request<{ opened: boolean; workspace_path: string }>(`/projects/${encodeURIComponent(id)}/workspace/open`, { method: "POST" }),
     downloadWorkspace: (id: string) =>
@@ -355,6 +357,10 @@ export const api = {
     list: (executionId: string) =>
       request<ExecutionArtifact[]>(
         `/v2/executions/${encodeURIComponent(executionId)}/artifacts`,
+      ),
+    download: (executionId: string, artifactId: string, version?: number) =>
+      requestAttachmentBlob(
+        `/v2/executions/${encodeURIComponent(executionId)}/artifacts/${encodeURIComponent(artifactId)}${version ? `?version=${version}` : ""}`,
       ),
   },
   executions: {
