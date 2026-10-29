@@ -7,6 +7,7 @@ require a paid API key. Crawl4AI Cloud is only used when explicitly configured.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Awaitable, Callable
 from html.parser import HTMLParser
@@ -14,6 +15,8 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from app.tools.base import Tool, ToolExecutionError
+
+logger = logging.getLogger(__name__)
 
 SearchFn = Callable[[str], Awaitable[list[dict[str, str]]]]
 
@@ -193,10 +196,12 @@ class WebSearchTool(Tool):
             raise ToolExecutionError("web_search requires a non-empty query")
         try:
             results = await self._search_fn(query)
-        except ToolExecutionError:
-            raise
+        except ToolExecutionError as exc:
+            logger.exception("web_search failed: error_type=%s query=%r", type(exc).__name__, query[:300])
+            raise ToolExecutionError(f"web_search failed: {type(exc).__name__}: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 — normalize injected backend failures
-            raise ToolExecutionError(f"web_search backend failed: {exc}") from exc
+            logger.exception("web_search unexpected failure: error_type=%s query=%r", type(exc).__name__, query[:300])
+            raise ToolExecutionError(f"web_search failed: {type(exc).__name__}: {exc}") from exc
 
         lines = [
             f"- {item['title']} ({item['url']}): {item['snippet']}"
