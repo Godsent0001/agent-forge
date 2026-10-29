@@ -12,6 +12,7 @@ type Entry = {
   mediaType?: string;
   artifactId?: string;
   version?: number;
+  source?: "run" | "project";
 };
 
 const TEXT_EXTENSIONS = new Set([
