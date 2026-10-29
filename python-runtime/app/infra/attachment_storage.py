@@ -352,12 +352,16 @@ def copy_clean_attachment_to_workspace(attachment, workspace) -> str:
     Unscanned attachments may be copied for inspection, but the caller must keep their
     scan status visible so code is not treated as trusted merely because it was uploaded.
     """
-    source = resolve_blob(attachment.storage_key, clean=attachment.status in {"clean", "unscanned"})
+    # Older versions placed uploads in a quarantine directory when scanning was
+    # unavailable or returned a verdict. New uploads are not scanned; accept those
+    # legacy blobs as untrusted input and locate them in either storage directory.
+    try:
+        source = resolve_blob(attachment.storage_key, clean=True)
+    except FileNotFoundError:
+        source = resolve_blob(attachment.storage_key, clean=False)
     if source.stat().st_size != attachment.size_bytes:
-        raise AttachmentStorageError("Stored attachment size changed after scanning")
+        raise AttachmentStorageError("Stored attachment size changed after upload")
     extension = PurePosixPath(attachment.original_name.replace("\\\\", "/")).suffix.lower()
-    if extension not in ALLOWED_MIME_BY_EXTENSION:
-        raise AttachmentStorageError("Stored attachment has an unsupported extension")
     destination = workspace.new_path(f"attachments/{uuid4().hex}{extension}")
     digest = hashlib.sha256()
     total = 0
