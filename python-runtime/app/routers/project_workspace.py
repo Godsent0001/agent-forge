@@ -10,7 +10,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
@@ -76,6 +76,29 @@ def list_project_workspace(project_id: str, db: Session = Depends(get_db)):
         "file_count": len(files),
         "total_bytes": sum(size for _, _, size in files),
     }
+
+
+@router.get("/{project_id}/workspace/file")
+def read_project_workspace_file(
+    project_id: str,
+    path: str = Query(min_length=1, max_length=1024),
+    db: Session = Depends(get_db),
+):
+    """Serve one file from a project's workspace without allowing path escape."""
+    root = _workspace(project_id, db)
+    try:
+        candidate = (root / path).resolve(strict=True)
+        candidate.relative_to(root.resolve())
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="Workspace file not found") from None
+
+    if candidate.is_symlink() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Workspace file not found")
+
+    # Active content is marked as an attachment by file_response_headers. The
+    # renderer may fetch it as a Blob and show it only inside a sandboxed viewer.
+    from app.infra.file_security import file_response_headers
+    return FileResponse(path=candidate, headers=file_response_headers(candidate))
 
 
 @router.post("/{project_id}/workspace/open")
