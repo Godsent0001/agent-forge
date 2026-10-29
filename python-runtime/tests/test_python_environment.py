@@ -63,15 +63,22 @@ def test_environment_tool_requires_network_and_subprocess_permissions():
     assert PythonEnvironmentTool.permissions == {"net", "subprocess"}
 
 
-def test_packaged_environment_prefers_bundled_python(tmp_path, monkeypatch):
-    home = tmp_path / "python-interpreter"
-    import os
-
-    executable = home / ("python.exe" if os.name == "nt" else "bin/python3.11")
-    executable.parent.mkdir(parents=True)
-    executable.write_text("", encoding="utf-8")
+def test_packaged_environment_uses_compatible_system_python(monkeypatch):
     monkeypatch.setattr(python_environment.sys, "frozen", True, raising=False)
-    monkeypatch.setenv("AGENTFORGE_PYTHON_HOME", str(home))
+    monkeypatch.setattr(python_environment.os, "name", "posix")
+    monkeypatch.setattr(python_environment.shutil, "which", lambda command: "/usr/bin/python3" if command == "python3" else None)
+    monkeypatch.setattr(
+        python_environment.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="Python 3.12.4", stderr=""),
+    )
+
+    assert python_environment._base_python() == ["/usr/bin/python3"]
+
+
+def test_packaged_environment_explains_missing_python(monkeypatch):
+    monkeypatch.setattr(python_environment.sys, "frozen", True, raising=False)
     monkeypatch.setattr(python_environment.shutil, "which", lambda _: None)
 
-    assert python_environment._base_python() == [str(executable)]
+    with pytest.raises(ToolError, match="Install Python 3.11"):
+        python_environment._base_python()
