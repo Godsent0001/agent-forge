@@ -25,7 +25,6 @@ from app.infra.attachment_storage import (
     remove_attachment_blobs,
     resolve_blob,
     safe_original_name,
-    scan_attachment,
     stream_to_staging,
     validate_attachment,
 )
@@ -127,17 +126,11 @@ async def upload_project_attachment(project_id: str, request: Request, db: Sessi
                 except AttachmentStorageError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-                scan_result, scanner_version = await scan_attachment(staging)
-                if scan_result == "clean":
-                    status, clean, scanned_at = "clean", True, datetime.now(timezone.utc)
-                elif scan_result == "infected":
-                    status, clean, scanned_at = "rejected", False, datetime.now(timezone.utc)
-                else:
-                    # Format and content validation already passed. Keep the upload available
-                    # for inspection, but label it unscanned; execution policy must not treat
-                    # an unscanned script as trusted. Do not make scanner availability a
-                    # prerequisite for attaching ordinary source/data files to a conversation.
-                    status, clean, scanned_at = "unscanned", True, None
+                # Attachments are user-provided inputs, not executable commands.
+                # Do not quarantine or invoke host antivirus; downstream tools still
+                # treat every attachment as untrusted data.
+                status, clean, scanned_at = "unscanned", True, None
+                scanner_version = None
 
                 promote_staged_file(staging, storage_key, clean=clean)
                 promoted = True
