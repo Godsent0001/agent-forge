@@ -14,6 +14,9 @@ interface StoreState {
   /** Last active persisted conversation, keyed by project and agent. */
   activeConversationByScope: Record<string, string>;
   setActiveConversationForScope: (scope: string, conversationId: string) => void;
+  activeExecutionByScope: Record<string, { executionId: string; agentId: string; agentName: string; conversationId: string }>;
+  setActiveExecutionForScope: (scope: string, execution: { executionId: string; agentId: string; agentName: string; conversationId: string }) => void;
+  clearActiveExecutionForScope: (scope: string, executionId?: string) => void;
   addChatMessage: (agentId: string, msg: ChatMessage) => void;
   setChatMessages: (agentId: string, messages: ChatMessage[]) => void;
   clearChat: (agentId: string) => void;
@@ -57,6 +60,17 @@ export const useStore = create<StoreState>()(
   selectedAgentId: null,
   chatMessages: {},
   activeConversationByScope: {},
+  activeExecutionByScope: {},
+  setActiveExecutionForScope: (scope, execution) => set((state) => ({
+    activeExecutionByScope: { ...state.activeExecutionByScope, [scope]: execution },
+  })),
+  clearActiveExecutionForScope: (scope, executionId) => set((state) => {
+    const current = state.activeExecutionByScope[scope];
+    if (!current || (executionId && current.executionId !== executionId)) return state;
+    const next = { ...state.activeExecutionByScope };
+    delete next[scope];
+    return { activeExecutionByScope: next };
+  }),
   setActiveConversationForScope: (scope, conversationId) => set((state) => (
     state.activeConversationByScope[scope] === conversationId
       ? state
@@ -262,6 +276,7 @@ export const useStore = create<StoreState>()(
           ]),
         ),
         activeConversationByScope: state.activeConversationByScope,
+        activeExecutionByScope: state.activeExecutionByScope,
       }),
     },
   ),
