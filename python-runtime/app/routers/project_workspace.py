@@ -87,12 +87,20 @@ def read_project_workspace_file(
     """Serve one file from a project's workspace without allowing path escape."""
     root = _workspace(project_id, db)
     try:
-        candidate = (root / path).resolve(strict=True)
+        relative = Path(path.replace("\\\\", "/"))
+        if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+            raise ValueError("invalid relative path")
+        candidate = root
+        for part in relative.parts:
+            candidate = candidate / part
+            if candidate.is_symlink():
+                raise ValueError("symlinks are not served")
+        candidate = candidate.resolve(strict=True)
         candidate.relative_to(root.resolve())
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="Workspace file not found") from None
 
-    if candidate.is_symlink() or not candidate.is_file():
+    if not candidate.is_file():
         raise HTTPException(status_code=404, detail="Workspace file not found")
 
     # Active content is marked as an attachment by file_response_headers. The
