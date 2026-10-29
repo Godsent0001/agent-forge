@@ -49,38 +49,39 @@ def _venv_python(root: Path) -> Path:
 
 
 def _base_python() -> list[str]:
+    """Find a compatible system Python for project-local virtual environments."""
     if not getattr(sys, "frozen", False):
-        return [sys.executable]
-
-    # Packaged desktop builds ship a standalone interpreter next to the PyInstaller
-    # backend. Use it first so persistent project environments work on clean machines.
-    bundled_home = os.environ.get("AGENTFORGE_PYTHON_HOME")
-    if bundled_home:
-        home = Path(bundled_home)
-        candidates = (
-            [home / "python.exe", home / "bin" / "python.exe"]
-            if os.name == "nt"
-            else [home / "bin" / "python3.11", home / "bin" / "python3", home / "bin" / "python"]
-        )
-        for candidate in candidates:
-            if candidate.is_file():
-                return [str(candidate)]
-
-    # Older installations may not contain the bundled interpreter yet.
-    if os.name == "nt":
-        launcher = shutil.which("py")
-        if launcher:
-            return [launcher, "-3"]
-        candidate = shutil.which("python") or shutil.which("python3")
+        candidate = [sys.executable]
+    elif os.name == "nt" and shutil.which("py"):
+        # The Windows launcher selects an installed Python 3.11+ without relying
+        # on whichever older Python happens to appear first on PATH.
+        candidate = [shutil.which("py") or "py", "-3.11"]
     else:
-        candidate = shutil.which("python3") or shutil.which("python")
-    if candidate:
-        return [candidate]
-    raise ToolError(
-        "No Python interpreter is available. Reinstall AgentForge to install its bundled Python runtime, "
-        "or install Python 3.11+ and enable it on PATH."
-    )
+        executable = shutil.which("python3") or shutil.which("python")
+        candidate = [executable] if executable else []
 
+    if candidate:
+        try:
+            result = subprocess.run(
+                [*candidate, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
+            )
+            version_text = (result.stdout or result.stderr).strip()
+            match = re.search(r"Python (\d+)\.(\d+)", version_text)
+            if result.returncode == 0 and match and (int(match.group(1)), int(match.group(2))) >= (3, 11):
+                return candidate
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    raise ToolError(
+        "AgentForge needs Python 3.11 or newer to create a project environment, but a compatible "
+        "installation was not found. Install Python 3.11+ from https://www.python.org/downloads/ "
+        "and enable the Python launcher or add Python to PATH, then retry."
+    )
 
 async def _run(command: list[str], *, cwd: Path) -> tuple[int, str]:
     env = {
