@@ -14,10 +14,8 @@ function formatBytes(bytes: number): string {
 }
 
 function statusLabel(status: ProjectAttachment["status"]): string {
-  if (status === "clean") return "Scanned · ready";
-  if (status === "unscanned") return "Unscanned · inspection allowed";
-  if (status === "rejected") return "Rejected";
-  return "Quarantined · scan required";
+  if (status === "clean" || status === "unscanned") return "Ready to attach";
+  return "Unavailable";
 }
 
 export function ProjectAttachmentsPanel({
@@ -142,28 +140,6 @@ export function ProjectAttachmentsPanel({
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  const rescan = async (item: ProjectAttachment) => {
-    setBusyId(item.id);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await api.attachments.scan(projectId, item.id);
-      setItems((current) => current.map((old) => old.id === item.id ? result : old));
-      if (result.status === "clean") {
-        setNotice(`${item.name} passed scanning. Select it below to attach it to a run.`);
-      } else if (result.status === "rejected") {
-        onSelectedIdsChange(selectedIds.filter((id) => id !== item.id));
-        setNotice(`${item.name} was rejected by validation or scanning.`);
-      } else {
-        setNotice("The scanner is unavailable or returned an uncertain result. The file remains marked unscanned and can be inspected, but must not be treated as trusted code.");
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not rescan this attachment.");
-    } finally {
-      setBusyId(null);
     }
   };
 
