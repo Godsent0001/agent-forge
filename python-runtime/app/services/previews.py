@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -134,7 +135,7 @@ class PreviewManager:
             env = self._environment(port)
             command = [npm, "run", script]
             script_text = scripts.get(script, "")
-            if "vite" in script_text.lower():
+            if re.match(r"^(?:cross-env\\s+(?:[A-Z0-9_]+=\\S+\\s+)*)?vite(?:\\s|$)", script_text.strip(), re.IGNORECASE):
                 command += ["--", "--host", "127.0.0.1", "--port", str(port), "--strictPort"]
 
             if os.name == "nt":
