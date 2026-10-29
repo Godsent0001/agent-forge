@@ -144,6 +144,12 @@ class ShellTool(Tool):
             command = ["/bin/sh", "-lc", command_text]
             creationflags = 0
 
+        timeout_seconds = getattr(context, "timeout_seconds", WALL_CLOCK_TIMEOUT_SECONDS)
+        try:
+            timeout_seconds = max(1, min(int(timeout_seconds), 300))
+        except (TypeError, ValueError):
+            timeout_seconds = WALL_CLOCK_TIMEOUT_SECONDS
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *command,
@@ -161,7 +167,7 @@ class ShellTool(Tool):
                 stderr_task = asyncio.create_task(_read_bounded(proc.stderr, MAX_CAPTURE_BYTES))
                 (stdout, stdout_cut), (stderr, stderr_cut) = await asyncio.wait_for(
                     asyncio.gather(stdout_task, stderr_task),
-                    timeout=WALL_CLOCK_TIMEOUT_SECONDS,
+                    timeout=timeout_seconds,
                 )
                 await proc.wait()
             except asyncio.CancelledError:
@@ -172,7 +178,7 @@ class ShellTool(Tool):
                 await _terminate_process_tree(proc)
                 await _cancel_reader_tasks(*(task for task in (stdout_task, stderr_task) if task is not None))
                 raise ToolExecutionError(
-                    f"shell command exceeded the {WALL_CLOCK_TIMEOUT_SECONDS}s wall-clock limit"
+                    f"shell command exceeded the {timeout_seconds}s wall-clock limit"
                 ) from exc
         except ToolExecutionError:
             raise
