@@ -196,19 +196,22 @@ export function ProjectAttachmentsPanel({
           aria-expanded={compact ? undefined : open}
           aria-controls={compact ? undefined : "project-attachments-panel"}
           aria-label={compact ? `Attach files${selectedIds.length ? ` (${selectedIds.length} selected)` : ""}` : undefined}
-          title={compact ? (selectedIds.length ? `${selectedIds.length} file(s) attached to next run` : "Attach files") : "Project attachments"}
+          title={compact ? (error || notice || (uploading ? "Uploading files…" : selectedIds.length ? `${selectedIds.length} file(s) attached to next run` : "Attach files")) : "Project attachments"}
+          aria-busy={uploading}
           disabled={disabled || uploading}
           className={compact
             ? "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
             : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
-          <Icon name="paperclip" size={compact ? 17 : 14} />
+          <Icon name={compact && uploading ? "loader-circle" : "paperclip"} size={compact ? 17 : 14} />
           {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
         </button>
         {compact && selectedIds.length > 0 && (
           <span aria-label={`${selectedIds.length} files attached`} className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] text-white">{selectedIds.length}</span>
         )}
       </div>
+      {compact && error && <p role="alert" className="max-w-36 text-[10px] leading-3 text-red-300">{error}</p>}
+      {compact && <span className="sr-only" role="status">{uploading ? "Uploading attachments" : notice || ""}</span>}
       {open && !compact && (
         <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
