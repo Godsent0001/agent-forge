@@ -18,7 +18,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepare:embeddings": "cd python-runtime && uv sync --group build && uv run python scripts/prepare_embedding_model.py",
+    "prepare:embeddings": "cd python-runtime && uv sync --group build && uv run python scripts/prepare_embedding_model.py"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
