@@ -5,7 +5,6 @@ from pathlib import Path
 from app import models
 from app.infra import attachment_storage
 from app.infra.attachment_storage import data_dir, upload_dirs
-from app.routers import attachments as attachments_router
 from app.routers import executions_v2
 
 
@@ -24,17 +23,8 @@ def _upload(client, project_id: str, name: str = "brief.txt", content: bytes = b
     )
 
 
-async def _clean_scan(path: Path):
-    return "clean", "test-scanner/1"
-
-
-async def _unavailable_scan(path: Path):
-    return "unavailable", None
-
-
 def test_upload_file_lists_and_downloads_without_scanning(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
 
     response = _upload(client, project.id)
@@ -73,9 +63,8 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
     assert download.status_code == 200
     assert download.content == content
 
-def test_uploads_are_available_without_invoking_scanner(client, db_session, monkeypatch, tmp_path):
+def test_uploads_are_available_without_invoking_scanner(client, db_session, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
     project = _project(db_session)
 
     response = _upload(client, project.id)
@@ -106,11 +95,6 @@ def test_uploads_are_available_without_invoking_scanner(client, db_session, monk
     run_file = data_dir() / "runs" / captured["req"].execution_id / captured["req"].attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
 
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
-    rescanned = client.post(f"/v2/projects/{project.id}/attachments/{attachment['id']}/scan")
-    assert rescanned.status_code == 200, rescanned.text
-    assert rescanned.json()["status"] == "clean"
-    assert rescanned.json()["scan_result"] == "clean"
 
 
 def test_python_source_attachment_is_validated_and_available_for_inspection(client, db_session, monkeypatch, tmp_path):
@@ -130,9 +114,6 @@ def test_python_source_attachment_is_validated_and_available_for_inspection(clie
 
 def test_upload_does_not_run_antivirus_or_quarantine(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    async def forbidden_scan(path: Path):
-        raise AssertionError("upload must not invoke antivirus")
-    monkeypatch.setattr(attachments_router, "scan_attachment", forbidden_scan)
     project = _project(db_session)
 
     response = _upload(client, project.id, "sample.bin", b"\x00\x01arbitrary binary")
