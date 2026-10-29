@@ -835,6 +835,10 @@ class RunnerCore:
                         await emit(EventDraft(type="artifact_verification", data=report.model_dump(mode="json")))
                 if not res.ok:
                     detail = res.content.strip() or "Tool reported failure without details."
+                    logger.warning(
+                        "Tool returned failure execution_id=%s tool=%s tool_call_id=%s error=%s",
+                        req.execution_id, tc.name, tc.id, detail[:1200],
+                    )
                     return f"ERROR: {detail}"
                 content = res.content
 
@@ -849,8 +853,16 @@ class RunnerCore:
                 return content
 
             except ToolError as te:
+                logger.warning(
+                    "Tool failed execution_id=%s tool=%s tool_call_id=%s error_type=%s message=%s",
+                    req.execution_id, tc.name, tc.id, type(te).__name__, te.message[:1200],
+                )
                 return f"ERROR: {te.message}"
             except Exception as exc:
+                logger.exception(
+                    "Unhandled tool crash execution_id=%s tool=%s tool_call_id=%s argument_keys=%s",
+                    req.execution_id, tc.name, tc.id, sorted(str(key) for key in tc.arguments.keys())[:80],
+                )
                 return f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
 
     def _assemble_tools(
