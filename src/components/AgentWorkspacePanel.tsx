@@ -220,12 +220,12 @@ export function AgentWorkspacePanel({
             <p className="text-[10px] text-studio-500">{runStatus === "running" ? "Working" : runStatus === "completed" ? "Completed" : runStatus === "error" ? "Failed" : runStatus === "cancelled" ? "Stopped" : "Project files"}</p>
           </div>
         </div>
-        <button type="button" onClick={() => { void api.projects.openWorkspace(projectId).catch(() => undefined); }} className="neu-btn rounded-lg p-2 text-studio-400 hover:text-studio-100" aria-label="Open workspace folder" title="Open folder"><Icon name="download" size={14} /></button>
+        <button type="button" onClick={() => { void api.projects.openWorkspace(projectId).catch(() => undefined); }} className="neu-btn rounded-lg p-2 text-studio-400 hover:text-studio-100" aria-label="Open workspace folder" title="Open folder"><Icon name="folder-open" size={14} /></button>
       </header>
 
       <div className="flex shrink-0 gap-2 px-3 pt-3">
         <button type="button" onClick={() => setTab("preview")} aria-pressed={tab === "preview"} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${tab === "preview" ? "neu-selected text-accent-300" : "neu-btn text-studio-400"}`}><Icon name="editor" size={14} />Preview</button>
-        <button type="button" onClick={() => setTab("files")} aria-pressed={tab === "files"} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${tab === "files" ? "neu-selected text-accent-300" : "neu-btn text-studio-400"}`}><Icon name="catalog" size={14} />Files</button>
+        <button type="button" onClick={() => setTab("files")} aria-pressed={tab === "files"} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${tab === "files" ? "neu-selected text-accent-300" : "neu-btn text-studio-400"}`}><Icon name="folder-open" size={14} />Files</button>
       </div>
 
       {tab === "preview" ? (
