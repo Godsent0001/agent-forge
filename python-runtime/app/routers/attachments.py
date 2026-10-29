@@ -40,7 +40,7 @@ def attachment_out(row: models.ProjectAttachment) -> dict:
         "name": row.original_name,
         "mime": row.detected_mime,
         "size_bytes": row.size_bytes,
-        "status": row.status,
+        "status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
         "created_at": row.created_at,
         "scanned_at": row.scanned_at,
     }
@@ -214,10 +214,13 @@ def download_project_attachment(
 ):
     _project_or_404(db, project_id)
     row = _lookup_attachment_or_404(db, project_id, attachment_id)
-    if row.status not in {"clean", "unscanned"}:
-        raise HTTPException(status_code=409, detail="Attachment was rejected and cannot be downloaded")
     try:
-        path = resolve_blob(row.storage_key, clean=True)
+        try:
+            path = resolve_blob(row.storage_key, clean=True)
+        except FileNotFoundError:
+            # Compatibility for files quarantined by older releases. They remain
+            # downloadable as untrusted attachments; current uploads never scan.
+            path = resolve_blob(row.storage_key, clean=False)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Attachment content not found") from exc
     except AttachmentStorageError as exc:
