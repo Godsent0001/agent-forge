@@ -55,7 +55,9 @@ class PythonProjectTool(Tool):
         return {"subprocess", "net"} if action == "install" else {"subprocess"}
 
     def requires_approval(self, arguments: dict) -> bool:
-        return arguments.get("action", "execute") in {"ensure", "install"}
+        # Creating the project's local .venv is routine setup; only installing
+        # packages requires approval because it downloads and changes dependencies.
+        return arguments.get("action", "execute") == "install"
 
     def approval_reason(self, arguments: dict) -> str:
         if arguments.get("action") == "install":
@@ -66,7 +68,10 @@ class PythonProjectTool(Tool):
         if args.action == "execute":
             if not args.code.strip():
                 raise ToolError("Provide Python source code for action='execute'.")
+            # Initialize the persistent project environment automatically on first use.
+            # Python execution then selects .venv when it exists; no separate user action.
             try:
+                await self._environment.run(PythonEnvironmentInput(action="ensure"), ctx)
                 output = await self._executor.execute(args.code, context=ctx)
             except ToolExecutionError as exc:
                 raise ToolError(str(exc)) from exc
