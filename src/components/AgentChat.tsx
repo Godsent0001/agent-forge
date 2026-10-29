@@ -593,6 +593,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       return;
     }
 
+    const runScope = `${project.id}:${agent.id}`;
     const userText = rawText.trim();
     if (fromComposer) setPromptInput("");
     setChatError(null);
@@ -633,38 +634,57 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
       setSelectedAttachmentIds([]);
       setEditingMessageId(null);
-      processedExecutionRef.current = null;
-      activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
-      setActiveExecutionForScope(project.id + ":" + agent.id, {
+      setActiveExecutionForScope(runScope, {
         executionId: execution.id, agentId: agent.id, agentName: agent.name, conversationId: activeConversationId,
       });
-      activeExecutionIdRef.current = execution.id;
-      setActiveExecutionId(execution.id);
-      onRunExecution(execution.id);
+      if (activeScopeRef.current === runScope) {
+        processedExecutionRef.current = null;
+        activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
+        activeExecutionIdRef.current = execution.id;
+        setActiveExecutionId(execution.id);
+        setIsProcessing(true);
+        onRunExecution(execution.id);
+      }
       // The stream owns completion now; do not poll the execution endpoint.
     } catch (e) {
       setNewConversationIds((current) => { if (!current.has(activeConversationId)) return current; const next = new Set(current); next.delete(activeConversationId); return next; });
       setReadyConversationIds((current) => { const next = new Set(current); next.delete(activeConversationId); return next; });
-      setChatError(e instanceof Error ? e.message : "Failed to start execution");
-      setIsProcessing(false);
-      setIsCancelling(false);
-      activeExecutionAgentRef.current = null;
-      clearActiveExecutionForScope(project.id + ":" + agent.id);
-      activeExecutionIdRef.current = null;
-      setActiveExecutionId(null);
-      setTerminalExecutionId(null);
+      clearActiveExecutionForScope(runScope);
+      if (activeScopeRef.current === runScope) {
+        setChatError(e instanceof Error ? e.message : "Failed to start execution");
+        setIsProcessing(false);
+        setIsCancelling(false);
+        activeExecutionAgentRef.current = null;
+        activeExecutionIdRef.current = null;
+        setActiveExecutionId(null);
+        setTerminalExecutionId(null);
+      }
     }
   };
 
   const handleCancelExecution = async () => {
-    if (!activeExecutionId || isCancelling) return;
+    const executionId = activeExecutionId;
+    if (!executionId || isCancelling) return;
     setIsCancelling(true);
     setChatError(null);
     try {
-      await api.executions.cancel(activeExecutionId);
-    } catch (e) {
-      setIsCancelling(false);
-      setChatError(e instanceof Error ? e.message : "Failed to stop execution");
+      await api.executions.cancel(executionId);
+    } catch (cause) {
+      // A 409 can mean the run finished just before the cancel request arrived.
+      // Reconcile with durable state rather than leaving the composer stuck on Stop.
+      try {
+        const execution = await api.executions.get(executionId);
+        if (TERMINAL_RUN_STATUSES.includes(execution.status as TerminalRunStatus)) {
+          setTerminalExecutionId(executionId);
+          return;
+        }
+      } catch {
+        // Keep the original error below if the status endpoint is also unavailable.
+      }
+      if (activeExecutionIdRef.current === executionId) {
+        setIsCancelling(false);
+        setChatError(cause instanceof Error ? cause.message : "Failed to stop execution");
+      }
     }
   };
 
