@@ -152,22 +152,28 @@ export function AgentWorkspacePanel({
   }, [observedExecutionId, projectId]);
 
   const entries = useMemo<Entry[]>(() => {
-    const files: Entry[] = [
-      ...runFiles.map((file) => ({
-        key: `run-file:${file.path}`,
-        name: file.path.split("/").pop() || file.path,
-        path: file.path,
-        size: file.size_bytes,
-        source: "run" as const,
-      })),
-      ...workspaceFiles.map((file) => ({
+    // Project and execution endpoints intentionally point to the same persistent
+    // workspace. Prefer execution-backed reads when a run is selected, but show
+    // each physical file only once.
+    const filesByPath = new Map<string, Entry>();
+    for (const file of workspaceFiles) {
+      filesByPath.set(file.path, {
         key: `project-file:${file.path}`,
         name: file.path.split("/").pop() || file.path,
         path: file.path,
         size: file.size_bytes,
-        source: "project" as const,
-      })),
-    ];
+        source: "project",
+      });
+    }
+    for (const file of runFiles) {
+      filesByPath.set(file.path, {
+        key: `run-file:${file.path}`,
+        name: file.path.split("/").pop() || file.path,
+        path: file.path,
+        size: file.size_bytes,
+        source: "run",
+      });
+    }
     const generated: Entry[] = artifacts.map((artifact) => ({
       key: `artifact:${artifact.artifact_id}:${artifact.version}`,
       name: artifact.name,
@@ -177,7 +183,7 @@ export function AgentWorkspacePanel({
       artifactId: artifact.artifact_id,
       version: artifact.version,
     }));
-    return [...generated, ...files].sort((a, b) => a.path.localeCompare(b.path));
+    return [...generated, ...filesByPath.values()].sort((a, b) => a.path.localeCompare(b.path));
   }, [workspaceFiles, runFiles, artifacts]);
 
   useEffect(() => {
