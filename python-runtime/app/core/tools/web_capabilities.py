@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from typing import Literal\n\nfrom pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
