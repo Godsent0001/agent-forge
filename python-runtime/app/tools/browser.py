@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
@@ -87,6 +88,10 @@ class BrowserTool(Tool):
             except UnsafeURL as exc:
                 raise ToolExecutionError(str(exc)) from exc
         execution_id = str(getattr(context, "execution_id", "default"))
+        if getattr(sys, "frozen", False):
+            bundled_browsers = os.path.join(os.path.dirname(sys.executable), "browser-cache")
+            if os.path.isdir(bundled_browsers):
+                os.environ["PLAYWRIGHT_BROWSERS_PATH"] = bundled_browsers
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
