@@ -16,7 +16,7 @@ async def test_typed_shell_runs_in_project_workspace_by_default(monkeypatch, tmp
 
     class FakeShell:
         async def execute(self, command, *, context):
-            calls.append((command, context.workspace.root))
+            calls.append((command, context.workspace.root, context.timeout_seconds))
             return "Exit code: 0"
 
     monkeypatch.setattr(shell_capability, "LegacyShellTool", FakeShell)
@@ -27,8 +27,8 @@ async def test_typed_shell_runs_in_project_workspace_by_default(monkeypatch, tmp
     tool = shell_capability.ShellCapability()
     result = await tool.run(tool.Input(command="python --version"), ctx)
 
-    assert tool.Input.model_json_schema()["properties"].keys() == {"command", "working_directory"}
-    assert calls == [("python --version", project.resolve())]
+    assert tool.Input.model_json_schema()["properties"].keys() == {"command", "working_directory", "timeout_seconds"}
+    assert calls == [("python --version", project.resolve(), 60)]
     assert result.content == "Exit code: 0"
     assert not tool.requires_approval({"command": "python --version"})
 
@@ -57,5 +57,5 @@ async def test_typed_shell_requires_approval_for_another_local_directory(monkeyp
         tool.Input(command="dir", working_directory=str(external)), ctx
     )
 
-    assert calls == [("dir", external.resolve())]
+    assert calls == [("dir", external.resolve(), 60)]
     assert result.ok
