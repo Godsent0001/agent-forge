@@ -27,6 +27,12 @@ describe("buildRunHistory", () => {
     ]);
   });
 
+  it("preserves an unanswered user request so transcript questions can inspect it", () => {
+    expect(buildRunHistory([
+      user("u1", "Old request that was interrupted"),
+    ])).toEqual([{ role: "user", content: "Old request that was interrupted" }]);
+  });
+
   it("never includes simulated demo replies in real model context", () => {
     const history = buildRunHistory([
       user("u1", "hello"),

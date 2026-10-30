@@ -24,9 +24,18 @@ def create_tool(payload: schemas.ToolCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[schemas.ToolOut])
 def list_tools(project_id: str, db: Session = Depends(get_db)):
+    if db.get(models.Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     return db.query(models.Tool).filter(models.Tool.project_id == project_id).all()
 
 
 @router.delete("/{tool_id}")
 def delete_tool(tool_id: str, db: Session = Depends(get_db)):
-    raise HTTPException(status_code=403, detail="Tool deletion capability has been disabled")
+    """Remove a project-specific tool instance, never a global catalog definition."""
+    tool = db.get(models.Tool, tool_id)
+    if tool is None:
+        raise HTTPException(status_code=404, detail="Project tool not found")
+    db.query(models.AgentToolLink).filter_by(tool_id=tool_id).delete(synchronize_session=False)
+    db.delete(tool)
+    db.commit()
+    return {"deleted": tool_id, "scope": "project"}

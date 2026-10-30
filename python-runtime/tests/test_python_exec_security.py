@@ -42,3 +42,15 @@ async def test_python_tool_enforces_wall_clock_timeout(monkeypatch):
     tool = PythonExecTool()
     with pytest.raises(ToolExecutionError, match="wall-clock limit"):
         await tool.execute("import time; time.sleep(5)", context=SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_python_snippet_can_import_project_files_from_persistent_workspace(tmp_path):
+    module = tmp_path / "project_module.py"
+    module.write_text("VALUE = 'workspace-import-ok'\n", encoding="utf-8")
+    ctx = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path))
+    result = await PythonExecTool().execute(
+        "import project_module; print(project_module.VALUE)",
+        context=ctx,
+    )
+    assert result.strip() == "workspace-import-ok"

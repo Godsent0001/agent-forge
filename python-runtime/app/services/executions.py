@@ -252,7 +252,7 @@ class ExecutionManager:
                 data={"root_agent_id": req.root_agent_id, "task_preview": req.task[:500]},
             ))
             runner = get_runner()
-            workspace = Workspace(req.execution_id)
+            workspace = Workspace(req.execution_id, req.project_id)
             approvals = ApprovalGateImpl(
                 execution_id=req.execution_id,
                 settings=project_settings or {},

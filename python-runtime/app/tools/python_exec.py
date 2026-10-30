@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any
 
 if os.name != "nt":
@@ -55,7 +56,7 @@ def _strip_markdown_fence(source: str) -> str:
     return match.group(1) if match else source
 
 
-def _safe_environment() -> dict[str, str]:
+def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
     """Construct a small environment without inherited provider/API secrets."""
     if os.name == "nt":
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
@@ -66,8 +67,13 @@ def _safe_environment() -> dict[str, str]:
             value = os.environ.get(key) or os.environ.get(key.lower())
             if value:
                 env[key] = value
+        if workspace_root is not None:
+            env["PYTHONPATH"] = str(workspace_root)
         return env
-    return {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+    env = {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+    if workspace_root is not None:
+        env["PYTHONPATH"] = str(workspace_root)
+    return env
 
 
 async def _read_bounded(stream: asyncio.StreamReader, limit: int = MAX_CAPTURE_BYTES) -> tuple[bytes, bool]:
@@ -103,21 +109,35 @@ class PythonExecTool(Tool):
 
     async def execute(self, input: str, *, context: Any) -> str:
         script = _strip_markdown_fence(input)
-        tmp_dir = tempfile.mkdtemp(prefix="agentforge-py-")
+        workspace = getattr(context, "workspace", None)
+        workspace_root = getattr(workspace, "root", None)
+        owned_tmp = workspace_root is None
+        if owned_tmp:
+            tmp_dir = tempfile.mkdtemp(prefix="agentforge-py-")
+            root = Path(tmp_dir).resolve()
+        else:
+            root = Path(workspace_root).resolve()
+            root.mkdir(parents=True, exist_ok=True)
+            tmp_dir = tempfile.mkdtemp(prefix="snippet-", dir=str(root / ".agentforge")) if (root / ".agentforge").is_dir() else ""
+            if not tmp_dir:
+                (root / ".agentforge").mkdir(parents=True, exist_ok=True)
+                tmp_dir = tempfile.mkdtemp(prefix="snippet-", dir=str(root / ".agentforge"))
         script_path = os.path.join(tmp_dir, "snippet.py")
         proc = None
         try:
             with open(script_path, "w", encoding="utf-8") as handle:
                 handle.write(script)
 
-            command = (
-                [sys.executable, "--run-snippet", script_path]
-                if getattr(sys, "frozen", False)
-                else [sys.executable, script_path]
-            )
+            # Always execute with the shared AgentForge runtime. Project-local
+            # virtual environments are deliberately ignored.
+            if getattr(sys, "frozen", False):
+                command = [sys.executable, "--run-snippet", script_path]
+            else:
+                command = [sys.executable, script_path]
+
             kwargs: dict[str, Any] = {
-                "cwd": tmp_dir,
-                "env": _safe_environment(),
+                "cwd": str(root),
+                "env": _safe_environment(root if not owned_tmp else None),
                 "stdout": asyncio.subprocess.PIPE,
                 "stderr": asyncio.subprocess.PIPE,
             }

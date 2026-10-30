@@ -23,7 +23,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.db import init_db
+from app.db import DB_PATH, init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.infra.file_security import file_response_headers
 from app.infra.paths import data_dir
@@ -31,6 +31,7 @@ from app.routers import (
     agents,
     executions,
     executions_v2,
+    project_workspace,
     projects,
     settings,
     system,
@@ -42,6 +43,7 @@ from app.routers import conversations as conversations_router
 from app.routers import memory as memory_router
 from app.routers import usage as usage_router
 from app.services.executions import manager
+from app.services.previews import preview_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +53,7 @@ logger = logging.getLogger("agentforge")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing AgentForge database...")
+    logger.info("Initializing AgentForge database at %s", DB_PATH)
     init_db()
     from app.infra.attachment_storage import cleanup_stale_upload_parts
     cleanup_stale_upload_parts()
@@ -59,9 +61,11 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
     await manager.shutdown()
+    preview_manager.shutdown()
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
+app.include_router(project_workspace.router)
 app.include_router(attachments_router.router)
 app.include_router(agents.router)
 app.include_router(tools.router)

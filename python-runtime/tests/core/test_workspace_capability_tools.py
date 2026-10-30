@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from app.contracts.tools import ToolError
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
     WorkspaceCapabilityToolFactory,
     WorkspaceEditTool,
+    WorkspaceFilesTool,
 )
 
 
@@ -78,3 +81,119 @@ async def test_workspace_edit_tool_uses_expected_hash(tmp_path):
         replacements=[{"expected_text": "two", "replacement_text": "TWO"}],
     ), ctx)
     assert result.ok and target.read_text(encoding="utf-8") == "one\nTWO\n"
+
+
+
+def test_knowledge_index_persists_and_uses_chunk_embeddings(tmp_path):
+    from app.core.knowledge import KnowledgeIndex, extract_document
+
+    index_path = tmp_path / "knowledge.sqlite3"
+    index = KnowledgeIndex(index_path)
+    document = extract_document(
+        "orbit.md",
+        b"An orbital vehicle circles a planet and transmits telemetry to a ground station.",
+    )
+    count = index.ingest(document, embedding_fn=lambda texts: [[1.0, 0.0] for _ in texts])
+    assert count == 1
+    assert index.last_ingest_embedded is True
+
+    # A fresh index instance proves vectors were persisted rather than held only in memory.
+    reopened = KnowledgeIndex(index_path)
+    hits = reopened.search("celestial object", query_embedding=[1.0, 0.0], limit=3)
+    assert hits
+    assert hits[0].chunk.source_name == "orbit.md"
+    assert hits[0].semantic_score > 0
+
+
+@pytest.mark.asyncio
+async def test_workspace_files_tool_creates_reads_lists_and_overwrites_in_workspace(tmp_path):
+    ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
+    tool = WorkspaceFilesTool()
+
+    made_dir = await tool.run(tool.Input(action="mkdir", path="calculator"), ctx)
+    assert '"created": true' in made_dir.content
+    created = await tool.run(tool.Input(action="write", path="calculator/main.py", content="print(2 + 2)"), ctx)
+    assert '"written": true' in created.content
+    assert (tmp_path / "calculator" / "main.py").read_text(encoding="utf-8") == "print(2 + 2)"
+
+    with pytest.raises(ToolError, match="File already exists"):
+        await tool.run(tool.Input(action="write", path="calculator/main.py", content="print(0)"), ctx)
+
+    read = await tool.run(tool.Input(action="read", path="calculator/main.py"), ctx)
+    assert "print(2 + 2)" in read.content
+    listing = await tool.run(tool.Input(action="list", path="calculator"), ctx)
+    assert '"name": "main.py"' in listing.content
+
+
+@pytest.mark.asyncio
+async def test_workspace_files_tool_rejects_path_traversal_and_requires_delete_approval(tmp_path):
+    ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
+    tool = WorkspaceFilesTool()
+    with pytest.raises(ToolError, match="path escapes workspace|outside the project workspace"):
+        await tool.run(tool.Input(action="read", path="../outside.txt"), ctx)
+    assert tool.requires_approval({"action": "delete"})
+    assert not tool.requires_approval({"action": "read"})
+
+
+@pytest.mark.asyncio
+async def test_knowledge_search_skips_embedding_model_when_index_has_no_vectors(tmp_path, monkeypatch):
+    from app.core import knowledge as knowledge_module
+    from app.core.tools import workspace_capabilities
+    from app.infra.paths import project_dir
+
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    ctx = SimpleNamespace(
+        workspace=Workspace(tmp_path), execution_id="lexical-only-run",
+        project_id="lexical-only-project", agent_id="agent-1",
+    )
+    index = knowledge_module.KnowledgeIndex(
+        project_dir(ctx.project_id) / ".agentforge" / "knowledge.sqlite3"
+    )
+    document = knowledge_module.extract_document(
+        "brief.md", b"The workspace stores durable execution checkpoints and task plans."
+    )
+    index.ingest(document)
+
+    def unexpected_embedding(*args, **kwargs):
+        raise AssertionError("embedding model should not load for a lexical-only index")
+
+    monkeypatch.setattr(workspace_capabilities, "embed_text", unexpected_embedding)
+    result = await workspace_capabilities.KnowledgeSearchTool().run(
+        workspace_capabilities.KnowledgeSearchInput(query="execution checkpoints"), ctx
+    )
+    assert '"retrieval_mode": "lexical_fallback"' in result.content
+    assert "durable execution checkpoints" in result.content
+
+
+@pytest.mark.asyncio
+async def test_knowledge_search_runs_embedding_inference_off_event_loop(tmp_path, monkeypatch):
+    from app.core import knowledge as knowledge_module
+    from app.core.tools import workspace_capabilities
+    from app.infra.paths import project_dir
+
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    ctx = SimpleNamespace(
+        workspace=Workspace(tmp_path), execution_id="threaded-search-run",
+        project_id="threaded-search-project", agent_id="agent-1",
+    )
+    index = knowledge_module.KnowledgeIndex(
+        project_dir(ctx.project_id) / ".agentforge" / "knowledge.sqlite3"
+    )
+    document = knowledge_module.extract_document(
+        "orbit.md", b"An orbital vehicle transmits telemetry to a ground station."
+    )
+    index.ingest(document, embedding_fn=lambda texts: [[1.0, 0.0] for _ in texts])
+
+    main_thread = threading.current_thread()
+    called_off_loop = []
+
+    def fake_embed(_query, _model_id):
+        called_off_loop.append(threading.current_thread() is not main_thread)
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(workspace_capabilities, "embed_text", fake_embed)
+    result = await workspace_capabilities.KnowledgeSearchTool().run(
+        workspace_capabilities.KnowledgeSearchInput(query="space telemetry"), ctx
+    )
+    assert called_off_loop == [True]
+    assert "hybrid_vector_lexical" in result.content

@@ -7,7 +7,7 @@ import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter", "venice"]);
+const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter", "venice", "serper"]);
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 // Only unpackaged builds are dev builds. An inherited NODE_ENV must never make an
 // installed app load (and hand its API token to) whatever serves localhost:5173.
@@ -286,6 +286,7 @@ function startPythonBackend() {
         AGENTFORGE_WATCH_PARENT: "1",
         AGENTFORGE_TOKEN: apiToken,
         AGENTFORGE_DATA_DIR: path.join(app.getPath("userData"), "data"),
+        AGENTFORGE_DB_PATH: path.join(app.getPath("userData"), "data", "db", "agentforge.db"),
       },
       shell: false,
       windowsHide: true,

@@ -122,3 +122,51 @@ def test_large_artifacts_stream_from_disk_and_support_range_requests(
     blob.write_bytes(b"tampered")
     assert client.get(url).status_code == 409
     assert store.verify_integrity(streamed.artifact_id) is False
+
+
+
+def test_execution_workspace_files_are_listed_and_readable(
+    client, db_session, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "agentforge-data"))
+    monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
+
+    project = models.Project(name="workspace API project")
+    agent = models.Agent(project=project, name="workspace API agent")
+    db_session.add_all([project, agent])
+    db_session.commit()
+    execution = models.Execution(
+        id="workspace-api-run",
+        project_id=project.id,
+        root_agent_id=agent.id,
+        input_task="Create a file",
+        status="completed",
+    )
+    db_session.add(execution)
+    db_session.commit()
+
+    from app.services.core_adapters import Workspace
+    workspace = Workspace(execution.id, project.id)
+    target = workspace.resolve("src/main.py")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("print('hello')", encoding="utf-8")
+
+    listed = client.get(f"/v2/executions/{execution.id}/files")
+    assert listed.status_code == 200
+    assert listed.json()["files"] == [{"path": "src/main.py", "size_bytes": 14}]
+
+    read = client.get(f"/v2/executions/{execution.id}/files/src/main.py")
+    assert read.status_code == 200
+    assert read.text == "print('hello')"
+
+    preview_status = client.get(f"/v2/executions/{execution.id}/preview")
+    assert preview_status.status_code == 200
+    assert preview_status.json()["status"] == "stopped"
+    invalid_preview = client.post(
+        f"/v2/executions/{execution.id}/preview",
+        json={"package_path": "src/main.py"},
+    )
+    assert invalid_preview.status_code == 422
+
+    traversal = client.get(f"/v2/executions/{execution.id}/files/../outside.txt")
+    assert traversal.status_code in {404, 307}

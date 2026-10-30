@@ -120,6 +120,16 @@ async function requestAttachmentBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+export interface PreviewStatus {
+  execution_id: string;
+  status: "stopped" | "starting" | "ready" | "failed";
+  url: string | null;
+  package_path?: string;
+  pid?: number;
+  log: string;
+  error?: string | null;
+}
+
 export interface ExecutionArtifact {
   artifact_id: string;
   project_id: string;
@@ -204,6 +214,16 @@ export const api = {
       request<Project>("/projects", { method: "POST", body: JSON.stringify({ name, parallel_execution }) }),
     update: (id: string, patch: { name?: string; parallel_execution?: boolean; settings?: Record<string, unknown> }) =>
       request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    workspace: (id: string) => request<{
+      project_id: string; workspace_path: string; file_count: number; total_bytes: number;
+      files: { path: string; size_bytes: number }[];
+    }>(`/projects/${encodeURIComponent(id)}/workspace`),
+    readWorkspaceFile: (id: string, path: string) =>
+      requestAttachmentBlob(`/projects/${encodeURIComponent(id)}/workspace/file?path=${encodeURIComponent(path)}`),
+    openWorkspace: (id: string) =>
+      request<{ opened: boolean; workspace_path: string }>(`/projects/${encodeURIComponent(id)}/workspace/open`, { method: "POST" }),
+    downloadWorkspace: (id: string) =>
+      requestAttachmentBlob(`/projects/${encodeURIComponent(id)}/workspace.zip`),
   },
   attachments: {
     list: (projectId: string, limit = 100) =>
@@ -332,6 +352,11 @@ export const api = {
         `/v2/conversations/${encodeURIComponent(conversationId)}/messages`,
         { method: "POST", body: JSON.stringify(payload) },
       ),
+    editUserMessage: (messageId: string, content: string) =>
+      request<ConversationMessageRecord>(
+        `/v2/messages/${encodeURIComponent(messageId)}`,
+        { method: "PATCH", body: JSON.stringify({ content }) },
+      ),
     feedback: (messageId: string, value: -1 | 1, note?: string) =>
       request<{ ok: boolean; value: -1 | 1 }>(
         `/v2/messages/${encodeURIComponent(messageId)}/feedback`,
@@ -343,8 +368,20 @@ export const api = {
       request<ExecutionArtifact[]>(
         `/v2/executions/${encodeURIComponent(executionId)}/artifacts`,
       ),
+    download: (executionId: string, artifactId: string, version?: number) =>
+      requestAttachmentBlob(
+        `/v2/executions/${encodeURIComponent(executionId)}/artifacts/${encodeURIComponent(artifactId)}${version ? `?version=${version}` : ""}`,
+      ),
   },
   executions: {
+    previewStatus: (id: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`),
+    startPreview: (id: string, package_path: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`, {
+        method: "POST", body: JSON.stringify({ package_path }),
+      }),
+    stopPreview: (id: string) =>
+      request<PreviewStatus>(`/v2/executions/${encodeURIComponent(id)}/preview`, { method: "DELETE" }),
     run: (
       project_id: string,
       root_agent_id: string,
@@ -357,6 +394,12 @@ export const api = {
         body: JSON.stringify({ project_id, root_agent_id, task, history, attachment_ids }),
       }),
     get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
+    workspaceFiles: (id: string) => request<{
+      execution_id: string; files: { path: string; size_bytes: number }[];
+      file_count: number; total_bytes: number;
+    }>(`/v2/executions/${encodeURIComponent(id)}/files`),
+    readFile: (id: string, path: string) =>
+      requestAttachmentBlob(`/v2/executions/${encodeURIComponent(id)}/files/${path.split(/[\\\\/]/).map(encodeURIComponent).join("/")}`),
     getEvents: (id: string, after_seq = 0) =>
       request<import("../types").ExecutionEvent[]>(
         `/v2/executions/${id}/events?after_seq=${after_seq}`,
@@ -389,6 +432,7 @@ export const api = {
       const status: Record<string, { saved: boolean; hint: string }> = {};
       if (typeof window !== "undefined" && window.electronAPI) {
         for (const provider of providersNeedingKeys()) status[provider.keyId] = await keychain.status(provider.keyId);
+        status.serper = await keychain.status("serper");
         return status;
       }
       let runtime: Record<string, boolean> = {};
@@ -397,6 +441,8 @@ export const api = {
         const hint = await keychain.status(provider.keyId);
         status[provider.keyId] = { saved: runtime[provider.keyId] === true || hint.saved, hint: hint.hint };
       }
+      const serperHint = await keychain.status("serper");
+      status.serper = { saved: runtime.serper === true || serperHint.saved, hint: serperHint.hint };
       return status;
     },
     /** Electron persists keys in main and sends them to the sidecar from main—not from React. */
@@ -430,6 +476,7 @@ export const api = {
     syncKeysToBackend: () => keychain.syncToRuntime(),
     /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
+    testSearchConnection: () => request<{ status: string; provider: string; results: number }>("/settings/search/test", { method: "POST" }),
     getEmbeddingModel: () => request<{ model: string }>("/settings/embedding-model"),
     setEmbeddingModel: (model: string) =>
       request<{ status: string; model: string }>("/settings/embedding-model", {

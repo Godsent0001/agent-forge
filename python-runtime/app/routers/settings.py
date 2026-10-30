@@ -55,6 +55,7 @@ PROVIDER_ENV_VARS: dict[str, tuple[str, ...]] = {
     "xai": ("XAI_API_KEY",),
     "openrouter": ("OPENROUTER_API_KEY",),
     "venice": ("VENICE_API_KEY",),
+    "serper": ("SERPER_API_KEY",),
 }
 
 
@@ -116,3 +117,24 @@ def set_embedding_model(payload: dict[str, str]):
     os.environ["AGENTFORGE_EMBEDDING_MODEL"] = value
     logger.info("Embedding model configuration updated: %s", value)
     return {"status": "ok", "model": value}
+
+
+@router.post("/search/test")
+async def test_search_provider():
+    """Perform a real Serper query without returning or logging the API key."""
+    if not os.environ.get("SERPER_API_KEY", "").strip():
+        raise HTTPException(status_code=400, detail="Serper API key is not configured.")
+    try:
+        from app.tools.web_search import _serper_search_backend
+
+        results = await _serper_search_backend("AgentForge web search connection test")
+    except Exception as exc:
+        message = str(exc)
+        status_code = 502
+        if "API key" in message or "SERPER_API_KEY" in message:
+            status_code = 401
+        elif "quota" in message or "rate limit" in message:
+            status_code = 429
+        logger.warning("Serper connection test failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=status_code, detail=message[:300]) from exc
+    return {"status": "ok", "provider": "serper", "results": len(results)}

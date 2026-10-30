@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import signal
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -38,14 +39,69 @@ async def _read_bounded(stream: asyncio.StreamReader, limit: int) -> tuple[bytes
     return b"".join(chunks), truncated
 
 
-def _safe_environment() -> dict[str, str]:
+def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
     """Keep basic process variables but do not leak provider credentials to commands."""
     blocked = ("_API_KEY", "_TOKEN", "_SECRET", "PASSWORD", "PASSWD")
     env = {
         key: value for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in blocked)
     }
+    if workspace_root is not None:
+        venv_dir = workspace_root / ".venv"
+        venv_bin = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+        python_exe = venv_bin / ("python.exe" if os.name == "nt" else "python")
+        if python_exe.is_file():
+            env["VIRTUAL_ENV"] = str(venv_dir)
+            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
     return env
+
+
+async def _terminate_process_tree(proc: asyncio.subprocess.Process) -> None:
+    """Stop the shell and its descendants, even when the caller is cancelled."""
+    if os.name == "nt":
+        # taskkill /T is required on Windows because killing cmd.exe alone can
+        # leave commands it launched running after the execution was stopped.
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill", "/PID", str(proc.pid), "/T", "/F",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(killer.wait(), timeout=5)
+        except (OSError, asyncio.TimeoutError):
+            pass
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=2)
+        except asyncio.TimeoutError:
+            if proc.returncode is None:
+                proc.kill()
+            await proc.wait()
+        return
+
+    # Unix shell processes are started in their own session/process group.
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=1)
+    except asyncio.TimeoutError:
+        pass
+    # Kill remaining descendants even if the shell parent already exited.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if proc.returncode is None:
+        await proc.wait()
+
+
+async def _cancel_reader_tasks(*tasks: asyncio.Task) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _format_excerpt(text: str, truncated: bool) -> str:
@@ -65,7 +121,7 @@ class ShellTool(Tool):
     name = "shell"
     description = (
         "Run a CMD/PowerShell command on Windows or a shell command on Unix in the "
-        "current run workspace. Returns bounded output, exit code, and a log path."
+        "persistent project workspace. Returns bounded output, exit code, and absolute paths for files/logs."
     )
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -88,28 +144,41 @@ class ShellTool(Tool):
             command = ["/bin/sh", "-lc", command_text]
             creationflags = 0
 
+        timeout_seconds = getattr(context, "timeout_seconds", WALL_CLOCK_TIMEOUT_SECONDS)
+        try:
+            timeout_seconds = max(1, min(int(timeout_seconds), 300))
+        except (TypeError, ValueError):
+            timeout_seconds = WALL_CLOCK_TIMEOUT_SECONDS
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(cwd),
-                env=_safe_environment(),
+                env=_safe_environment(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=creationflags,
+                start_new_session=(os.name != "nt"),
             )
+            stdout_task = None
+            stderr_task = None
             try:
                 stdout_task = asyncio.create_task(_read_bounded(proc.stdout, MAX_CAPTURE_BYTES))
                 stderr_task = asyncio.create_task(_read_bounded(proc.stderr, MAX_CAPTURE_BYTES))
                 (stdout, stdout_cut), (stderr, stderr_cut) = await asyncio.wait_for(
                     asyncio.gather(stdout_task, stderr_task),
-                    timeout=WALL_CLOCK_TIMEOUT_SECONDS,
+                    timeout=timeout_seconds,
                 )
                 await proc.wait()
+            except asyncio.CancelledError:
+                await _terminate_process_tree(proc)
+                await _cancel_reader_tasks(*(task for task in (stdout_task, stderr_task) if task is not None))
+                raise
             except asyncio.TimeoutError as exc:
-                proc.kill()
-                await proc.wait()
+                await _terminate_process_tree(proc)
+                await _cancel_reader_tasks(*(task for task in (stdout_task, stderr_task) if task is not None))
                 raise ToolExecutionError(
-                    f"shell command exceeded the {WALL_CLOCK_TIMEOUT_SECONDS}s wall-clock limit"
+                    f"shell command exceeded the {timeout_seconds}s wall-clock limit"
                 ) from exc
         except ToolExecutionError:
             raise
@@ -137,7 +206,7 @@ class ShellTool(Tool):
         excerpt = _format_excerpt(combined, truncated or len(combined) > MAX_OUTPUT_CHARS)
         status = f"Exit code: {proc.returncode}"
         if log_path:
-            status += f"\nFull captured output: {log_path}"
+            status += f"\nFull captured output: {cwd / log_path}"
         if truncated:
             status += "\nCapture limit reached; output beyond the capture cap was discarded."
-        return f"{status}\n\n{excerpt}"
+        return f"Project workspace: {cwd}\n{status}\n\n{excerpt}"

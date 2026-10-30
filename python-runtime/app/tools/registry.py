@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from app.contracts.graph import ToolBinding
 from app.contracts.tools import Tool as V2Tool
+from app.core.tools.shell_capability import ShellCapability
+from app.core.tools.web_capabilities import BrowserCapability, WebSearchCapability
 from app.infra.workspace import data_dir
 from app.tools.adapter import LegacyToolAdapter
 from app.tools.agentforge_control import AgentForgeControlTool
@@ -60,6 +62,7 @@ from app.tools.http_request import HttpRequestTool
 from app.tools.log_search import LogSearchTool
 from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
+from app.tools.python_project import PythonProjectTool
 from app.tools.qc import (
     AudioQCTool,
     AutomatedPreviewQCTool,
@@ -178,10 +181,14 @@ def build_tool(kind: str, config: dict) -> Tool:
 # v2 registry contract (D-08). Keep build_tool() above unchanged: the legacy
 # engine calls it directly and must retain its historical behavior.
 NATIVE_TOOLS: dict[str, type[V2Tool]] = {
+    "shell": ShellCapability,
+    "web_search": WebSearchCapability,
+    "browser": BrowserCapability,
     "agentforge_control": AgentForgeControlTool,
     "video_transcript": VideoTranscriptTool,
     "clip_finder": ClipFinderTool,
     "clip_extractor": ClipExtractorTool,
+    "python": PythonProjectTool,
 }
 
 

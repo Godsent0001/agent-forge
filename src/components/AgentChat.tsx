@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ProjectAttachmentsPanel } from "./ProjectAttachmentsPanel";
 import { api } from "../api/client";
 import { useStore } from "../store/useStore";
 import type { ChatMessage, ConversationMessageRecord, ConversationSummary } from "../types";
 import { ArtifactViewer } from "./ArtifactViewer";
 import { ApprovalDialog } from "./run/ApprovalDialog";
-import { executionToolMessages } from "../utils/executionToolMessages";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { LogoMark } from "./ui/LogoMark";
@@ -18,6 +17,41 @@ type TerminalRunStatus = (typeof TERMINAL_RUN_STATUSES)[number];
 
 function storedRunStatus(status: string | null | undefined): TerminalRunStatus | undefined {
   return TERMINAL_RUN_STATUSES.find((value) => value === status);
+}
+
+function describeActiveStep(event: import("../types").ExecutionEvent): string {
+  const rawName = (event.name || "Current step").replace(/[_-]+/g, " ").trim();
+  let args: Record<string, unknown> = {};
+  const rawArgs = event.data?.args;
+  if (typeof rawArgs === "string") {
+    try {
+      const parsed: unknown = JSON.parse(rawArgs);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+    } catch { /* Tool arguments may be omitted or summarized. */ }
+  } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+    args = rawArgs as Record<string, unknown>;
+  }
+  const operation = [args.operation, args.action].find((value) => typeof value === "string") as string | undefined;
+  const filePath = [args.path, args.file_path].find((value) => typeof value === "string") as string | undefined;
+  const detail = [args.query, args.url, args.command, filePath, operation].find((value) => typeof value === "string" && value.trim());
+  const suffix = typeof detail === "string" ? ` · ${detail.length > 64 ? detail.slice(0, 61) + "…" : detail}` : "";
+  const name = rawName.toLowerCase();
+  if (name.includes("web search")) return `Searching the web${suffix}`;
+  if (name === "browser") return `Inspecting webpage${suffix}`;
+  if (name === "file" || name.includes("workspace files")) {
+    const target = filePath ? filePath.split(/[\\/]/).pop() : "";
+    if (operation === "read") return `Inspecting file ${target || "contents"} for the current task`;
+    if (operation === "write") return `Writing ${target || "a project file"}`;
+    if (operation === "list") return "Checking project files";
+    if (operation === "mkdir") return `Creating project directory ${target || ""}`.trim();
+    if (operation === "delete") return `Removing project file ${target || ""}`.trim();
+    return `Working with project files${suffix}`;
+  }
+  if (name === "python") return operation === "install" ? "Installing Python dependencies" : operation === "ensure" ? "Preparing the Python environment" : operation === "list" ? "Checking installed Python packages" : "Running Python work";
+  if (name.includes("knowledge ingest")) return `Indexing document for retrieval${suffix}`;
+  if (name.includes("knowledge search")) return `Searching indexed project knowledge${suffix}`;
+  if (name.includes("shell") || name.includes("cmd")) return "Running a shell command";
+  return `Working with ${rawName}${suffix}`;
 }
 
 function fromStoredMessage(record: ConversationMessageRecord, agentName: string): ChatMessage {
@@ -43,6 +77,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const selectedAgentId = useStore((s) => s.selectedAgentId);
   const agent = useStore((s) => s.agents.find((a) => a.id === s.selectedAgentId));
   const project = useStore((s) => s.project);
+  const setActiveConversationForScope = useStore((s) => s.setActiveConversationForScope);
+  const activeExecutionByScope = useStore((s) => s.activeExecutionByScope);
+  const setActiveExecutionForScope = useStore((s) => s.setActiveExecutionForScope);
+  const clearActiveExecutionForScope = useStore((s) => s.clearActiveExecutionForScope);
   const chatMessages = useStore((s) => s.chatMessages);
   const addChatMessage = useStore((s) => s.addChatMessage);
   const setChatMessages = useStore((s) => s.setChatMessages);
@@ -52,23 +90,81 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const consumePendingTask = useStore((s) => s.consumePendingTask);
 
   const [promptInput, setPromptInput] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationReloadKey, setConversationReloadKey] = useState(0);
+  const [conversationListReloadKey, setConversationListReloadKey] = useState(0);
+  const [readyConversationIds, setReadyConversationIds] = useState<Set<string>>(new Set());
+  const [newConversationIds, setNewConversationIds] = useState<Set<string>>(new Set());
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [terminalExecutionId, setTerminalExecutionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [createAgentError, setCreateAgentError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const processedExecutionRef = useRef<string | null>(null);
   const conversationLoadRef = useRef(0);
-  const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string } | null>(null);
+  const conversationNavigationRef = useRef(0);
+  const activeExecutionAgentRef = useRef<{ id: string; name: string; conversationId: string; executionId: string } | null>(null);
+  const activeExecutionIdRef = useRef<string | null>(null);
+  const activeScopeRef = useRef<string | null>(null);
+  const currentScope = agent && project ? `${project.id}:${agent.id}` : null;
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
+
+  useEffect(() => {
+    // Run state is scoped to the selected project/agent. A long-running or stuck
+    // run for one agent must never lock the composer or navigation for every agent.
+    if (activeScopeRef.current === currentScope) return;
+    activeScopeRef.current = currentScope;
+    const saved = currentScope ? activeExecutionByScope[currentScope] : undefined;
+    const nextExecutionId = saved?.executionId ?? null;
+    activeExecutionIdRef.current = nextExecutionId;
+    activeExecutionAgentRef.current = saved
+      ? { id: saved.agentId, name: saved.agentName, conversationId: saved.conversationId, executionId: saved.executionId }
+      : null;
+    processedExecutionRef.current = null;
+    setActiveExecutionId(nextExecutionId);
+    setTerminalExecutionId(null);
+    setIsProcessing(Boolean(saved));
+    setIsCancelling(false);
+  }, [currentScope, activeExecutionByScope]);
+
+  // Reconcile against the durable execution record as well as websocket events.
+  // If a terminal event is missed during disconnect/cancellation, the UI still
+  // releases the composer and records the final state.
+  useEffect(() => {
+    if (!activeExecutionId) return;
+    let active = true;
+    let inFlight = false;
+    const reconcile = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const execution = await api.executions.get(activeExecutionId);
+        if (active && TERMINAL_RUN_STATUSES.includes(execution.status as TerminalRunStatus)) {
+          setTerminalExecutionId(activeExecutionId);
+        }
+      } catch {
+        // The event stream remains the primary path; transient status errors retry.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void reconcile();
+    const timer = window.setInterval(() => void reconcile(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeExecutionId]);
 
   const agentMessages = agent ? chatMessages[agent.id] || [] : [];
   const rawBudget = project?.settings?.budget;
@@ -96,23 +192,40 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       return;
     }
     let cancelled = false;
+    const navigationId = conversationNavigationRef.current;
     setConversationLoading(true);
     setConversationError(null);
     setConversations([]);
     setActiveConversationId(null);
+    setReadyConversationIds(new Set());
+    setNewConversationIds(new Set());
     setChatMessages(agent.id, []);
     setSelectedAttachmentIds([]);
 
     void (async () => {
       try {
         let items = await api.conversations.list(project.id, agent.id);
+        let createdId: string | null = null;
         if (items.length === 0) {
           const created = await api.conversations.create(project.id, agent.id);
+          createdId = created.id;
           items = [created];
         }
-        if (cancelled) return;
+        if (cancelled || navigationId !== conversationNavigationRef.current) {
+          if (createdId) void api.conversations.remove(createdId).catch(() => undefined);
+          return;
+        }
+        if (createdId) {
+          const id = createdId;
+          setNewConversationIds((current) => new Set(current).add(id));
+          setReadyConversationIds((current) => new Set(current).add(id));
+        }
         setConversations(items);
-        setActiveConversationId(items[0].id);
+        const scope = `${project.id}:${agent.id}`;
+        const rememberedId = useStore.getState().activeConversationByScope[scope];
+        const selectedConversation = items.find((item) => item.id === rememberedId) ?? items[0];
+        setActiveConversationId(selectedConversation.id);
+        setActiveConversationForScope(scope, selectedConversation.id);
       } catch (cause) {
         if (cancelled) return;
         setConversationError(cause instanceof Error ? cause.message : "Could not load saved conversations.");
@@ -124,40 +237,63 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       cancelled = true;
       conversationLoadRef.current += 1;
     };
-  }, [agent?.id, project?.id, setChatMessages]);
+  }, [agent?.id, project?.id, conversationListReloadKey, setChatMessages, setActiveConversationForScope]);
 
   useEffect(() => {
     if (!agent || !project || !activeConversationId) return;
-    const selectedConversation = conversations.find(
-      (item) => item.id === activeConversationId && item.project_id === project.id && item.agent_id === agent.id,
-    );
-    if (!selectedConversation) return;
-
+    setActiveConversationForScope(`${project.id}:${agent.id}`, activeConversationId);
     const loadId = ++conversationLoadRef.current;
+    if (newConversationIds.has(activeConversationId)) {
+      setConversationError(null);
+      setConversationLoading(false);
+      setChatMessages(agent.id, []);
+      setReadyConversationIds((current) => new Set(current).add(activeConversationId));
+      return () => {
+        if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
+      };
+    }
+    setReadyConversationIds((current) => {
+      const next = new Set(current);
+      next.delete(activeConversationId);
+      return next;
+    });
+    let timeoutId: number | undefined;
     setConversationLoading(true);
     setConversationError(null);
     setChatMessages(agent.id, []);
-    void api.conversations.messages(activeConversationId)
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(
+        () => reject(new Error("Loading this conversation timed out. You can switch chats and try again.")),
+        15000,
+      );
+    });
+    void Promise.race([api.conversations.messages(activeConversationId), timeout])
       .then((records) => {
         if (conversationLoadRef.current !== loadId) return;
         setChatMessages(agent.id, records.map((record) => fromStoredMessage(record, agent.name)));
+        setReadyConversationIds((current) => new Set(current).add(activeConversationId));
       })
       .catch((cause) => {
         if (conversationLoadRef.current !== loadId) return;
         setConversationError(cause instanceof Error ? cause.message : "Could not load this conversation.");
       })
       .finally(() => {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
         if (conversationLoadRef.current === loadId) setConversationLoading(false);
       });
 
     return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       if (conversationLoadRef.current === loadId) conversationLoadRef.current += 1;
     };
-  }, [activeConversationId, conversations, agent?.id, agent?.name, project?.id, setChatMessages]);
+  }, [activeConversationId, newConversationIds, conversationReloadKey, agent?.id, agent?.name, project?.id, setChatMessages, setActiveConversationForScope]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [agentMessages, isProcessing, agent?.id]);
+  // Position the chat at its latest content before paint. Avoid smooth scrolling
+  // from the first message, which makes every newly opened conversation visibly loop.
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [agentMessages, isProcessing, activeConversationId, conversationLoading, agent?.id]);
 
   // Tasks queued elsewhere (Run workflow dialog) go through exactly the same path as typing in the composer,
   // so they appear in this agent's chat history and trace like any other message.
@@ -170,11 +306,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   useEffect(() => {
     const targetAgent = activeExecutionAgentRef.current;
-    if (!activeExecutionId || !targetAgent) return;
+    if (!activeExecutionId || !targetAgent || targetAgent.executionId !== activeExecutionId) return;
     const ended = activeExecutionEvents.some(
       (event) => event.execution_id === activeExecutionId && event.type === "execution_ended",
     );
-    if (!ended || processedExecutionRef.current === activeExecutionId) return;
+    if (!(ended || terminalExecutionId === activeExecutionId) || processedExecutionRef.current === activeExecutionId) return;
 
     processedExecutionRef.current = activeExecutionId;
     const executionId = activeExecutionId;
@@ -183,10 +319,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     void (async () => {
       try {
         const [completedExecution] = await Promise.all([api.executions.get(executionId)]);
-        for (const toolMessage of executionToolMessages(activeExecutionEvents)) {
-          addChatMessage(agentId, toolMessage);
-        }
-
         const allowedStatuses = new Set(["completed", "error", "cancelled", "budget_exceeded", "interrupted"]);
         const status = allowedStatuses.has(completedExecution.status)
           ? completedExecution.status as "completed" | "error" | "cancelled" | "budget_exceeded" | "interrupted"
@@ -201,8 +333,26 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         const durationSeconds = Number.isFinite(startTime) && Number.isFinite(endTime)
           ? Math.max(0, (endTime - startTime) / 1000)
           : null;
+        const orderedEvents = [...activeExecutionEvents].sort((a, b) => a.seq - b.seq);
+        const endedSpans = new Set(
+          orderedEvents.filter((event) => event.type === "span_ended" && event.span_id)
+            .map((event) => event.span_id as string),
+        );
+        const openStep = [...orderedEvents].reverse().find(
+          (event) => event.type === "span_started" && event.span_id && !endedSpans.has(event.span_id),
+        );
+        const lastCompletedTool = [...orderedEvents].reverse().find(
+          (event) => event.type === "span_ended" && event.kind === "tool_call",
+        );
+        const cancellationDetails = status === "cancelled"
+          ? [
+              openStep ? `Stopped during: ${describeActiveStep(openStep)}.` : "",
+              lastCompletedTool ? `Last completed tool: ${describeActiveStep(lastCompletedTool)}.` : "",
+              `Original task: ${targetAgent.conversationId ? (chatMessages[agentId] || []).slice().reverse().find((message) => message.sender === "user")?.text || "See the preceding user message." : "See the preceding user message."}`,
+            ].filter(Boolean).join("\n")
+          : "";
         const fallback = status === "cancelled"
-          ? "Stopped."
+          ? `Stopped. Progress at cancellation:\n${cancellationDetails || "The execution stopped before any detailed progress event was recorded."}`
           : status === "budget_exceeded"
             ? "Stopped: budget reached."
             : status === "interrupted"
@@ -239,35 +389,51 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             feedbackNote: saved.feedback_note,
           };
         } catch (cause) {
-          setConversationError(cause instanceof Error
-            ? `Run finished, but its answer could not be saved: ${cause.message}`
-            : "Run finished, but its answer could not be saved.");
+          if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+            setConversationError(cause instanceof Error
+              ? `Run finished, but its answer could not be saved: ${cause.message}`
+              : "Run finished, but its answer could not be saved.");
+          }
         }
         addChatMessage(agentId, persistedAgentMsg);
-        if (status === "cancelled") setChatNotice("Run stopped.");
-        else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
+        if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+          if (status === "cancelled") setChatNotice("Run stopped.");
+          else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
+        }
       } catch (error) {
-        setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
+        if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+          setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
+        }
       } finally {
-        setIsProcessing(false);
-        setIsCancelling(false);
-        activeExecutionAgentRef.current = null;
-        setActiveExecutionId(null);
+        setNewConversationIds((current) => { if (!current.has(targetAgent.conversationId)) return current; const next = new Set(current); next.delete(targetAgent.conversationId); return next; });
+        clearActiveExecutionForScope(project?.id + ":" + agentId, executionId);
+        // A user may have switched agents or started another run while this
+        // completion was being persisted. Never clear that newer run's UI state.
+        if (activeExecutionIdRef.current === executionId) {
+          activeExecutionIdRef.current = null;
+          activeExecutionAgentRef.current = null;
+          setIsProcessing(false);
+          setIsCancelling(false);
+          setTerminalExecutionId(null);
+          setActiveExecutionId(null);
+        }
       }
     })();
-  }, [activeExecutionId, activeExecutionEvents, addChatMessage]);
+  }, [activeExecutionId, terminalExecutionId, activeExecutionEvents, addChatMessage, chatMessages, clearActiveExecutionForScope, project?.id]);
 
-  const activeSpanName = (() => {
-    const open = new Map<string, string>();
+  const latestUserTask = agentMessages.slice().reverse().find((message) => message.sender === "user");
+  const activeTaskGoal = latestUserTask?.text
+    ? latestUserTask.text.replace(/\s+/g, " ").trim().slice(0, 110)
+    : null;
+  const activeProgressBrief = (() => {
+    const open = new Map<string, import("../types").ExecutionEvent>();
     for (const event of [...activeExecutionEvents].sort((a, b) => a.seq - b.seq)) {
-      if (event.type === "span_started" && event.span_id) {
-        open.set(event.span_id, event.name ?? "Current step");
-      } else if (event.type === "span_ended" && event.span_id) {
-        open.delete(event.span_id);
-      }
+      if (event.type === "span_started" && event.span_id) open.set(event.span_id, event);
+      else if (event.type === "span_ended" && event.span_id) open.delete(event.span_id);
     }
-    const names = [...open.values()];
-    return names.length ? names[names.length - 1] : null;
+    const openSpans = [...open.values()];
+    const latest = openSpans[openSpans.length - 1];
+    return latest ? describeActiveStep(latest) : null;
   })();
 
   const lastAgentMessage = [...agentMessages].reverse().find((m) => m.sender === "agent");
@@ -291,29 +457,39 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleNewConversation = async () => {
     if (!agent || !project || isProcessing) return;
+    conversationNavigationRef.current += 1;
+    setEditingMessageId(null);
+    setPromptInput("");
     setConversationError(null);
     try {
       const created = await api.conversations.create(project.id, agent.id);
       setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setReadyConversationIds((current) => new Set(current).add(created.id));
+      setNewConversationIds((current) => new Set(current).add(created.id));
       setChatMessages(agent.id, []);
       setActiveConversationId(created.id);
     } catch (cause) {
       setConversationError(cause instanceof Error ? cause.message : "Could not create a conversation.");
+      setConversationListReloadKey((value) => value + 1);
     }
   };
 
   const handleClearChat = async () => {
     if (!agent || !project || isProcessing) return;
     if (!window.confirm(`Delete this conversation with ${agent.name}? This cannot be undone.`)) return;
+    conversationNavigationRef.current += 1;
     setConversationError(null);
     try {
       const created = await api.conversations.create(project.id, agent.id);
       if (activeConversationId) await api.conversations.remove(activeConversationId);
       setConversations((current) => [created, ...current.filter((item) => item.id !== activeConversationId && item.id !== created.id)]);
+      setReadyConversationIds((current) => new Set(current).add(created.id));
+      setNewConversationIds((current) => new Set(current).add(created.id));
       setChatMessages(agent.id, []);
       setActiveConversationId(created.id);
     } catch (cause) {
       setConversationError(cause instanceof Error ? cause.message : "Could not delete this conversation.");
+      setConversationListReloadKey((value) => value + 1);
     }
   };
 
@@ -387,10 +563,35 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
 
   const handleSendMessage = () => void sendTask(promptInput, true);
 
+  const copyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setChatNotice("Message copied.");
+    } catch {
+      setChatError("Could not copy this message. Check clipboard permissions and try again.");
+    }
+  };
+
+  const beginEditMessage = (message: Extract<ChatMessage, { sender: "user" }>) => {
+    setEditingMessageId(message.id);
+    setPromptInput(message.text);
+    setChatError(null);
+    setChatNotice("Editing this message will remove later turns and restart the conversation from here.");
+    window.setTimeout(() => composerRef.current?.focus(), 0);
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setPromptInput("");
+    setChatNotice(null);
+  };
+
   const sendTask = async (rawText: string, fromComposer = false) => {
     if (!rawText.trim() || isProcessing || !agent || !project) return;
-    if (!activeConversationId || conversationLoading) {
-      setChatError("Wait for the saved conversation to finish loading, then try again.");
+    if (!activeConversationId || !readyConversationIds.has(activeConversationId)) {
+      setChatError(conversationLoading
+        ? "Wait for the saved conversation to finish loading, then try again."
+        : "This conversation did not load successfully. Switch to another chat or reselect it to retry.");
       return;
     }
     if (!agent.model?.trim()) {
@@ -398,6 +599,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       return;
     }
 
+    const runScope = `${project.id}:${agent.id}`;
     const userText = rawText.trim();
     if (fromComposer) setPromptInput("");
     setChatError(null);
@@ -406,44 +608,91 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     setIsProcessing(true);
 
     try {
-      const history = buildRunHistory(agentMessages);
-      const savedUser = await api.conversations.appendMessage(activeConversationId, {
-        role: "user",
-        content: userText,
-      });
-      const userMsg: ChatMessage = {
-        id: savedUser.id,
-        sender: "user",
-        text: savedUser.content,
-        timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      addChatMessage(agent.id, userMsg);
+      const editingIndex = editingMessageId
+        ? agentMessages.findIndex((message) => message.id === editingMessageId && message.sender === "user")
+        : -1;
+      const historyMessages = editingIndex >= 0 ? agentMessages.slice(0, editingIndex) : agentMessages;
+      const history = buildRunHistory(historyMessages);
+      let userMsg: ChatMessage;
+      if (editingIndex >= 0 && editingMessageId) {
+        const savedUser = await api.conversations.editUserMessage(editingMessageId, userText);
+        userMsg = {
+          id: savedUser.id,
+          sender: "user",
+          text: savedUser.content,
+          timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setChatMessages(agent.id, [...historyMessages, userMsg]);
+      } else {
+        const savedUser = await api.conversations.appendMessage(activeConversationId, {
+          role: "user",
+          content: userText,
+        });
+        userMsg = {
+          id: savedUser.id,
+          sender: "user",
+          text: savedUser.content,
+          timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        addChatMessage(agent.id, userMsg);
+      }
 
       const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
-      setSelectedAttachmentIds([]);
-      processedExecutionRef.current = null;
-      activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId };
-      setActiveExecutionId(execution.id);
-      onRunExecution(execution.id);
+      if (activeScopeRef.current === runScope) {
+        setSelectedAttachmentIds([]);
+        setEditingMessageId(null);
+      }
+      setActiveExecutionForScope(runScope, {
+        executionId: execution.id, agentId: agent.id, agentName: agent.name, conversationId: activeConversationId,
+      });
+      if (activeScopeRef.current === runScope) {
+        processedExecutionRef.current = null;
+        activeExecutionAgentRef.current = { id: agent.id, name: agent.name, conversationId: activeConversationId, executionId: execution.id };
+        activeExecutionIdRef.current = execution.id;
+        setActiveExecutionId(execution.id);
+        setIsProcessing(true);
+        onRunExecution(execution.id);
+      }
       // The stream owns completion now; do not poll the execution endpoint.
     } catch (e) {
-      setChatError(e instanceof Error ? e.message : "Failed to start execution");
-      setIsProcessing(false);
-      setIsCancelling(false);
-      activeExecutionAgentRef.current = null;
-      setActiveExecutionId(null);
+      setNewConversationIds((current) => { if (!current.has(activeConversationId)) return current; const next = new Set(current); next.delete(activeConversationId); return next; });
+      setReadyConversationIds((current) => { const next = new Set(current); next.delete(activeConversationId); return next; });
+      clearActiveExecutionForScope(runScope);
+      if (activeScopeRef.current === runScope) {
+        setChatError(e instanceof Error ? e.message : "Failed to start execution");
+        setIsProcessing(false);
+        setIsCancelling(false);
+        activeExecutionAgentRef.current = null;
+        activeExecutionIdRef.current = null;
+        setActiveExecutionId(null);
+        setTerminalExecutionId(null);
+      }
     }
   };
 
   const handleCancelExecution = async () => {
-    if (!activeExecutionId || isCancelling) return;
+    const executionId = activeExecutionId;
+    if (!executionId || isCancelling) return;
     setIsCancelling(true);
     setChatError(null);
     try {
-      await api.executions.cancel(activeExecutionId);
-    } catch (e) {
-      setIsCancelling(false);
-      setChatError(e instanceof Error ? e.message : "Failed to stop execution");
+      await api.executions.cancel(executionId);
+    } catch (cause) {
+      // A 409 can mean the run finished just before the cancel request arrived.
+      // Reconcile with durable state rather than leaving the composer stuck on Stop.
+      try {
+        const execution = await api.executions.get(executionId);
+        if (TERMINAL_RUN_STATUSES.includes(execution.status as TerminalRunStatus)) {
+          setTerminalExecutionId(executionId);
+          return;
+        }
+      } catch {
+        // Keep the original error below if the status endpoint is also unavailable.
+      }
+      if (activeExecutionIdRef.current === executionId) {
+        setIsCancelling(false);
+        setChatError(cause instanceof Error ? cause.message : "Failed to stop execution");
+      }
     }
   };
 
@@ -468,8 +717,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             id="conversation-switcher"
             aria-label="Saved conversations"
             value={activeConversationId ?? ""}
-            onChange={(event) => setActiveConversationId(event.target.value || null)}
-            disabled={conversationLoading || isProcessing || conversations.length === 0}
+            onChange={(event) => {
+              const nextId = event.target.value || null;
+              conversationNavigationRef.current += 1;
+              setEditingMessageId(null);
+              setPromptInput("");
+              if (nextId && !newConversationIds.has(nextId)) {
+                setReadyConversationIds((current) => { const next = new Set(current); next.delete(nextId); return next; });
+              }
+              setActiveConversationId(nextId);
+            }}
+            disabled={isProcessing || conversations.length === 0}
             className="max-w-40 rounded-lg border border-transparent bg-studio-900 px-2.5 py-1.5 text-2xs text-studio-200 disabled:opacity-50"
           >
             {conversations.map((conversation) => (
@@ -479,7 +737,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           <button
             type="button"
             onClick={() => void handleNewConversation()}
-            disabled={isProcessing || conversationLoading}
+            disabled={isProcessing}
             className="neu-btn px-2.5 py-1 text-2xs font-mono text-studio-300 transition-all disabled:opacity-50"
           >
             New chat
@@ -531,18 +789,19 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         </div>
       )}
 
-      <div role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+      <div ref={messagesContainerRef} role="log" aria-label={`Conversation with ${agent.name}`} aria-busy={conversationLoading} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
         {conversationLoading && (
           <p role="status" className="rounded-lg bg-studio-900 neu-raised-sm px-3 py-2 text-2xs text-studio-400">
             Loading saved conversation…
           </p>
         )}
         {conversationError && (
-          <p role="alert" className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-2xs text-amber-200">
-            {conversationError}
-          </p>
+          <div role="alert" className="flex flex-wrap items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-2xs text-amber-200">
+            <span className="min-w-0 flex-1">{conversationError}</span>
+            <button type="button" onClick={() => setConversationReloadKey((value) => value + 1)} disabled={conversationLoading || isProcessing} className="rounded border border-amber-700/70 px-2 py-1 hover:bg-amber-900/40 disabled:opacity-50">Retry loading</button>
+          </div>
         )}
-        {agentMessages.length === 0 && (
+        {agentMessages.every((message) => message.sender === "tool") && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-studio-400 select-none">
             <LogoMark size={48} className="mb-5 drop-shadow-lg" />
             <p className="font-semibold text-studio-100 text-base">What are we working on?</p>
@@ -568,18 +827,14 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           </div>
         )}
 
-        {agentMessages.map((msg) => (
+        {agentMessages.filter((msg) => msg.sender !== "tool").map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
           >
             <div className="flex items-center gap-2 mb-1 px-1">
               <span className="text-2xs font-mono font-semibold text-studio-400">
-                {msg.sender === "user"
-                  ? "You"
-                  : msg.sender === "tool"
-                  ? `Tool · ${msg.toolName}`
-                  : msg.agentName || "Agent"}
+                {msg.sender === "user" ? "You" : msg.agentName || "Agent"}
               </span>
               <span className="text-2xs font-mono text-studio-600">{msg.timestamp}</span>
               {msg.sender === "agent" && isSimulatedText(msg.text) && (
@@ -587,49 +842,26 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               )}
             </div>
 
-            {msg.sender === "tool" ? (
-              <div className="max-w-2xl w-full rounded-md border border-emerald-800/60 bg-emerald-950/30 p-3 shadow-studio">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-2xs font-mono font-semibold text-emerald-300">Tool Execution Result</span>
-                  <span
-                    className={`text-2xs font-mono font-semibold uppercase px-1.5 py-0.2 rounded border ${
-                      msg.toolStatus === "ok"
-                        ? "text-emerald-300 border-emerald-700 bg-emerald-950"
-                        : msg.toolStatus === "cancelled"
-                        ? "text-amber-300 border-amber-700 bg-amber-950"
-                        : "text-red-300 border-red-700 bg-red-950"
-                    }`}
-                  >
-                    {msg.toolStatus}
-                  </span>
-                </div>
-                {msg.toolInput && (
-                  <p className="text-2xs text-studio-400 mb-2 break-words font-mono">
-                    <span className="text-studio-500">Input args:</span> {msg.toolInput}
-                  </p>
-                )}
-                <pre className="whitespace-pre-wrap break-words text-xs text-emerald-200/90 font-mono leading-relaxed bg-studio-950/50 neu-inset p-2.5 rounded-lg">
-                  {msg.toolOutput}
-                </pre>
-              </div>
-            ) : (
-              <div
-                className={`max-w-3xl rounded-2xl px-4 py-3 border ${
-                  msg.sender === "user"
-                    ? "neu-accent text-white border-transparent rounded-br-md"
-                    : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
-                      ? "bg-red-950/45 neu-raised-sm text-red-100 border-red-500/20 rounded-bl-md"
-                      : msg.executionStatus === "budget_exceeded"
-                        ? "bg-amber-950/45 neu-raised-sm text-amber-100 border-amber-500/20 rounded-bl-md"
-                        : msg.executionStatus === "cancelled"
-                          ? "bg-studio-900 neu-raised-sm text-studio-400 border-transparent rounded-bl-md"
-                          : "bg-studio-900 neu-raised-sm text-studio-100 border-transparent rounded-bl-md"
-                }`}
-              >
-                {msg.sender === "user" ? (
-                  <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p>
-                ) : (
-                  <ArtifactViewer content={msg.text} executionId={msg.executionId} />
+            <div
+              className={`max-w-3xl rounded-2xl px-4 py-3 border ${
+                msg.sender === "user"
+                  ? "neu-accent text-white border-transparent rounded-br-md"
+                  : msg.executionStatus === "error" || msg.executionStatus === "interrupted"
+                    ? "bg-red-950/45 neu-raised-sm text-red-100 border-red-500/20 rounded-bl-md"
+                    : msg.executionStatus === "budget_exceeded"
+                      ? "bg-amber-950/45 neu-raised-sm text-amber-100 border-amber-500/20 rounded-bl-md"
+                      : msg.executionStatus === "cancelled"
+                        ? "bg-studio-900 neu-raised-sm text-studio-400 border-transparent rounded-bl-md"
+                        : "bg-studio-900 neu-raised-sm text-studio-100 border-transparent rounded-bl-md"
+              }`}
+            >
+              {msg.sender === "user" ? <p className="whitespace-pre-wrap text-sm leading-6">{msg.text}</p> : <ArtifactViewer content={msg.text} executionId={msg.executionId} />}
+            </div>
+            {(msg.sender === "user" || msg.sender === "agent") && (
+              <div className={`mt-1 ml-1 flex items-center gap-3 text-[10px] text-studio-500 ${msg.sender === "user" ? "justify-end" : ""}`}>
+                <button type="button" onClick={() => void copyMessage(msg.text)} className="hover:text-studio-200" aria-label={msg.sender === "user" ? "Copy your message" : "Copy assistant response"}>Copy</button>
+                {msg.sender === "user" && (
+                  <button type="button" onClick={() => beginEditMessage(msg)} disabled={isProcessing || conversationLoading} className="hover:text-studio-200 disabled:opacity-40" aria-label="Edit and resend message">Edit</button>
                 )}
               </div>
             )}
@@ -676,8 +908,12 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         ))}
 
         {isProcessing && (
-          <div role="status" aria-live="polite" className="flex items-center gap-2 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit font-mono">
-            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> {activeSpanName ? `${activeSpanName} is running…` : `${agent.name} is running the task…`}
+          <div role="status" aria-live="polite" className="flex items-start gap-3 text-studio-300 text-sm py-3 px-4 bg-studio-900 neu-raised-sm rounded-2xl w-fit max-w-3xl">
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-300 animate-pulse" />
+            <div className="min-w-0">
+              <p className="font-mono text-xs sm:text-sm">{activeProgressBrief || `${agent.name} is working through the task…`}</p>
+              {activeTaskGoal && <p className="mt-1 text-[10px] leading-4 text-studio-500">Goal: {activeTaskGoal}{latestUserTask && latestUserTask.text.trim().length > 110 ? "…" : ""}</p>}
+            </div>
           </div>
         )}
 
@@ -692,23 +928,22 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <span className="font-semibold">Something went wrong.</span> {chatError}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <ApprovalDialog executionId={activeExecutionId} events={activeExecutionEvents} />
 
       {/* Multi-Line Prompt Bar */}
       <div className="p-4 shrink-0">
-        <div className="max-w-4xl mx-auto mb-2">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-900 neu-inset border border-transparent rounded-2xl p-2.5 focus-within:border-accent-500/50 transition-colors">
           <ProjectAttachmentsPanel
             projectId={project.id}
             selectedIds={selectedAttachmentIds}
             onSelectedIdsChange={setSelectedAttachmentIds}
             disabled={isProcessing || conversationLoading}
+            compact
           />
-        </div>
-        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-studio-900 neu-inset border border-transparent rounded-2xl p-2.5 focus-within:border-accent-500/50 transition-colors">
           <textarea
+            ref={composerRef}
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
             onKeyDown={(e) => {
@@ -719,10 +954,13 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             aria-label={`Task for ${agent.name}`}
-            placeholder={`Message ${agent.name}…`}
+            placeholder={editingMessageId ? "Edit your message and resend…" : `Message ${agent.name}…`}
             disabled={isProcessing}
             className="flex-1 bg-transparent shadow-none focus-visible:shadow-none text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
           />
+          {editingMessageId && !isProcessing && (
+            <button type="button" onClick={cancelEditMessage} className="h-10 w-10 shrink-0 rounded-full bg-studio-800 text-studio-400 hover:text-white" aria-label="Cancel editing" title="Cancel editing">×</button>
+          )}
           {isProcessing ? (
             <button
               onClick={handleCancelExecution}
@@ -736,9 +974,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <button
               onClick={handleSendMessage}
               disabled={!promptInput.trim()}
-              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
+              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white rounded-full transition-all flex items-center justify-center shrink-0 h-10 w-10 cursor-pointer"
+              aria-label={editingMessageId ? "Resend edited message" : "Send message"}
+              title={editingMessageId ? "Resend edited message" : "Send message"}
             >
-              <span>Send</span> <Icon name="chevron-right" size={14} />
+              <span className="sr-only">{editingMessageId ? "Resend" : "Send"}</span><Icon name="chevron-right" size={17} />
             </button>
           )}
         </div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -13,8 +14,10 @@ async def test_shell_runs_command_and_saves_complete_output(tmp_path):
     result = await ShellTool().execute('python -c "print(\'shell-ok\')"', context=context)
 
     assert "Exit code: 0" in result
+    assert f"Project workspace: {tmp_path.resolve()}" in result
+    assert "Full captured output:" in result
     assert "shell-ok" in result
-    assert ".results/shell-shell-test.txt" in result
+    assert "shell-shell-test.txt" in result
     saved = (tmp_path / ".results" / "shell-shell-test.txt").read_text(encoding="utf-8")
     assert "shell-ok" in saved
 
@@ -43,3 +46,17 @@ async def test_shell_does_not_pass_provider_keys_to_child_process(tmp_path, monk
     )
 
     assert "must-not-leak" not in result
+
+
+def test_shell_prefers_project_virtual_environment(tmp_path, monkeypatch):
+    from app.tools.shell import _safe_environment
+
+    venv = tmp_path / ".venv"
+    bin_dir = venv / ("Scripts" if os.name == "nt" else "bin")
+    bin_dir.mkdir(parents=True)
+    python_exe = bin_dir / ("python.exe" if os.name == "nt" else "python")
+    python_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PATH", "original-path")
+    env = _safe_environment(tmp_path)
+    assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["PATH"].startswith(str(bin_dir) + os.pathsep)

@@ -19,6 +19,7 @@ class AttachmentRef(BaseModel):
     path: str                              # relative to the run workspace
     mime: str | None = None
     name: str | None = None                # original file name, for display
+    scan_status: Literal["clean", "unscanned"] | None = None  # trust status from attachment scanning
 
 
 class BudgetSpec(BaseModel):

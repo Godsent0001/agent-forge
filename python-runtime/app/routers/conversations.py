@@ -53,6 +53,10 @@ class FeedbackUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class MessageEdit(BaseModel):
+    content: str = Field(min_length=1, max_length=100_000)
+
+
 def _message_out(message: models.ConversationMessage, execution_status: str | None = None) -> MessageOut:
     feedback = message.feedback
     return MessageOut(
@@ -175,6 +179,48 @@ def append_message(
     db.commit()
     db.refresh(message)
     return _message_out(message, execution.status if payload.execution_id else None)
+
+
+@router.patch("/messages/{message_id}", response_model=MessageOut)
+def edit_user_message(
+    message_id: str,
+    payload: MessageEdit,
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """Edit a user turn and remove later turns so a resend starts from this point."""
+    message = db.get(models.ConversationMessage, message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if message.role != "user":
+        raise HTTPException(status_code=422, detail="Only user messages can be edited")
+
+    conversation = _get_conversation(db, message.conversation_id)
+    ordered = (
+        db.query(models.ConversationMessage)
+        .filter(models.ConversationMessage.conversation_id == conversation.id)
+        .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id)
+        .all()
+    )
+    try:
+        edited_index = next(index for index, item in enumerate(ordered) if item.id == message.id)
+    except StopIteration as exc:
+        raise HTTPException(status_code=404, detail="Message not found in conversation") from exc
+
+    edited_content = payload.content.strip()
+    if not edited_content:
+        raise HTTPException(status_code=422, detail="Message content cannot be empty")
+    for later_message in ordered[edited_index + 1:]:
+        db.delete(later_message)
+    message.content = edited_content
+
+    first_user = next((item for item in ordered if item.role == "user"), None)
+    if first_user and first_user.id == message.id:
+        title = " ".join(message.content.split())
+        conversation.title = title[:157].rstrip() + ("…" if len(title) > 157 else "")
+        conversation.title = conversation.title or "New conversation"
+    db.commit()
+    db.refresh(message)
+    return _message_out(message)
 
 
 @router.put("/messages/{message_id}/feedback")

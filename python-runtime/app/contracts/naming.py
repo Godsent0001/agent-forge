@@ -16,6 +16,11 @@ def sanitize_tool_name(name: str) -> str:
     return s[:_MAX_LEN]
 
 
+def canonical_tool_names(names: list[str]) -> list[str]:
+    """Return provider-safe, unique function identifiers for display names/kinds."""
+    return dedupe_names([sanitize_tool_name(name) for name in names])
+
+
 def dedupe_names(names: list[str]) -> list[str]:
     """['x', 'x', 'x'] -> ['x', 'x_2', 'x_3']. Keeps order; never returns a duplicate."""
     used: set[str] = set()

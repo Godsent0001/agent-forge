@@ -9,23 +9,27 @@ from uuid import uuid4
 from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
 
+# Known tools default to Allow for frictionless execution. Unknown tool types
+# default to Ask so newly added tools cannot silently bypass approval.
 DEFAULT_POLICIES = {
-    "python": "ask",
-    "http_request": "ask",
+    "python": "allow",
+    "python_environment": "ask",
+    "shell": "allow",
+    "http_request": "allow",
+    "browser": "allow",
     "web_search": "allow",
-    # Read-only metadata/caption lookups; clip_extractor writes only to the run workspace.
     "video_source": "allow",
     "video_transcript": "allow",
     "clip_finder": "allow",
     "clip_extractor": "allow",
     "file_system": "allow",
-    # Shared-data mutators require approval unless the project explicitly changes policy.
-    "scene_template_manager": "ask",
-    "render_queue": "ask",
-    "project_manager": "ask",
-    "asset_cache_store": "ask",
-    "production_config": "ask",
-    "cache_engine": "ask",
+    "file": "allow",
+    "scene_template_manager": "allow",
+    "render_queue": "allow",
+    "project_manager": "allow",
+    "asset_cache_store": "allow",
+    "production_config": "allow",
+    "cache_engine": "allow",
 }
 APPROVAL_TIMEOUT_SECONDS = 300
 
@@ -52,26 +56,23 @@ class ApprovalGateImpl:
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.allowed_for_run: set[tuple[str, str]] = set()
 
-    def _kind_for(self, tool: str, permissions: set[Permission]) -> str:
+    def _kind_for(self, tool: str) -> str:
         if tool in self.tool_kinds:
             return self.tool_kinds[tool]
-        if "subprocess" in permissions:
-            return "python"
-        if "net" in permissions:
-            return "http_request"
-        if "fs_write" in permissions:
-            return "file_system"
+        # Only known built-in tool names inherit their own default policy.
+        # Unknown names remain unknown even if their permissions resemble a
+        # built-in tool, so they fall back to Ask rather than silently Allow.
         return tool
 
     def _policy_for(self, kind: str, permissions: set[Permission]) -> str:
         configured = self.settings.get("tool_policy", {})
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
-            policy = DEFAULT_POLICIES.get(kind, "ask" if permissions else "allow")
+            policy = DEFAULT_POLICIES.get(kind, "ask")
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
-        kind = self._kind_for(tool, permissions)
+        kind = self._kind_for(tool)
         if (self.execution_id, tool) in self.allowed_for_run:
             return True
 
@@ -132,7 +133,6 @@ class ApprovalGateImpl:
                     },
                 )))
             except Exception:
-                # Resolution must not resurrect a completed/failed execution.
                 pass
 
         if cancelled:

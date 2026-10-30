@@ -6,7 +6,6 @@ import { Icon } from "./ui/Icon";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_RUN_BYTES = 100 * 1024 * 1024;
 const MAX_RUN_FILES = 20;
-const ACCEPTED_EXTENSIONS = ".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.wav,.mp3,.mp4,.webm";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -15,9 +14,8 @@ function formatBytes(bytes: number): string {
 }
 
 function statusLabel(status: ProjectAttachment["status"]): string {
-  if (status === "clean") return "Scanned · ready";
-  if (status === "rejected") return "Rejected";
-  return "Quarantined · scan required";
+  if (status === "clean" || status === "unscanned") return "Ready to attach";
+  return "Unavailable";
 }
 
 export function ProjectAttachmentsPanel({
@@ -25,11 +23,13 @@ export function ProjectAttachmentsPanel({
   selectedIds,
   onSelectedIdsChange,
   disabled = false,
+  compact = false,
 }: {
   projectId: string;
   selectedIds: string[];
   onSelectedIdsChange: Dispatch<SetStateAction<string[]>>;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ProjectAttachment[]>([]);
@@ -75,14 +75,14 @@ export function ProjectAttachmentsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  const selected = items.filter((item) => selectedIds.includes(item.id) && item.status === "clean");
+  const selected = items.filter((item) => selectedIds.includes(item.id) && (item.status === "clean" || item.status === "unscanned"));
   const selectedBytes = selected.reduce((total, item) => total + item.size_bytes, 0);
 
   const toggleSelection = (item: ProjectAttachment, checked: boolean) => {
     setError(null);
     setNotice(null);
     if (checked) {
-      if (item.status !== "clean") return;
+      if (item.status !== "clean" && item.status !== "unscanned") return;
       if (selectedIds.length >= MAX_RUN_FILES) {
         setError(`A run can include at most ${MAX_RUN_FILES} files.`);
         return;
@@ -113,29 +113,25 @@ export function ProjectAttachmentsPanel({
         if (file.size > MAX_FILE_BYTES) {
           throw new Error(`${file.name} exceeds the 25 MiB per-file limit.`);
         }
-        const extension = file.name.includes(".") ? `.${file.name.split(".").pop()?.toLowerCase()}` : "";
-        if (!ACCEPTED_EXTENSIONS.split(",").includes(extension)) {
-          throw new Error(`${file.name} has an unsupported file extension.`);
-        }
         const item = await api.attachments.upload(projectId, file);
         setItems((current) => [item, ...current.filter((old) => old.id !== item.id)]);
-        if (item.status === "clean") {
+        if (item.status === "clean" || item.status === "unscanned") {
           if (autoSelectedFiles < MAX_RUN_FILES && autoSelectedBytes + item.size_bytes <= MAX_RUN_BYTES) {
             autoSelectedIds.push(item.id);
             autoSelectedFiles += 1;
             autoSelectedBytes += item.size_bytes;
             autoSelectedCount += 1;
           } else {
-            setNotice(`${item.name} passed scanning, but was not auto-selected because the run attachment limit would be exceeded.`);
+            setNotice(`${item.name} was uploaded, but not auto-selected because the run attachment limit would be exceeded.`);
           }
         } else {
-          setNotice(`${item.name} was uploaded but remains ${item.status}. Only clean-scanned files can be attached to a run.`);
+          setNotice(`${item.name} was not attached because its status is ${item.status}.`);
         }
         uploaded += 1;
       }
       if (autoSelectedIds.length > 0) {
         onSelectedIdsChange((current) => [...current, ...autoSelectedIds.filter((id) => !current.includes(id))]);
-        setNotice(`${autoSelectedCount} clean file${autoSelectedCount === 1 ? "" : "s"} scanned and auto-selected for the next run. Automatic reading currently supports TXT, MD, CSV, and JSON; PDF, image, audio, and video uploads still need a dedicated processing tool.`);
+        setNotice(`${autoSelectedCount} file${autoSelectedCount === 1 ? "" : "s"} uploaded and selected for the next run.`);
       }
       await refresh();
       if (uploaded > 0 && autoSelectedIds.length === 0) setNotice((current) => current ?? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded.`);
@@ -144,28 +140,6 @@ export function ProjectAttachmentsPanel({
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  const rescan = async (item: ProjectAttachment) => {
-    setBusyId(item.id);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await api.attachments.scan(projectId, item.id);
-      setItems((current) => current.map((old) => old.id === item.id ? result : old));
-      if (result.status === "clean") {
-        setNotice(`${item.name} passed scanning. Select it below to attach it to a run.`);
-      } else if (result.status === "rejected") {
-        onSelectedIdsChange(selectedIds.filter((id) => id !== item.id));
-        setNotice(`${item.name} was rejected by validation or scanning.`);
-      } else {
-        setNotice("The scanner is unavailable or returned an uncertain result. The file remains quarantined.");
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not rescan this attachment.");
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -205,45 +179,48 @@ export function ProjectAttachmentsPanel({
   };
 
   return (
-    <div className="w-full">
+    <div className={compact ? "flex min-w-0 shrink-0 items-center gap-2" : "w-full"}>
       <div className="flex items-center justify-between gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          className="sr-only"
+          aria-label="Choose project files to upload"
+          onChange={(event) => void uploadFiles(event.currentTarget.files ?? [])}
+          disabled={disabled || uploading}
+        />
         <button
           type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-controls="project-attachments-panel"
-          disabled={disabled && !open}
-          className="inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"
+          onClick={() => compact ? inputRef.current?.click() : setOpen((value) => !value)}
+          aria-expanded={compact ? undefined : open}
+          aria-controls={compact ? undefined : "project-attachments-panel"}
+          aria-label={compact ? `Attach files${selectedIds.length ? ` (${selectedIds.length} selected)` : ""}` : undefined}
+          title={compact ? (error || notice || (uploading ? "Uploading files…" : selectedIds.length ? `${selectedIds.length} file(s) attached to next run` : "Attach files")) : "Project attachments"}
+          aria-busy={uploading}
+          disabled={disabled || uploading}
+          className={compact
+            ? "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-studio-800 text-studio-300 hover:text-white hover:bg-studio-700 disabled:opacity-50"
+            : "inline-flex items-center gap-2 neu-btn px-3 py-2 text-xs font-medium text-studio-300 transition-all disabled:opacity-50"}
         >
-          <Icon name="paperclip" size={14} />
-          Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}
-          <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
+          <Icon name="paperclip" size={compact ? 17 : 14} />
+          {!compact && <>Files · {selectedIds.length}{items.length > 0 ? ` / ${items.length}` : ""}<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></>}
+          {compact && selectedIds.length > 0 && (
+            <span aria-label={`${selectedIds.length} files attached`} className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] text-white">{selectedIds.length}</span>
+          )}
         </button>
-        {selectedIds.length > 0 && (
-          <span className="text-2xs font-mono text-studio-400">{formatBytes(selectedBytes)} attached to next run</span>
-        )}
       </div>
-
-      {open && (
+      {compact && <span className="sr-only" role={error ? "alert" : "status"}>{uploading ? "Uploading attachments" : error || notice || ""}</span>}
+      {open && !compact && (
         <section id="project-attachments-panel" aria-label="Project attachments" className="mt-2 rounded-lg border border-line-strong bg-studio-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div>
               <h4 className="text-sm font-semibold text-studio-100">Project files</h4>
               <p className="mt-1 max-w-xl text-2xs leading-5 text-studio-400">
-                Uploads stay quarantined until the scanner reports clean. Only scanned files can be downloaded or attached to a run.
+                Upload files of any type to the project. Files are passed as untrusted inputs; supported tools determine how their contents can be inspected.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                type="file"
-                multiple
-                accept={ACCEPTED_EXTENSIONS}
-                className="sr-only"
-                aria-label="Choose project files to upload"
-                onChange={(event) => void uploadFiles(event.currentTarget.files ?? [])}
-                disabled={disabled || uploading}
-              />
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
@@ -269,7 +246,7 @@ export function ProjectAttachmentsPanel({
 
           <ul className="mt-2 divide-y divide-line">
             {items.map((item) => {
-              const checked = selectedIds.includes(item.id) && item.status === "clean";
+              const checked = selectedIds.includes(item.id) && (item.status === "clean" || item.status === "unscanned");
               const busy = uploading || busyId === item.id || disabled;
               return (
                 <li key={item.id} className="flex flex-wrap items-center gap-3 py-3">
@@ -277,7 +254,7 @@ export function ProjectAttachmentsPanel({
                     type="checkbox"
                     aria-label={`Attach ${item.name} to the next run`}
                     checked={checked}
-                    disabled={busy || item.status !== "clean"}
+                    disabled={busy || (item.status !== "clean" && item.status !== "unscanned")}
                     onChange={(event) => toggleSelection(item, event.currentTarget.checked)}
                     className="h-4 w-4 accent-accent-500 disabled:opacity-40"
                   />
@@ -287,19 +264,14 @@ export function ProjectAttachmentsPanel({
                   </div>
                   <span
                     className={`rounded border px-2 py-1 text-2xs ${item.status === "clean" ? "border-emerald-800 bg-emerald-950/40 text-emerald-300" : item.status === "rejected" ? "border-red-800 bg-red-950/40 text-red-300" : "border-amber-800 bg-amber-950/40 text-amber-200"}`}
-                    title={item.scanned_at ?? "No clean scanner verdict yet"}
+                    title="Attachment status"
                   >
                     {statusLabel(item.status)}
                   </span>
                   <div className="flex items-center gap-1">
-                    {item.status === "clean" && (
+                    {(item.status === "clean" || item.status === "unscanned") && (
                       <button type="button" aria-label={`Download ${item.name}`} onClick={() => void download(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
                         <Icon name="download" size={13} />
-                      </button>
-                    )}
-                    {item.status === "quarantined" && (
-                      <button type="button" aria-label={`Rescan ${item.name}`} onClick={() => void rescan(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-studio-800 hover:text-studio-100 disabled:opacity-40">
-                        <Icon name="shield-check" size={13} />
                       </button>
                     )}
                     <button type="button" aria-label={`Delete ${item.name}`} onClick={() => void remove(item)} disabled={busy} className="rounded p-2 text-studio-400 hover:bg-red-950 hover:text-red-200 disabled:opacity-40">
