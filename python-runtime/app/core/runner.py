@@ -861,7 +861,7 @@ class RunnerCore:
                         tool_obj.run(args_inst, ctx),
                         timeout=timeout_seconds,
                     )
-                except asyncio.TimeoutError as exc:
+                except asyncio.TimeoutError:
                     logger.warning(
                         "Tool timed out execution_id=%s tool=%s tool_call_id=%s timeout_seconds=%s",
                         req.execution_id, tc.name, tc.id, timeout_seconds,
