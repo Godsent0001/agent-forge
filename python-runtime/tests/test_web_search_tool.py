@@ -44,7 +44,7 @@ async def test_default_search_uses_ddgs_without_api_key(monkeypatch):
     monkeypatch.setitem(sys.modules, "ddgs", fake_module)
     monkeypatch.delenv("CRAWL4AI_KEY", raising=False)
 
-    results = await _ddgs_search_backend("agentforge")
+    results = await _free_search_backend("agentforge")
     assert results == [{
         "title": "AgentForge",
         "url": "https://example.com",
@@ -68,7 +68,7 @@ async def test_search_falls_back_to_keyless_html_backend_when_ddgs_fails(monkeyp
         return [{"title": "Example result", "url": "https://example.com/price", "snippet": "Listed price"}]
 
     monkeypatch.setattr("app.tools.web_search._duckduckgo_html_search_backend", html_search)
-    results = await _ddgs_search_backend("power tank price")
+    results = await _free_search_backend("power tank price")
     assert results[0]["url"] == "https://example.com/price"
 
 
