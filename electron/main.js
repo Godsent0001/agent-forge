@@ -286,6 +286,7 @@ function startPythonBackend() {
         AGENTFORGE_WATCH_PARENT: "1",
         AGENTFORGE_TOKEN: apiToken,
         AGENTFORGE_DATA_DIR: path.join(app.getPath("userData"), "data"),
+        AGENTFORGE_DB_PATH: path.join(app.getPath("userData"), "data", "db", "agentforge.db"),
       },
       shell: false,
       windowsHide: true,
