@@ -61,7 +61,7 @@ CATALOG: list[CatalogEntry] = [
                  "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
                  "real", pack=None),
     CatalogEntry("shell", "CMD / Shell", "general",
-                 "Execute a command in the current run workspace without per-call approval by default, with bounded output and a saved log. Shared-data mutations remain policy-controlled.",
+                 "Run commands in the user's local terminal from the project workspace. Longer commands are supported; an explicit working-directory override requires approval. Output is bounded and full logs are saved.",
                  "real", pack=None),
     CatalogEntry("log_search", "Log Search", "general",
                  "Search saved long shell logs with exact/keyword search and optional embedding-based retrieval.",
