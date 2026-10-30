@@ -59,3 +59,12 @@ async def test_typed_shell_requires_approval_for_another_local_directory(monkeyp
 
     assert calls == [("dir", external.resolve(), 60)]
     assert result.ok
+
+
+def test_default_factory_exposes_typed_shell_schema():
+    from app.contracts.graph import ToolBinding
+    from app.tools.registry import DefaultToolFactory
+
+    tool = DefaultToolFactory().build(ToolBinding(id="shell-1", kind="shell", name="shell"))
+    assert isinstance(tool, shell_capability.ShellCapability)
+    assert {"command", "working_directory", "timeout_seconds"} == set(tool.Input.model_json_schema()["properties"])
