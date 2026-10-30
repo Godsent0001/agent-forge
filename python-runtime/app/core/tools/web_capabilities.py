@@ -6,9 +6,7 @@ generic `input` field.
 """
 from __future__ import annotations
 
-from typing import ClassVar
-
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
