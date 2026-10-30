@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic import BaseModel, Field
+from typing import Literal\n\nfrom pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
@@ -22,10 +22,16 @@ class WebSearchInput(BaseModel):
 
 class BrowserInput(BaseModel):
     url: str = Field(
-        min_length=8,
+        default="",
         max_length=2048,
-        description="Absolute public HTTP(S) URL to fetch and extract readable page text from.",
+        description="Absolute public HTTP(S) URL for navigate; omit for actions on the current execution's browser page.",
     )
+    action: Literal["navigate", "click", "fill", "screenshot", "read"] = Field(
+        default="navigate",
+        description="Browser operation: navigate to a URL, click a CSS selector, fill a selector, save a screenshot, or read the current page.",
+    )
+    selector: str = Field(default="", max_length=1000, description="CSS selector for click or fill.")
+    text: str = Field(default="", max_length=10000, description="Text to enter for the fill action.")
 
 
 class WebSearchCapability(Tool):
@@ -51,8 +57,9 @@ class WebSearchCapability(Tool):
 class BrowserCapability(Tool):
     kind: ClassVar[str] = "browser"
     default_description: ClassVar[str] = (
-        "Fetch a public HTTP(S) webpage and extract readable text. This is a page reader, "
-        "not graphical browser automation; it does not click buttons or submit forms."
+        "Use a real Playwright Chromium browser to navigate JavaScript-rendered public pages, read text, "
+        "click CSS selectors, fill fields, and save screenshots. Browser requests are checked against "
+        "AgentForge's public-URL policy."
     )
     Input = BrowserInput
     permissions: set[Permission] = {"net"}
@@ -62,7 +69,9 @@ class BrowserCapability(Tool):
 
     async def run(self, args: BrowserInput, ctx: ToolContext) -> ToolResult:
         try:
-            result = await self._implementation.execute(args.url, context=ctx)
+            result = await self._implementation.operate(
+                url=args.url, action=args.action, selector=args.selector, text=args.text, context=ctx
+            )
         except ToolExecutionError as exc:
             raise ToolError(str(exc), retryable=True) from exc
         return ToolResult(content=result)
