@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -360,7 +359,7 @@ def stop_execution_preview(execution_id: str):
 
 @router.get("/{execution_id}/files")
 def list_execution_files(execution_id: str):
-    """List files created in this execution's actual RunWorkspace."""
+    """List files in the persistent project workspace used by this execution."""
     db = SessionLocal()
     try:
         execution = db.get(models.Execution, execution_id)
