@@ -869,7 +869,7 @@ class RunnerCore:
                     return (
                         f"ERROR: tool '{tc.name}' exceeded its {timeout_seconds}s execution "
                         "deadline. The operation was cancelled; inspect its configuration or retry."
-                    ) from exc
+                    )
                 # Persist files explicitly returned by a tool, using workspace path guards.
                 if res.artifacts:
                     lifecycle = ExecutionArtifactLifecycle(project_dir(req.project_id), req.project_id)
