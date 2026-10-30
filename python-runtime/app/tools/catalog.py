@@ -55,7 +55,7 @@ SHELVES: dict[str, str] = {
 CATALOG: list[CatalogEntry] = [
     # --- General-purpose tools (always available in the unified catalog) ---
     CatalogEntry("web_search", "Web Search", "general",
-                 "Search the web for documentation and references using free, keyless DDGS search; an explicitly configured Crawl4AI key is optional.",
+                 "Search the web for documentation and references using Serper.dev when configured, with a free keyless DuckDuckGo fallback.",
                  "real", pack=None),
     CatalogEntry("browser", "Browser", "general",
                  "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
