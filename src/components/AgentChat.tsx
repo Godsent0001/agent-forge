@@ -389,15 +389,21 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             feedbackNote: saved.feedback_note,
           };
         } catch (cause) {
-          setConversationError(cause instanceof Error
-            ? `Run finished, but its answer could not be saved: ${cause.message}`
-            : "Run finished, but its answer could not be saved.");
+          if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+            setConversationError(cause instanceof Error
+              ? `Run finished, but its answer could not be saved: ${cause.message}`
+              : "Run finished, but its answer could not be saved.");
+          }
         }
         addChatMessage(agentId, persistedAgentMsg);
-        if (status === "cancelled") setChatNotice("Run stopped.");
-        else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
+        if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+          if (status === "cancelled") setChatNotice("Run stopped.");
+          else if (status === "budget_exceeded") setChatNotice("Run stopped because it reached a budget limit.");
+        }
       } catch (error) {
-        setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
+        if (activeScopeRef.current === `${project?.id}:${agentId}`) {
+          setChatError(error instanceof Error ? error.message : "Unable to load the completed run.");
+        }
       } finally {
         setNewConversationIds((current) => { if (!current.has(targetAgent.conversationId)) return current; const next = new Set(current); next.delete(targetAgent.conversationId); return next; });
         clearActiveExecutionForScope(project?.id + ":" + agentId, executionId);
@@ -632,8 +638,10 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       }
 
       const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
-      setSelectedAttachmentIds([]);
-      setEditingMessageId(null);
+      if (activeScopeRef.current === runScope) {
+        setSelectedAttachmentIds([]);
+        setEditingMessageId(null);
+      }
       setActiveExecutionForScope(runScope, {
         executionId: execution.id, agentId: agent.id, agentName: agent.name, conversationId: activeConversationId,
       });
