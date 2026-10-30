@@ -23,8 +23,14 @@ class ShellInput(BaseModel):
         max_length=1024,
         description=(
             "Optional directory on the user's computer. Omit to use the persistent project workspace. "
-            "Relative paths are resolved inside the project workspace; absolute paths outside it require approval."
+            "Any explicit working-directory override requires approval."
         ),
+    )
+    timeout_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=300,
+        description="Maximum command duration in seconds (1-300). Use a longer limit for installs or builds.",
     )
 
 
@@ -34,7 +40,8 @@ class ShellCapability(Tool):
         "Run a command in the user's local terminal on this computer. By default, commands run in the "
         "persistent AgentForge project workspace and can create files, run tests, invoke Python/Node tools, "
         "and inspect local project state. Set working_directory to work in another local folder; that request "
-        "requires approval. This is terminal access, not graphical desktop control. Commands run with the "
+        "requires approval. Commands may run for up to 300 seconds when requested. This is terminal access, "
+        "not graphical desktop control. Commands run with the "
         "current user's OS permissions and are not a full security sandbox."
     )
     Input = ShellInput
@@ -82,6 +89,7 @@ class ShellCapability(Tool):
             workspace=SimpleNamespace(root=cwd),
             cancel=ctx.cancel,
             config=ctx.config,
+            timeout_seconds=args.timeout_seconds,
         )
         try:
             output = await self._implementation.execute(args.command, context=shell_context)
