@@ -3,13 +3,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
-from app.contracts.tools import ToolResult
 from app.tools.python_project import PythonProjectInput, PythonProjectTool
 
 
 @pytest.mark.asyncio
-async def test_unified_python_tool_dispatches_execution(monkeypatch, tmp_path):
+async def test_python_tool_executes_directly_without_environment_setup(monkeypatch, tmp_path):
     tool = PythonProjectTool()
     context = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path), span_id="python-test")
     calls = {}
@@ -20,52 +20,22 @@ async def test_unified_python_tool_dispatches_execution(monkeypatch, tmp_path):
         return "python-result"
 
     monkeypatch.setattr(tool._executor, "execute", execute)
-    async def ensure(args, ctx):
-        calls["ensure_action"] = args.action
-        return ToolResult(content="environment-ready")
-    monkeypatch.setattr(tool._environment, "run", ensure)
-    result = await tool.run(PythonProjectInput(action="execute", code="print(1 + 1)"), context)
+    result = await tool.run(PythonProjectInput(code="print(1 + 1)"), context)
 
-    assert calls["ensure_action"] == "ensure"
     assert result.ok
     assert result.content == "python-result"
     assert calls["code"] == "print(1 + 1)"
     assert calls["context"] is context
+    assert not hasattr(tool, "_environment")
 
 
-@pytest.mark.asyncio
-async def test_unified_python_tool_dispatches_environment_actions(monkeypatch, tmp_path):
-    tool = PythonProjectTool()
-    context = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path), span_id="python-env-test")
-    calls = {}
-
-    async def manage(args, ctx):
-        calls["action"] = args.action
-        calls["packages"] = args.packages
-        calls["context"] = ctx
-        return ToolResult(content="environment-ready")
-
-    monkeypatch.setattr(tool._environment, "run", manage)
-    result = await tool.run(
-        PythonProjectInput(action="install", packages=["pandas>=2.0"]),
-        context,
-    )
-
-    assert result.content == "environment-ready"
-    assert calls == {
-        "action": "install",
-        "packages": ["pandas>=2.0"],
-        "context": context,
-    }
-
-
-def test_unified_python_tool_requires_approval_for_environment_mutations():
-    tool = PythonProjectTool()
-    assert not tool.requires_approval({"action": "execute"})
-    assert not tool.requires_approval({"action": "ensure"})
-    assert tool.requires_approval({"action": "install"})
-    assert tool.permissions_for({"action": "install"}) == {"subprocess", "net"}
-    assert tool.permissions_for({"action": "execute"}) == {"subprocess"}
+def test_python_tool_schema_has_no_venv_or_environment_actions():
+    schema = PythonProjectInput.model_json_schema()
+    assert set(schema["properties"]) == {"code"}
+    with pytest.raises(ValidationError):
+        PythonProjectInput(action="ensure", code="print(1)")
+    with pytest.raises(ValidationError):
+        PythonProjectInput(action="install", packages=["pandas"])
 
 
 def test_runner_collapses_legacy_python_bindings_into_one_model_tool():
@@ -89,30 +59,23 @@ def test_runner_collapses_legacy_python_bindings_into_one_model_tool():
     python_specs = [tool for tool in tool_specs if tool.name == "python"]
     assert len(python_specs) == 1
     assert isinstance(instances["python"], PythonProjectTool)
-    assert {"action", "code", "packages"} <= set(python_specs[0].parameters["properties"])
+    assert set(python_specs[0].parameters["properties"]) == {"code"}
     assert "file" in instances
     assert "knowledge_search" in instances
     assert "knowledge_ingest" in instances
 
 
 @pytest.mark.asyncio
-async def test_unified_python_tool_falls_back_to_packaged_runtime_only_when_no_system_python(monkeypatch, tmp_path):
-    from app.tools.python_environment import PythonInterpreterUnavailable
+async def test_python_tool_reports_executor_errors(monkeypatch, tmp_path):
+    from app.contracts.tools import ToolError
+    from app.tools.base import ToolExecutionError
 
     tool = PythonProjectTool()
-    context = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path), span_id="python-fallback-test")
-    calls = {}
-
-    async def ensure(args, ctx):
-        raise PythonInterpreterUnavailable("No compatible system Python was found")
+    context = SimpleNamespace(workspace=SimpleNamespace(root=tmp_path), span_id="python-error-test")
 
     async def execute(code, *, context):
-        calls["code"] = code
-        return "bundled-python-result"
+        raise ToolExecutionError("python runtime unavailable")
 
-    monkeypatch.setattr(tool._environment, "run", ensure)
     monkeypatch.setattr(tool._executor, "execute", execute)
-    result = await tool.run(PythonProjectInput(action="execute", code="print(2 + 2)"), context)
-
-    assert result.content == "bundled-python-result"
-    assert calls["code"] == "print(2 + 2)"
+    with pytest.raises(ToolError, match="python runtime unavailable"):
+        await tool.run(PythonProjectInput(code="print(2 + 2)"), context)
