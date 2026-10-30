@@ -55,6 +55,19 @@ from app.tools.specs import tool_spec
 
 logger = logging.getLogger(__name__)
 
+# Bound every tool call at the shared dispatch boundary. Individual tools still
+# enforce tighter process/network deadlines where needed; this is the final guard
+# against a tool implementation accidentally awaiting forever.
+_TOOL_TIMEOUT_SECONDS_BY_KIND = {
+    "web_search": 35,
+    "browser": 45,
+    "knowledge_search": 45,
+    "knowledge_ingest": 120,
+    "python": 30,
+    "shell": 90,
+}
+_DEFAULT_TOOL_TIMEOUT_SECONDS = 60
+
 
 _SENSITIVE_ARGUMENT_KEY = re.compile(r"(?:api.?key|token|secret|password|passwd|authorization|cookie|credential)", re.IGNORECASE)
 
@@ -840,7 +853,23 @@ class RunnerCore:
                 else:
                     args_inst = tc.arguments
 
-                res: ToolResult = await tool_obj.run(args_inst, ctx)
+                timeout_seconds = _TOOL_TIMEOUT_SECONDS_BY_KIND.get(
+                    getattr(tool_obj, "kind", tc.name), _DEFAULT_TOOL_TIMEOUT_SECONDS
+                )
+                try:
+                    res: ToolResult = await asyncio.wait_for(
+                        tool_obj.run(args_inst, ctx),
+                        timeout=timeout_seconds,
+                    )
+                except asyncio.TimeoutError as exc:
+                    logger.warning(
+                        "Tool timed out execution_id=%s tool=%s tool_call_id=%s timeout_seconds=%s",
+                        req.execution_id, tc.name, tc.id, timeout_seconds,
+                    )
+                    return (
+                        f"ERROR: tool '{tc.name}' exceeded its {timeout_seconds}s execution "
+                        "deadline. The operation was cancelled; inspect its configuration or retry."
+                    ) from exc
                 # Persist files explicitly returned by a tool, using workspace path guards.
                 if res.artifacts:
                     lifecycle = ExecutionArtifactLifecycle(project_dir(req.project_id), req.project_id)
