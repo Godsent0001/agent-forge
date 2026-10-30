@@ -12,7 +12,7 @@ type KeyStatus = Record<string, { saved: boolean; hint: string }>;
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
-  const providers = providersNeedingKeys();
+  const providers = [...providersNeedingKeys(), { id: "serper", label: "Serper.dev web search", keyId: "serper", needsKey: true, keyPlaceholder: "Paste Serper API key", defaultModel: "", models: [], customPlaceholder: "" }];
   const project = useStore((state) => state.project);
 
   const [saved, setSaved] = useState<KeyStatus>({});
@@ -61,6 +61,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       } else {
         setStatus({ tone: "error", text: "Could not save or apply keys. Check the local runtime and try again." });
       }
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleTestSearchConnection = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Testing Serper with a real search query…" });
+    try {
+      const result = await api.settings.testSearchConnection();
+      setStatus({ tone: "ok", text: `Serper connection successful. Test query returned ${result.results} results.` });
+      await refresh();
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Serper connection test failed." });
     } finally {
       setIsBusy(false);
     }
@@ -187,7 +202,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
-          <p className="text-2xs text-studio-500">Local models (Ollama) need no key.</p>
+          <div className="flex items-center justify-between gap-3"><p className="text-2xs text-studio-500">Local models (Ollama) need no key. Search uses Serper first and a free fallback if it fails.</p><Button size="xs" variant="outline" onClick={() => void handleTestSearchConnection()} disabled={isBusy || !saved.serper?.saved && !(drafts.serper ?? "").trim()}>{isBusy ? "Testing…" : "Test Serper"}</Button></div>
           </div>
           ) : activeSection === "embeddings" ? (
             <div className="space-y-3">
