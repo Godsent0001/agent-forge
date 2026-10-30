@@ -202,7 +202,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
-          <div className="flex items-center justify-between gap-3"><p className="text-2xs text-studio-500">Local models (Ollama) need no key. Search uses Serper first and a free fallback if it fails.</p><Button size="xs" variant="outline" onClick={() => void handleTestSearchConnection()} disabled={isBusy || !saved.serper?.saved && !(drafts.serper ?? "").trim()}>{isBusy ? "Testing…" : "Test Serper"}</Button></div>
+          <div className="flex items-center justify-between gap-3"><p className="text-2xs text-studio-500">Local models (Ollama) need no key. Search uses Serper first and a free fallback if it fails.</p><Button size="xs" variant="outline" onClick={() => void handleTestSearchConnection()} disabled={isBusy || !saved.serper?.saved}>{isBusy ? "Testing…" : "Test Serper"}</Button></div>
           </div>
           ) : activeSection === "embeddings" ? (
             <div className="space-y-3">
