@@ -62,16 +62,6 @@ def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
         path_parts = [os.path.join(system_root, "System32")] if system_root else []
         path_parts.append(os.path.dirname(sys.executable))
-        if workspace_root is not None:
-            venv_cfg = workspace_root / ".venv" / "pyvenv.cfg"
-            if venv_cfg.is_file():
-                for line in venv_cfg.read_text(encoding="utf-8", errors="replace").splitlines():
-                    key, separator, value = line.partition("=")
-                    if separator and key.strip().casefold() == "home":
-                        base_home = value.strip()
-                        if base_home:
-                            path_parts.append(base_home)
-                            break
         env = {"PATH": os.pathsep.join(path_parts), "PYTHONDONTWRITEBYTECODE": "1"}
         for key in ("SYSTEMROOT", "TEMP", "TMP"):
             value = os.environ.get(key) or os.environ.get(key.lower())
@@ -138,10 +128,9 @@ class PythonExecTool(Tool):
             with open(script_path, "w", encoding="utf-8") as handle:
                 handle.write(script)
 
-            venv_python = root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
-            if venv_python.is_file():
-                command = [str(venv_python), script_path]
-            elif getattr(sys, "frozen", False):
+            # Always execute with the shared AgentForge runtime. Project-local
+            # virtual environments are deliberately ignored.
+            if getattr(sys, "frozen", False):
                 command = [sys.executable, "--run-snippet", script_path]
             else:
                 command = [sys.executable, script_path]
