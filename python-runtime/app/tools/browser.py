@@ -63,6 +63,7 @@ class BrowserTool(Tool):
         # Keep the legacy constructor argument accepted for callers, but browser
         # navigation is performed by Playwright rather than raw HTTP fetching.
         self._sessions: dict[str, tuple[Any, Any, Any]] = {}
+        self._session_expiry: dict[str, asyncio.Task] = {}
         self._session_lock = asyncio.Lock()
 
     async def execute(self, input: str, *, context: Any) -> str:
@@ -108,6 +109,7 @@ class BrowserTool(Tool):
                 await page.route("**/*", self._guard_request)
                 self._sessions[execution_id] = (playwright, browser, page)
                 session = (playwright, browser, page)
+            self._schedule_session_expiry(execution_id)
         playwright, browser, page = session
         try:
             if action == "navigate":
@@ -142,6 +144,30 @@ class BrowserTool(Tool):
             raise
         except Exception as exc:
             raise ToolExecutionError(f"Playwright browser action '{action}' failed: {type(exc).__name__}: {str(exc)[:400]}") from exc
+
+    def _schedule_session_expiry(self, execution_id: str) -> None:
+        previous = self._session_expiry.pop(execution_id, None)
+        if previous:
+            previous.cancel()
+        self._session_expiry[execution_id] = asyncio.create_task(
+            self._expire_session(execution_id), name=f"agentforge-browser-expiry-{execution_id}"
+        )
+
+    async def _expire_session(self, execution_id: str) -> None:
+        try:
+            await asyncio.sleep(180)
+            async with self._session_lock:
+                session = self._sessions.pop(execution_id, None)
+                self._session_expiry.pop(execution_id, None)
+            if session:
+                playwright, browser, _page = session
+                await browser.close()
+                await playwright.stop()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Session cleanup is best-effort; never break another tool call.
+            pass
 
     @staticmethod
     async def _guard_request(route) -> None:
