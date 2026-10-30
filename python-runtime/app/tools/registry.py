@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from app.contracts.graph import ToolBinding
 from app.contracts.tools import Tool as V2Tool
+from app.core.tools.shell_capability import ShellCapability
+from app.core.tools.web_capabilities import BrowserCapability, WebSearchCapability
 from app.infra.workspace import data_dir
 from app.tools.adapter import LegacyToolAdapter
 from app.tools.agentforge_control import AgentForgeControlTool
@@ -202,8 +204,6 @@ _CONFIG_DRIVEN_KINDS = frozenset({
 def known_tool_kinds() -> frozenset[str]:
     """Every tool kind the v2 factory can build (used to validate new Tool rows)."""
     from app.core.tools.workspace_capabilities import WorkspaceCapabilityToolFactory
-from app.core.tools.web_capabilities import BrowserCapability, WebSearchCapability
-from app.core.tools.shell_capability import ShellCapability
 
     return frozenset(_SIMPLE_FACTORIES) | _CONFIG_DRIVEN_KINDS | frozenset(NATIVE_TOOLS) | {
         "custom_http", *WorkspaceCapabilityToolFactory._BUILTINS,
