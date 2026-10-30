@@ -432,6 +432,7 @@ export const api = {
       const status: Record<string, { saved: boolean; hint: string }> = {};
       if (typeof window !== "undefined" && window.electronAPI) {
         for (const provider of providersNeedingKeys()) status[provider.keyId] = await keychain.status(provider.keyId);
+        status.serper = await keychain.status("serper");
         return status;
       }
       let runtime: Record<string, boolean> = {};
@@ -440,6 +441,8 @@ export const api = {
         const hint = await keychain.status(provider.keyId);
         status[provider.keyId] = { saved: runtime[provider.keyId] === true || hint.saved, hint: hint.hint };
       }
+      const serperHint = await keychain.status("serper");
+      status.serper = { saved: runtime.serper === true || serperHint.saved, hint: serperHint.hint };
       return status;
     },
     /** Electron persists keys in main and sends them to the sidecar from main—not from React. */
@@ -473,6 +476,7 @@ export const api = {
     syncKeysToBackend: () => keychain.syncToRuntime(),
     /** Which key slots the runtime reports as active (a slot it doesn't know about is simply absent). */
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
+    testSearchConnection: () => request<{ status: string; provider: string; results: number }>("/settings/search/test", { method: "POST" }),
     getEmbeddingModel: () => request<{ model: string }>("/settings/embedding-model"),
     setEmbeddingModel: (model: string) =>
       request<{ status: string; model: string }>("/settings/embedding-model", {
