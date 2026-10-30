@@ -61,7 +61,6 @@ from app.tools.graphics import (
 from app.tools.http_request import HttpRequestTool
 from app.tools.log_search import LogSearchTool
 from app.tools.orchestrator import PipelineOrchestratorTool
-from app.tools.python_environment import PythonEnvironmentTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.python_project import PythonProjectTool
 from app.tools.qc import (
@@ -190,7 +189,6 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "clip_finder": ClipFinderTool,
     "clip_extractor": ClipExtractorTool,
     "python": PythonProjectTool,
-    "python_environment": PythonEnvironmentTool,
 }
 
 
