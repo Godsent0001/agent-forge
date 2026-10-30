@@ -23,7 +23,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.db import init_db
+from app.db import DB_PATH, init_db
 from app.infra.auth import TokenAuthMiddleware, require_runtime_token
 from app.infra.file_security import file_response_headers
 from app.infra.paths import data_dir
@@ -53,7 +53,7 @@ logger = logging.getLogger("agentforge")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing AgentForge database at %s", __import__("app.db", fromlist=["DB_PATH"]).DB_PATH)
+    logger.info("Initializing AgentForge database at %s", DB_PATH)
     init_db()
     from app.infra.attachment_storage import cleanup_stale_upload_parts
     cleanup_stale_upload_parts()
