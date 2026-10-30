@@ -4,7 +4,7 @@ import os
 
 from app import models
 from app.infra import attachment_storage
-from app.infra.attachment_storage import data_dir, upload_dirs
+from app.infra.attachment_storage import upload_dirs
 from app.infra.paths import project_dir
 from app.routers import executions_v2
 
