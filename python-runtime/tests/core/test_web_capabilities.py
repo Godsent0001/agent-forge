@@ -32,8 +32,8 @@ async def test_browser_uses_explicit_url_schema(monkeypatch):
     calls = []
 
     class FakeBrowser:
-        async def execute(self, value, *, context):
-            calls.append((value, context))
+        async def operate(self, *, url, action, selector, text, context):
+            calls.append((url, action, selector, text, context))
             return "Status: 200\nTitle: Example"
 
     monkeypatch.setattr(web_capabilities, "LegacyBrowserTool", FakeBrowser)
