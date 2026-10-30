@@ -41,8 +41,8 @@ async def test_browser_uses_explicit_url_schema(monkeypatch):
     context = SimpleNamespace()
     result = await tool.run(tool.Input(url="https://example.com/docs"), context)
 
-    assert tool.Input.model_json_schema()["properties"].keys() == {"url"}
-    assert calls == [("https://example.com/docs", context)]
+    assert set(tool.Input.model_json_schema()["properties"]) == {"url", "action", "selector", "text"}
+    assert calls == [("https://example.com/docs", "navigate", "", "", context)]
     assert "Status: 200" in result.content
 
 
