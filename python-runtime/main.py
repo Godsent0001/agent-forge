@@ -53,7 +53,7 @@ logger = logging.getLogger("agentforge")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing AgentForge database...")
+    logger.info("Initializing AgentForge database at %s", __import__("app.db", fromlist=["DB_PATH"]).DB_PATH)
     init_db()
     from app.infra.attachment_storage import cleanup_stale_upload_parts
     cleanup_stale_upload_parts()
