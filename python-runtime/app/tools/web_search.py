@@ -1,8 +1,4 @@
-"""Free web search with an optional configured Crawl4AI fallback.
-
-The default backend uses the open-source `ddgs` Python package and does not
-require a paid API key. Crawl4AI Cloud is only used when explicitly configured.
-"""
+"""Web search using Serper when configured, with independent free fallbacks."""
 
 from __future__ import annotations
 
@@ -19,6 +15,40 @@ from app.tools.base import Tool, ToolExecutionError
 logger = logging.getLogger(__name__)
 
 SearchFn = Callable[[str], Awaitable[list[dict[str, str]]]]
+
+async def _serper_search_backend(query: str) -> list[dict[str, str]]:
+    """Query Serper; credentials are read only by the runtime and never returned."""
+    key = os.environ.get("SERPER_API_KEY", "").strip()
+    if not key:
+        raise ToolExecutionError("SERPER_API_KEY is not configured.")
+    import httpx
+
+    async with httpx.AsyncClient(timeout=12.0, trust_env=False) as client:
+        response = await client.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            json={"q": query, "num": 8},
+        )
+        if response.status_code in {401, 403}:
+            raise ToolExecutionError("Serper rejected the API key. Check the key in Search settings.")
+        if response.status_code == 429:
+            raise ToolExecutionError("Serper rate limit or quota reached.")
+        response.raise_for_status()
+        payload = response.json()
+
+    organic = payload.get("organic", []) if isinstance(payload, dict) else []
+    results = [
+        {
+            "title": str(item.get("title", "")),
+            "url": str(item.get("link", "")),
+            "snippet": str(item.get("snippet", "")),
+        }
+        for item in organic
+        if isinstance(item, dict) and item.get("title") and item.get("link")
+    ]
+    if not results:
+        raise ToolExecutionError("Serper returned no organic results.")
+    return results
 
 
 class _DuckDuckGoHTMLParser(HTMLParser):
@@ -97,7 +127,7 @@ async def _duckduckgo_html_search_backend(query: str) -> list[dict[str, str]]:
     return results
 
 
-async def _ddgs_search_backend(query: str) -> list[dict[str, str]]:
+async def _free_search_backend(query: str) -> list[dict[str, str]]:
     """Search without a paid key, falling back to a separate keyless HTML endpoint."""
     failures: list[str] = []
     try:
@@ -183,12 +213,28 @@ async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
 class WebSearchTool(Tool):
     name = "web_search"
     description = (
-        "Search the web for ranked sources using free, keyless DDGS search. "
-        "An explicitly configured Crawl4AI key can be used as a fallback."
+        "Search the web using Serper when configured, with a free keyless DuckDuckGo fallback."
     )
 
     def __init__(self, search_fn: SearchFn | None = None):
-        self._search_fn = search_fn or _ddgs_search_backend
+        self._search_fn = search_fn or self._search_with_fallback
+
+    @staticmethod
+    async def _search_with_fallback(query: str) -> list[dict[str, str]]:
+        failures: list[str] = []
+        if os.environ.get("SERPER_API_KEY", "").strip():
+            try:
+                return await _serper_search_backend(query)
+            except Exception as exc:
+                failures.append(f"Serper {type(exc).__name__}: {str(exc)[:220]}")
+                logger.warning("Serper search failed; trying free fallback (%s)", type(exc).__name__)
+        try:
+            return await _free_search_backend(query)
+        except Exception as exc:
+            failures.append(f"free fallback {type(exc).__name__}: {str(exc)[:300]}")
+        raise ToolExecutionError(
+            "Web search failed across configured providers. " + "; ".join(failures)
+        )
 
     async def execute(self, input: str, *, context: Any) -> str:
         query = input.strip()
