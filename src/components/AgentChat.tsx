@@ -33,7 +33,7 @@ function describeActiveStep(event: import("../types").ExecutionEvent): string {
   }
   const operation = [args.operation, args.action].find((value) => typeof value === "string") as string | undefined;
   const filePath = [args.path, args.file_path].find((value) => typeof value === "string") as string | undefined;
-  const detail = [args.query, args.url, filePath, operation].find((value) => typeof value === "string" && value.trim());
+  const detail = [args.query, args.url, args.command, filePath, operation].find((value) => typeof value === "string" && value.trim());
   const suffix = typeof detail === "string" ? ` · ${detail.length > 64 ? detail.slice(0, 61) + "…" : detail}` : "";
   const name = rawName.toLowerCase();
   if (name.includes("web search")) return `Searching the web${suffix}`;
