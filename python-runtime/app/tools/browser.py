@@ -133,7 +133,7 @@ class BrowserTool(Tool):
                 path = os.path.join(str(getattr(getattr(context, "workspace", None), "root", ".")), ".agentforge", "browser.png")
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 await page.screenshot(path=path, full_page=False, timeout=5_000)
-                return f"Screenshot saved to workspace path .agentforge/browser.png"
+                return "Screenshot saved to workspace path .agentforge/browser.png"
             title = await page.title()
             body = await page.locator("body").inner_text(timeout=5_000)
             body = " ".join(body.split())
