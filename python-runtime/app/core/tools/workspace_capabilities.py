@@ -142,7 +142,7 @@ class KnowledgeIngestTool(Tool):
                 )
                 return document, count, index.last_ingest_embedded
 
-            document, count, embedded = await asyncio.to_thread(ingest_file)
+            document, count, embedded = await asyncio.wait_for(asyncio.to_thread(ingest_file), timeout=120)
             return ToolResult(content=json.dumps({
                 "source_id": document.source_id, "name": document.name, "sha256": document.sha256,
                 "characters": len(document.text), "chunks_indexed": count,
@@ -167,23 +167,23 @@ class KnowledgeSearchTool(Tool):
     permissions: set[Permission] = set()
 
     async def run(self, args: KnowledgeSearchInput, ctx: ToolContext) -> ToolResult:
-        index = await asyncio.to_thread(_index, ctx)
+        index = await asyncio.wait_for(asyncio.to_thread(_index, ctx), timeout=10)
         model_id = os.environ.get("AGENTFORGE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
         query_embedding = None
 
         # Most new projects have no indexed vectors yet. A lexical query is instant
         # and useful in that state; do not initialize/download a large embedding model
         # for an empty index or a legacy lexical-only index.
-        has_vectors = await asyncio.to_thread(index.has_embeddings)
+        has_vectors = await asyncio.wait_for(asyncio.to_thread(index.has_embeddings), timeout=10)
         if has_vectors:
             try:
-                query_embedding = await asyncio.to_thread(embed_text, args.query, model_id)
+                query_embedding = await asyncio.wait_for(asyncio.to_thread(embed_text, args.query, model_id), timeout=30)
             except Exception:
                 # A missing model/provider must not make the knowledge index unusable.
                 query_embedding = None
 
-        hits = await asyncio.to_thread(
-            index.search, args.query, limit=args.limit, query_embedding=query_embedding,
+        hits = await asyncio.wait_for(
+            asyncio.to_thread(index.search, args.query, limit=args.limit, query_embedding=query_embedding), timeout=20
         )
         retrieval_mode = (
             "hybrid_vector_lexical"
