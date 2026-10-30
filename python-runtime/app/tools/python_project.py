@@ -1,15 +1,11 @@
 """Unified agent-facing Python capability using the shared AgentForge runtime."""
 from __future__ import annotations
 
-import logging
-
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
 from app.tools.python_exec import PythonExecTool
-
-logger = logging.getLogger(__name__)
 
 
 class PythonProjectInput(BaseModel):
