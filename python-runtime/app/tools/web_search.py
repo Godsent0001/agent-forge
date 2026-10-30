@@ -127,29 +127,36 @@ async def _duckduckgo_html_search_backend(query: str) -> list[dict[str, str]]:
     return results
 
 
+async def _ddgs_search_backend(query: str) -> list[dict[str, str]]:
+    """Query the free DDGS metasearch client and normalize its result shape."""
+    from ddgs import DDGS
+
+    def search() -> list[dict[str, str]]:
+        with DDGS(timeout=12) as client:
+            raw_results = client.text(query, max_results=8, backend="auto")
+            return [
+                {
+                    "title": str(item.get("title", "")),
+                    "url": str(item.get("href", item.get("url", ""))),
+                    "snippet": str(item.get("body", item.get("snippet", ""))),
+                }
+                for item in raw_results
+                if isinstance(item, dict)
+            ]
+
+    results = await asyncio.to_thread(search)
+    if not results:
+        raise ToolExecutionError("DDGS returned no results.")
+    return results
+
+
 async def _free_search_backend(query: str) -> list[dict[str, str]]:
     """Search without a paid key, falling back to a separate keyless HTML endpoint."""
     failures: list[str] = []
     try:
-        from ddgs import DDGS
-
-        def search() -> list[dict[str, str]]:
-            with DDGS(timeout=12) as client:
-                raw_results = client.text(query, max_results=8, backend="auto")
-                return [
-                    {
-                        "title": str(item.get("title", "")),
-                        "url": str(item.get("href", item.get("url", ""))),
-                        "snippet": str(item.get("body", item.get("snippet", ""))),
-                    }
-                    for item in raw_results
-                    if isinstance(item, dict)
-                ]
-
-        results = await asyncio.to_thread(search)
+        results = await _ddgs_search_backend(query)
         if results:
             return results
-        failures.append("DDGS returned no results")
     except Exception as exc:  # noqa: BLE001 — preserve failure while trying fallback
         failures.append(f"DDGS {type(exc).__name__}: {str(exc)[:240]}")
 
