@@ -43,7 +43,7 @@ async def test_typed_shell_requires_approval_for_another_local_directory(monkeyp
 
     class FakeShell:
         async def execute(self, command, *, context):
-            calls.append((command, context.workspace.root))
+            calls.append((command, context.workspace.root, context.timeout_seconds))
             return "Exit code: 0"
 
     monkeypatch.setattr(shell_capability, "LegacyShellTool", FakeShell)
