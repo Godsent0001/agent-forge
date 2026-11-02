@@ -186,6 +186,50 @@ async def test_cancelling_pending_approval_cleans_up():
 
 
 @pytest.mark.asyncio
+async def test_registered_tool_type_not_in_legacy_policy_table_defaults_to_allow():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-registered",
+        settings={},
+        emit=emit,
+        tool_kinds={"scene_builder": "scene_builder"},
+    )
+    assert await gate.check(
+        tool="scene_builder",
+        permissions={"fs_write"},
+        args_preview='{"action":"build"}',
+        span_id="registered-span",
+    ) is True
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_internal_reply_and_attachment_tools_are_autonomous_by_default():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-internal",
+        settings={},
+        emit=emit,
+    )
+    for tool in ("agentforge_reply_user", "read_attachment", "knowledge_search", "knowledge_ingest"):
+        assert await gate.check(
+            tool=tool,
+            permissions=set(),
+            args_preview="{}",
+            span_id=f"{tool}-span",
+        ) is True
+    assert events == []
+
+
+@pytest.mark.asyncio
 async def test_unknown_tool_type_defaults_to_ask():
     events = []
 
