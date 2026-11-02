@@ -382,3 +382,13 @@ async def test_emitter_persists_interim_replies_in_the_execution_conversation(mo
             db.close()
     finally:
         engine.dispose()
+
+
+def test_internal_tool_stop_notice_does_not_enter_live_user_notification_queue():
+    token = CancelTokenImpl()
+    token.record_tool_stop_notice("tool-call-internal")
+
+    assert token._message_notifications.empty()
+    drained = token.drain_messages()
+    assert len(drained) == 1
+    assert drained[0].startswith("[Runtime control notice]")
