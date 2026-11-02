@@ -156,6 +156,13 @@ class CancelTokenImpl:
         if task is None or task.done():
             return False
         task.cancel()
+        notice = (
+            f"[Runtime control notice] The user stopped tool call {tool_call_id}. "
+            "Do not restart that same operation unless a different approach requires it. "
+            "Continue with the remaining task and the user's latest instructions."
+        )
+        self._live_messages.append(notice)
+        self._message_notifications.put_nowait(notice)
         return True
 
     def stop_active_tools(self) -> int:
