@@ -3,21 +3,29 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
 from app.tools.shell import ShellTool as LegacyShellTool
+from app.tools.shell_sessions import shell_sessions
 
 
 class ShellInput(BaseModel):
-    command: str = Field(
-        min_length=1,
-        max_length=20_000,
-        description="A CMD/PowerShell command on Windows or shell command on Unix.",
+    action: Literal["run", "start", "write", "read", "stop"] = Field(
+        default="run",
+        description="run waits for a command; start creates a persistent terminal; write/read interact with it; stop terminates it.",
     )
+    command: str = Field(
+        default="",
+        max_length=20_000,
+        description="Command for run or start. Windows uses CMD; Unix uses the system shell.",
+    )
+    session_id: str = Field(default="", max_length=128, description="Session ID returned by start, required for write/read/stop.")
+    input: str = Field(default="", max_length=20_000, description="Text or command to send to a persistent session for the write action.")
+    max_output_chars: int = Field(default=12_000, ge=1, le=40_000, description="Maximum buffered output returned by read.")
     working_directory: str = Field(
         default="",
         max_length=1024,
@@ -41,8 +49,10 @@ class ShellCapability(Tool):
         "Run a command in the user's local terminal on this computer. By default, commands run in the "
         "persistent AgentForge project workspace and can create files, run tests, invoke Python/Node tools, "
         "and inspect local project state. Set working_directory to an absolute local path to work elsewhere "
-        "on this computer; ordinary work there is autonomous. Commands may run for up to 300 seconds. This is terminal access, "
-        "not graphical desktop control. Commands run with the "
+        "on this computer; ordinary work there is autonomous. Use action=start for long-running servers or "
+        "processes, then action=read/write/stop with the returned session_id to manage that same terminal. "
+        "Use action=run for commands that should finish and return output. This is terminal access, not "
+        "graphical desktop control. Commands run with the "
         "current user's OS permissions and are not a full security sandbox."
     )
     Input = ShellInput
@@ -77,6 +87,28 @@ class ShellCapability(Tool):
         )
 
     async def run(self, args: ShellInput, ctx: ToolContext) -> ToolResult:
+        if args.action in {"write", "read", "stop"}:
+            if not args.session_id.strip():
+                raise ToolError(f"The {args.action} action requires session_id.")
+            try:
+                session = await shell_sessions.get(args.session_id.strip(), ctx.project_id)
+                if args.action == "write":
+                    if not args.input.strip():
+                        raise ToolError("The write action requires non-empty input.")
+                    await session.write(args.input)
+                    return ToolResult(content=f"Sent input to terminal session {args.session_id}.")
+                if args.action == "read":
+                    output = await session.read(args.max_output_chars)
+                    return ToolResult(content=f"Terminal session {args.session_id} ({session.cwd}):\\n{output}")
+                await shell_sessions.stop(args.session_id.strip(), ctx.project_id)
+                return ToolResult(content=f"Stopped terminal session {args.session_id}.")
+            except ValueError as exc:
+                raise ToolError(str(exc)) from exc
+            except (OSError, RuntimeError) as exc:
+                raise ToolError(f"Terminal session operation failed: {exc}", retryable=True) from exc
+
+        if not args.command.strip():
+            raise ToolError(f"The {args.action} action requires a non-empty command.")
         project_root = Path(ctx.workspace.root).resolve()
         requested = args.working_directory.strip()
         try:
@@ -108,6 +140,24 @@ class ShellCapability(Tool):
             config=ctx.config,
             timeout_seconds=args.timeout_seconds,
         )
+        if args.action == "start":
+            try:
+                session = await shell_sessions.start(
+                    project_id=ctx.project_id,
+                    cwd=cwd,
+                    command=args.command,
+                )
+            except (OSError, RuntimeError) as exc:
+                raise ToolError(f"Could not start persistent terminal session: {exc}", retryable=True) from exc
+            return ToolResult(content=(
+                f"Started persistent terminal session.\\n"
+                f"session_id: {session.session_id}\\n"
+                f"working_directory: {cwd}\\n"
+                f"process_id: {session.process.pid}\\n"
+                "Use action=read to inspect output, action=write to send more commands, "
+                "and action=stop to terminate this process."
+            ))
+
         try:
             output = await self._implementation.execute(args.command, context=shell_context)
         except ToolExecutionError as exc:
