@@ -49,6 +49,7 @@ class PendingApproval:
     execution_id: str
     tool: str
     kind: str
+    tool_call_id: str | None
     future: asyncio.Future[str]
     gate: "ApprovalGateImpl"
 
@@ -90,7 +91,7 @@ class ApprovalGateImpl:
                     policy = "ask"
         return policy
 
-    async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
+    async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "", tool_call_id: str | None = None) -> bool:
         kind = self._kind_for(tool)
         if (self.execution_id, tool) in self.allowed_for_run:
             return True
@@ -104,7 +105,7 @@ class ApprovalGateImpl:
         loop = asyncio.get_running_loop()
         approval_id = str(uuid4())
         future: asyncio.Future[str] = loop.create_future()
-        pending = PendingApproval(approval_id, self.execution_id, tool, kind, future, self)
+        pending = PendingApproval(approval_id, self.execution_id, tool, kind, tool_call_id, future, self)
         PENDING[approval_id] = pending
         decision = "deny"
         timed_out = False
@@ -161,11 +162,13 @@ class ApprovalGateImpl:
         return decision in {"allow_once", "allow_run"}
 
 
-def deny_pending_approvals(execution_id: str) -> int:
-    """Deny all pending approvals made stale by a live stop/replan instruction."""
+def deny_pending_approvals(execution_id: str, tool_call_id: str | None = None) -> int:
+    """Deny pending approvals for an execution, optionally limited to one tool call."""
     denied = 0
     for pending in tuple(PENDING.values()):
-        if pending.execution_id == execution_id and not pending.future.done():
+        if (pending.execution_id == execution_id
+                and (tool_call_id is None or pending.tool_call_id == tool_call_id)
+                and not pending.future.done()):
             pending.future.set_result("deny")
             denied += 1
     return denied
