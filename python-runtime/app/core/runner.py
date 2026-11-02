@@ -913,8 +913,11 @@ class RunnerCore:
                 "content": f"[Live message from the user]\n{live_message}",
             })
             try:
+                reply_spec = spec.model_copy(update={
+                    "params": spec.params.model_copy(update={"max_tokens": 256}),
+                })
                 turn = await self._execute_llm_turn(
-                    spec=spec,
+                    spec=reply_spec,
                     messages=reply_messages,
                     tools=[],
                     parent_span_id=parent_span_id,
