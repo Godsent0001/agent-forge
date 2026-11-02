@@ -205,9 +205,16 @@ def legacy_event_payload(event) -> dict:
 
 
 class Emitter:
-    def __init__(self, execution_id: str, hub: Hub, start_seq: int = 0) -> None:
+    def __init__(
+        self,
+        execution_id: str,
+        hub: Hub,
+        start_seq: int = 0,
+        conversation_id: str | None = None,
+    ) -> None:
         self.execution_id = execution_id
         self.hub = hub
+        self.conversation_id = conversation_id
         self._seq = start_seq
         self._lock = asyncio.Lock()
 
@@ -250,6 +257,15 @@ class Emitter:
                 data=event.data,
                 timestamp=event.ts,
             ))
+            if event.type == "assistant_message" and self.conversation_id:
+                content = event.data.get("content") if isinstance(event.data, dict) else None
+                if isinstance(content, str) and content.strip():
+                    db.add(models.ConversationMessage(
+                        conversation_id=self.conversation_id,
+                        role="assistant",
+                        content=content.strip(),
+                        execution_id=event.execution_id,
+                    ))
             db.commit()
         finally:
             db.close()
@@ -290,7 +306,7 @@ class ExecutionManager:
         return {"id": req.execution_id, "status": "running"}
 
     async def _run(self, req: RunRequest, token: CancelTokenImpl, project_settings: dict | None = None) -> None:
-        emitter = Emitter(req.execution_id, self.hub)
+        emitter = Emitter(req.execution_id, self.hub, conversation_id=req.conversation_id)
         status = "error"
         final_output = ""
         error: str | None = None
