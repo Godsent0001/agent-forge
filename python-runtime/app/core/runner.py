@@ -631,83 +631,106 @@ class RunnerCore:
                             return f"ERROR: tool result could not be durably persisted ({type(exc).__name__})."
 
                     batch_outcomes = []
-                    if req.options.parallel_tools and len(tool_call_tuples) > 1:
-                        results = await asyncio.gather(
-                            *[
-                                self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=active_agent_ids,
-                                )
-                                for tc in tool_call_tuples
-                            ],
-                            return_exceptions=True,
-                        )
-                        for tc, res in zip(tool_call_tuples, results):
-                            if isinstance(res, Exception):
-                                content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
-                                task_plan_store.fail(plan_id, tc.id, content, retryable=False)
-                            else:
-                                content = await persist_tool_result(tc, res)
-                            batch_outcomes.append(classify_tool_outcome(content))
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
-                    else:
-                        for tc in tool_call_tuples:
-                            try:
-                                content = await self._execute_single_tool(
-                                    tc=tc,
-                                    spec=spec,
-                                    graph=graph,
-                                    tool_instances=tool_instances,
-                                    req=req,
-                                    parent_span_id=agent_span_id,
-                                    depth=depth,
-                                    emit=emit,
-                                    cancel=cancel,
-                                    approvals=approvals,
-                                    workspace=workspace,
-                                    tools_factory=tools_factory,
-                                    memory=memory,
-                                    lessons=lessons,
-                                    intents=intents,
-                                    run_history=run_history,
-                                    budget=budget,
-                                    active_agent_ids=active_agent_ids,
-                                )
-                            except AgentCycleError:
-                                task_plan_store.fail(plan_id, tc.id, "Agent cycle detected", retryable=False)
-                                raise
-                            except Exception as exc:
-                                content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
-                                task_plan_store.fail(plan_id, tc.id, content, retryable=False)
-
-                            if not content.startswith("ERROR: tool crashed"):
-                                content = await persist_tool_result(tc, content)
-                            batch_outcomes.append(classify_tool_outcome(content))
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": content,
-                            })
+                    live_monitor_stop = None
+                    live_monitor_task = None
+                    if depth == 0 and callable(getattr(cancel, "wait_for_message", None)):
+                        live_monitor_stop = asyncio.Event()
+                        live_monitor_task = asyncio.create_task(self._monitor_live_messages(
+                            spec=spec,
+                            messages=messages,
+                            active_tool_names=", ".join(tc.name for tc in tool_call_tuples),
+                            parent_span_id=agent_span_id,
+                            emit=emit,
+                            budget=budget,
+                            cancel=cancel,
+                            stop_event=live_monitor_stop,
+                            scenario=req.options.scenario,
+                        ))
+                    try:
+                        if req.options.parallel_tools and len(tool_call_tuples) > 1:
+                            results = await asyncio.gather(
+                                *[
+                                    self._execute_single_tool(
+                                        tc=tc,
+                                        spec=spec,
+                                        graph=graph,
+                                        tool_instances=tool_instances,
+                                        req=req,
+                                        parent_span_id=agent_span_id,
+                                        depth=depth,
+                                        emit=emit,
+                                        cancel=cancel,
+                                        approvals=approvals,
+                                        workspace=workspace,
+                                        tools_factory=tools_factory,
+                                        memory=memory,
+                                        lessons=lessons,
+                                        intents=intents,
+                                        run_history=run_history,
+                                        budget=budget,
+                                        active_agent_ids=active_agent_ids,
+                                    )
+                                    for tc in tool_call_tuples
+                                ],
+                                return_exceptions=True,
+                            )
+                            for tc, res in zip(tool_call_tuples, results):
+                                if isinstance(res, Exception):
+                                    content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
+                                    task_plan_store.fail(plan_id, tc.id, content, retryable=False)
+                                else:
+                                    content = await persist_tool_result(tc, res)
+                                batch_outcomes.append(classify_tool_outcome(content))
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": content,
+                                })
+                        else:
+                            for tc in tool_call_tuples:
+                                try:
+                                    content = await self._execute_single_tool(
+                                        tc=tc,
+                                        spec=spec,
+                                        graph=graph,
+                                        tool_instances=tool_instances,
+                                        req=req,
+                                        parent_span_id=agent_span_id,
+                                        depth=depth,
+                                        emit=emit,
+                                        cancel=cancel,
+                                        approvals=approvals,
+                                        workspace=workspace,
+                                        tools_factory=tools_factory,
+                                        memory=memory,
+                                        lessons=lessons,
+                                        intents=intents,
+                                        run_history=run_history,
+                                        budget=budget,
+                                        active_agent_ids=active_agent_ids,
+                                    )
+                                except AgentCycleError:
+                                    task_plan_store.fail(plan_id, tc.id, "Agent cycle detected", retryable=False)
+                                    raise
+                                except Exception as exc:
+                                    content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+                                    task_plan_store.fail(plan_id, tc.id, content, retryable=False)
+    
+                                if not content.startswith("ERROR: tool crashed"):
+                                    content = await persist_tool_result(tc, content)
+                                batch_outcomes.append(classify_tool_outcome(content))
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": content,
+                                })
+                    finally:
+                        if live_monitor_stop is not None:
+                            live_monitor_stop.set()
+                        if live_monitor_task is not None:
+                            if getattr(cancel, "cancelled", False):
+                                live_monitor_task.cancel()
+                            await asyncio.gather(live_monitor_task, return_exceptions=True)
 
                     # Deliver messages received while tools were running. Explicit stop
                     # instructions cancel the in-flight process; other updates are applied here.
