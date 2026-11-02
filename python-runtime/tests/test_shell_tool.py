@@ -48,7 +48,7 @@ async def test_shell_does_not_pass_provider_keys_to_child_process(tmp_path, monk
     assert "must-not-leak" not in result
 
 
-def test_shell_prefers_project_virtual_environment(tmp_path, monkeypatch):
+def test_shell_uses_shared_runtime_environment_even_if_project_venv_exists(tmp_path, monkeypatch):
     from app.tools.shell import _safe_environment
 
     venv = tmp_path / ".venv"
@@ -58,5 +58,5 @@ def test_shell_prefers_project_virtual_environment(tmp_path, monkeypatch):
     python_exe.write_text("", encoding="utf-8")
     monkeypatch.setenv("PATH", "original-path")
     env = _safe_environment(tmp_path)
-    assert env["VIRTUAL_ENV"] == str(venv)
-    assert env["PATH"].startswith(str(bin_dir) + os.pathsep)
+    assert "VIRTUAL_ENV" not in env
+    assert env["PATH"] == "original-path"
