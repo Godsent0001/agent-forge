@@ -22,8 +22,9 @@ class ShellInput(BaseModel):
         default="",
         max_length=1024,
         description=(
-            "Optional directory on the user's computer. Omit to use the persistent project workspace. "
-            "Any explicit working-directory override requires approval."
+            "Optional absolute directory on the user's computer. Omit to use the persistent project workspace. "
+            "Ordinary local project directories are available autonomously; clearly destructive system-wide "
+            "commands still require approval."
         ),
     )
     timeout_seconds: int = Field(
@@ -39,8 +40,8 @@ class ShellCapability(Tool):
     default_description: ClassVar[str] = (
         "Run a command in the user's local terminal on this computer. By default, commands run in the "
         "persistent AgentForge project workspace and can create files, run tests, invoke Python/Node tools, "
-        "and inspect local project state. Set working_directory to work in another local folder; that request "
-        "requires approval. Commands may run for up to 300 seconds when requested. This is terminal access, "
+        "and inspect local project state. Set working_directory to an absolute local path to work elsewhere "
+        "on this computer; ordinary work there is autonomous. Commands may run for up to 300 seconds. This is terminal access, "
         "not graphical desktop control. Commands run with the "
         "current user's OS permissions and are not a full security sandbox."
     )
@@ -51,13 +52,29 @@ class ShellCapability(Tool):
         self._implementation = LegacyShellTool()
 
     def requires_approval(self, arguments: dict) -> bool:
-        # Moving the working directory away from the default project workspace is
-        # a meaningful increase in filesystem scope and always requires confirmation.
-        return bool(str(arguments.get("working_directory", "")).strip())
+        # Local directories are part of the user's delegated computer-use scope.
+        # Gate only commands that can damage the operating system or broadly destroy data.
+        command = str(arguments.get("command", "")).strip()
+        dangerous_patterns = (
+            r"\\brm\\s+-[^\\n]*r[^\\n]*f",
+            r"\\b(del|erase)\\s+/(?:s|q).*",
+            r"\\b(rmdir|rd)\\s+/(?:s|q)",
+            r"\\b(format|diskpart|shutdown|restart-computer|stop-computer)\\b",
+            r"\\b(remove-item|clear-disk)\\b.*(?:-recurse|-force)",
+            r"\\b(reg\\s+delete|reg\\s+add)\\b",
+            r"\\b(sudo\\s+)?(mkfs|fdisk|parted|dd)\\b",
+            r"\\b(sudo\\s+)?(userdel|usermod|passwd|iptables|ufw)\\b",
+            r"\\b(sudo\\s+)?(systemctl|service)\\s+(stop|disable|mask)",
+        )
+        return any(re.search(pattern, command, re.IGNORECASE) for pattern in dangerous_patterns)
 
     def approval_reason(self, arguments: dict) -> str:
+        command = str(arguments.get("command", "")).strip()
         directory = str(arguments.get("working_directory", "")).strip()
-        return f"Run a local terminal command with working directory: {directory}"
+        return (
+            "This command may perform a destructive or system-wide operation. "
+            f"Command: {command[:240]} · Working directory: {directory or 'project workspace'}"
+        )
 
     async def run(self, args: ShellInput, ctx: ToolContext) -> ToolResult:
         project_root = Path(ctx.workspace.root).resolve()
