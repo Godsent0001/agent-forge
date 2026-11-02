@@ -1098,7 +1098,7 @@ class RunnerCore:
                 register_tool = getattr(cancel, "register_tool", None)
                 unregister_tool = getattr(cancel, "unregister_tool", None)
                 if callable(register_tool):
-                    register_tool(tc.id, child_run_task)
+                    register_tool(tc.id, child_run_task, tc.name)
                 try:
                     return await child_run_task
                 except asyncio.CancelledError:
@@ -1173,7 +1173,7 @@ class RunnerCore:
                 register_tool = getattr(cancel, "register_tool", None)
                 unregister_tool = getattr(cancel, "unregister_tool", None)
                 if callable(register_tool):
-                    register_tool(tc.id, tool_task)
+                    register_tool(tc.id, tool_task, tc.name)
                 try:
                     res: ToolResult = await asyncio.wait_for(
                         tool_task,
