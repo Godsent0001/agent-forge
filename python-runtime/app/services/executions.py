@@ -93,6 +93,7 @@ class CancelTokenImpl:
         self._message_notifications: asyncio.Queue[str] = asyncio.Queue()
         self._replied_messages: set[str] = set()
         self._active_tools: dict[str, asyncio.Task] = {}
+        self._active_tool_names: dict[str, str] = {}
 
     @property
     def cancelled(self) -> bool:
@@ -112,10 +113,20 @@ class CancelTokenImpl:
         self._message_notifications.put_nowait(content)
         # Explicit stop/replan instructions interrupt in-flight tools and invalidate
         # any approval that was requested for the now-obsolete operation.
-        interrupted = bool(
-            self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content)
-        )
-        if interrupted:
+        stop_match = self._STOP_REQUEST.search(content)
+        replan = bool(self._REPLAN_INTERRUPT.search(content))
+        interrupted = bool(stop_match or replan)
+        if stop_match:
+            lowered = content.casefold()
+            target = next(
+                (name for marker, name in (
+                    ("command", "shell"), ("shell", "shell"), ("terminal", "shell"),
+                    ("browser", "browser"), ("search", "web_search"),
+                ) if marker in lowered),
+                None,
+            )
+            self.stop_active_tools(tool_name=target)
+        elif replan:
             self.stop_active_tools()
         return interrupted
 
@@ -149,12 +160,14 @@ class CancelTokenImpl:
     def was_message_replied(self, content: str) -> bool:
         return content.strip() in self._replied_messages
 
-    def register_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
+    def register_tool(self, tool_call_id: str, task: asyncio.Task, tool_name: str = "") -> None:
         self._active_tools[tool_call_id] = task
+        self._active_tool_names[tool_call_id] = tool_name.casefold()
 
     def unregister_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
         if self._active_tools.get(tool_call_id) is task:
             self._active_tools.pop(tool_call_id, None)
+            self._active_tool_names.pop(tool_call_id, None)
 
     def record_tool_stop_notice(self, tool_call_id: str) -> None:
         notice = (
@@ -174,9 +187,11 @@ class CancelTokenImpl:
         self.record_tool_stop_notice(tool_call_id)
         return True
 
-    def stop_active_tools(self) -> int:
+    def stop_active_tools(self, tool_name: str | None = None) -> int:
         stopped = 0
-        for task in tuple(self._active_tools.values()):
+        for tool_call_id, task in tuple(self._active_tools.items()):
+            if tool_name and self._active_tool_names.get(tool_call_id) != tool_name:
+                continue
             if not task.done():
                 task.cancel()
                 stopped += 1
