@@ -27,7 +27,10 @@ async def test_typed_shell_runs_in_project_workspace_by_default(monkeypatch, tmp
     tool = shell_capability.ShellCapability()
     result = await tool.run(tool.Input(command="python --version"), ctx)
 
-    assert tool.Input.model_json_schema()["properties"].keys() == {"command", "working_directory", "timeout_seconds"}
+    assert set(tool.Input.model_json_schema()["properties"]) == {
+        "action", "command", "session_id", "input", "max_output_chars",
+        "working_directory", "timeout_seconds",
+    }
     assert calls == [("python --version", project.resolve(), 60)]
     assert result.content == "Exit code: 0"
     assert not tool.requires_approval({"command": "python --version"})
@@ -52,7 +55,9 @@ async def test_typed_shell_requires_approval_for_another_local_directory(monkeyp
         workspace=SimpleNamespace(root=project), cancel=None, config={},
     )
     tool = shell_capability.ShellCapability()
-    assert tool.requires_approval({"working_directory": str(external)})
+    assert not tool.requires_approval({"command": "dir", "working_directory": str(external)})
+    assert tool.requires_approval({"command": "rm -rf /important-data"})
+    assert not tool.requires_approval({"command": "npm install", "working_directory": str(external)})
     result = await tool.run(
         tool.Input(command="dir", working_directory=str(external)), ctx
     )
@@ -67,4 +72,7 @@ def test_default_factory_exposes_typed_shell_schema():
 
     tool = DefaultToolFactory().build(ToolBinding(id="shell-1", kind="shell", name="shell"))
     assert isinstance(tool, shell_capability.ShellCapability)
-    assert {"command", "working_directory", "timeout_seconds"} == set(tool.Input.model_json_schema()["properties"])
+    assert {
+        "action", "command", "session_id", "input", "max_output_chars",
+        "working_directory", "timeout_seconds",
+    } == set(tool.Input.model_json_schema()["properties"])
