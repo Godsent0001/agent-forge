@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import asyncio
 from uuid import uuid4
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from pydantic import BaseModel
 
 from app import models
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec
+from app.core.llm.types import ToolCall
 from app.core.runner import ReplyUserTool, RunnerCore
+from app.contracts.tools import ToolResult
 from app.db import Base
 from app.services import executions as execution_service
 from app.services.executions import CancelTokenImpl, Emitter, Hub
@@ -63,6 +67,75 @@ async def test_live_status_message_does_not_stop_an_active_tool():
     assert token.stop_tool("tool-call-2") is True
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.asyncio
+async def test_runner_can_stop_one_active_tool_without_cancelling_the_run(tmp_path):
+    runner = RunnerCore()
+    token = CancelTokenImpl()
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    class Input(BaseModel):
+        value: str = "test"
+
+    class SlowTool:
+        kind = "slow"
+        Input = Input
+        permissions = set()
+
+        async def run(self, args, ctx):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                stopped.set()
+                raise
+            return ToolResult(content="unexpected completion")
+
+    spec = AgentSpec(
+        id="agent-stop",
+        name="Stop test",
+        provider="venice",
+        model="test-model",
+    )
+    graph = AgentGraph(root_id=spec.id, agents={spec.id: spec})
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    tool_task = asyncio.create_task(runner._execute_single_tool(
+        tc=ToolCall(id="tool-call-stop", name="slow", arguments={}),
+        spec=spec,
+        graph=graph,
+        tool_instances={"slow": SlowTool()},
+        req=SimpleNamespace(execution_id="run-stop", project_id="project-stop"),
+        parent_span_id=None,
+        depth=0,
+        emit=emit,
+        cancel=token,
+        approvals=SimpleNamespace(check=lambda **kwargs: _allow_tool()),
+        workspace=SimpleNamespace(root=tmp_path),
+        tools_factory=None,
+        memory=None,
+        lessons=None,
+        intents=None,
+        run_history=None,
+        budget=SimpleNamespace(record_tool_call=lambda: None),
+        active_agent_ids=set(),
+    ))
+    await started.wait()
+    assert token.stop_tool("tool-call-stop") is True
+    result = await tool_task
+
+    assert stopped.is_set()
+    assert token.cancelled is False
+    assert "was stopped before completion" in result
+
+
+async def _allow_tool() -> bool:
+    return True
 
 
 def test_runner_always_exposes_an_interim_reply_control():
