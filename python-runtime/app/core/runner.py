@@ -98,6 +98,23 @@ def _safe_tool_arguments(arguments: dict[str, Any], *, max_chars: int = 1600) ->
 
 
 
+def _format_live_instruction(cancel: Any, message: str) -> str:
+    was_replied = getattr(cancel, "was_message_replied", None)
+    if callable(was_replied) and was_replied(message):
+        return (
+            "[Live instruction from the user — already acknowledged during the active tool call]\n"
+            f"{message}\n"
+            "Do not repeat the acknowledgement. Apply the instruction to unfinished work, "
+            "preserve completed work, and continue."
+        )
+    return (
+        "[Live instruction from the user — update the active task]\n"
+        f"{message}\n"
+        "Apply it to unfinished work, preserve completed work, and let newer explicit instructions "
+        "override conflicting older ones. Respond if a reply is still needed."
+    )
+
+
 def _drain_live_instructions(cancel: Any) -> list[str]:
     """Read live user messages from the execution control channel, if supported."""
     drain = getattr(cancel, "drain_messages", None)
@@ -529,13 +546,7 @@ class RunnerCore:
                         for live_message in live_messages:
                             messages.append({
                                 "role": "user",
-                                "content": (
-                                    "[Live instruction from the user — update the active task]\n"
-                                    f"{live_message}\n"
-                                    "Apply this instruction to the unfinished work. It supersedes any "
-                                    "conflicting earlier requirement. Preserve valid completed work and "
-                                    "continue unless the user explicitly asked you to stop."
-                                ),
+                                "content": _format_live_instruction(cancel, live_message),
                             })
                         continue
 
@@ -549,11 +560,7 @@ class RunnerCore:
                             for live_message in live_messages:
                                 messages.append({
                                     "role": "user",
-                                    "content": (
-                                        "[Live instruction from the user — update the active task]\n"
-                                        f"{live_message}\n"
-                                        "Apply it to the unfinished work and respond to the user."
-                                    ),
+                                    "content": _format_live_instruction(cancel, live_message),
                                 })
                             continue
                         return turn.text or ""
@@ -737,12 +744,7 @@ class RunnerCore:
                     for live_message in _drain_live_instructions(cancel):
                         messages.append({
                             "role": "user",
-                            "content": (
-                                "[Live instruction from the user — update the active task]\n"
-                                f"{live_message}\n"
-                                "Apply this to the remaining work, preserving valid completed work. "
-                                "Newer explicit instructions override conflicting older ones."
-                            ),
+                            "content": _format_live_instruction(cancel, live_message),
                         })
 
                     # Keep a compact, tool-agnostic execution ledger in the model context.
