@@ -472,7 +472,7 @@ class ExecutionManager:
         # and therefore has not registered an executable child task yet.
         from app.infra.approvals import deny_pending_approvals
 
-        denied = deny_pending_approvals(execution_id)
+        denied = deny_pending_approvals(execution_id, tool_call_id)
         if denied:
             token.record_tool_stop_notice(tool_call_id)
             return True
