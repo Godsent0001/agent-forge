@@ -97,12 +97,12 @@ async def test_runner_can_stop_one_active_tool_without_cancelling_the_run(tmp_pa
     started = asyncio.Event()
     stopped = asyncio.Event()
 
-    class Input(BaseModel):
+    class SlowInput(BaseModel):
         value: str = "test"
 
     class SlowTool:
         kind = "slow"
-        Input = Input
+        Input = SlowInput
         permissions = set()
 
         async def run(self, args, ctx):
