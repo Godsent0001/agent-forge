@@ -700,37 +700,45 @@ class RunnerCore:
                                     "content": content,
                                 })
                         else:
-                            for tc in tool_call_tuples:
-                                try:
-                                    content = await self._execute_single_tool(
-                                        tc=tc,
-                                        spec=spec,
-                                        graph=graph,
-                                        tool_instances=tool_instances,
-                                        req=req,
-                                        parent_span_id=agent_span_id,
-                                        depth=depth,
-                                        emit=emit,
-                                        cancel=cancel,
-                                        approvals=approvals,
-                                        workspace=workspace,
-                                        tools_factory=tools_factory,
-                                        memory=memory,
-                                        lessons=lessons,
-                                        intents=intents,
-                                        run_history=run_history,
-                                        budget=budget,
-                                        active_agent_ids=active_agent_ids,
+                            for index, tc in enumerate(tool_call_tuples):
+                                pending_interrupt = getattr(cancel, "has_pending_interrupt", None)
+                                if callable(pending_interrupt) and pending_interrupt():
+                                    content = (
+                                        "ERROR: this tool call was not started because a newer user "
+                                        "instruction superseded the remaining actions in this tool batch."
                                     )
-                                except AgentCycleError:
-                                    task_plan_store.fail(plan_id, tc.id, "Agent cycle detected", retryable=False)
-                                    raise
-                                except Exception as exc:
-                                    content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
                                     task_plan_store.fail(plan_id, tc.id, content, retryable=False)
-    
-                                if not content.startswith("ERROR: tool crashed"):
-                                    content = await persist_tool_result(tc, content)
+                                else:
+                                    try:
+                                        content = await self._execute_single_tool(
+                                            tc=tc,
+                                            spec=spec,
+                                            graph=graph,
+                                            tool_instances=tool_instances,
+                                            req=req,
+                                            parent_span_id=agent_span_id,
+                                            depth=depth,
+                                            emit=emit,
+                                            cancel=cancel,
+                                            approvals=approvals,
+                                            workspace=workspace,
+                                            tools_factory=tools_factory,
+                                            memory=memory,
+                                            lessons=lessons,
+                                            intents=intents,
+                                            run_history=run_history,
+                                            budget=budget,
+                                            active_agent_ids=active_agent_ids,
+                                        )
+                                    except AgentCycleError:
+                                        task_plan_store.fail(plan_id, tc.id, "Agent cycle detected", retryable=False)
+                                        raise
+                                    except Exception as exc:
+                                        content = f"ERROR: tool crashed ({type(exc).__name__}: {exc})"
+                                        task_plan_store.fail(plan_id, tc.id, content, retryable=False)
+
+                                    if not content.startswith("ERROR: tool crashed"):
+                                        content = await persist_tool_result(tc, content)
                                 batch_outcomes.append(classify_tool_outcome(content))
                                 messages.append({
                                     "role": "tool",
