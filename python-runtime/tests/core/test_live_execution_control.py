@@ -82,9 +82,9 @@ def test_runner_always_exposes_an_interim_reply_control():
         run_history=None,
     )
 
-    reply = next(tool for tool in specs if tool.name == "reply_user")
+    reply = next(tool for tool in specs if tool.name == "agentforge_reply_user")
     assert reply.parameters["properties"]["message"]["type"] == "string"
-    assert isinstance(instances["reply_user"], ReplyUserTool)
+    assert isinstance(instances["agentforge_reply_user"], ReplyUserTool)
     assert "continue" in reply.description.lower()
 
 
