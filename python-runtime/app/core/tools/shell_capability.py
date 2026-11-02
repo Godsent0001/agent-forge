@@ -1,8 +1,8 @@
 """Typed local terminal capability for RunnerCore."""
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar, Literal
 
