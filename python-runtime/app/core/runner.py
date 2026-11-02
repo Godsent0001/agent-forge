@@ -894,7 +894,11 @@ class RunnerCore:
                 ),
             }
             if reply_messages and reply_messages[0].get("role") == "system":
-                reply_messages.insert(1, live_reply_system)
+                original_system = reply_messages[0].get("content", "")
+                reply_messages[0] = {
+                    **reply_messages[0],
+                    "content": f"{original_system}\n\n{live_reply_system['content']}",
+                }
             else:
                 reply_messages.insert(0, live_reply_system)
             reply_messages.extend(reply_context)
