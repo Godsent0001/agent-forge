@@ -66,4 +66,9 @@ def test_browser_and_web_search_have_provider_safe_names_and_string_input_schema
         schema = tool_spec(binding, DefaultToolFactory().build(binding))
         assert schema.name == sanitize_tool_name(display_name)
         assert schema.parameters["type"] == "object"
-        assert schema.parameters["properties"]["input"]["type"] == "string"
+        properties = schema.parameters["properties"]
+        if kind == "browser":
+            assert properties["url"]["type"] == "string"
+            assert properties["action"]["enum"] == ["navigate", "click", "fill", "screenshot", "read"]
+        else:
+            assert properties["query"]["type"] == "string"
