@@ -73,6 +73,7 @@ class ShellCapability(Tool):
             r"\b(sudo\s+)?rm\s+-[^\n]*r[^\n]*f",
             r"\b(del|erase)\s+/(?:s|q).*",
             r"\b(rmdir|rd)\s+/(?:s|q)",
+            r"\b(rm|del|erase|remove-item)\b[^\n]*(?:\.env|credentials|secrets|id_rsa|id_ed25519|\.pem|\.key|\.db|\.sqlite)",
             r"\b(format|diskpart|shutdown|restart-computer|stop-computer)\b",
             r"\b(remove-item|clear-disk)\b.*(?:-recurse|-force)",
             r"\b(reg\s+delete|reg\s+add)\b",
