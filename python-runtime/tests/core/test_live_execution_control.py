@@ -45,6 +45,28 @@ async def test_live_stop_instruction_cancels_the_active_tool_without_cancelling_
 
 
 @pytest.mark.asyncio
+async def test_live_replacement_instruction_interrupts_an_obsolete_tool():
+    token = CancelTokenImpl()
+    started = asyncio.Event()
+
+    async def long_running_tool():
+        started.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(long_running_tool())
+    token.register_tool("tool-call-replan", task)
+    await started.wait()
+
+    instruction = "Use PostgreSQL instead of MongoDB."
+    token.enqueue_message(instruction)
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert token.cancelled is False
+    assert token.drain_messages() == [instruction]
+
+
+@pytest.mark.asyncio
 async def test_live_status_message_does_not_stop_an_active_tool():
     token = CancelTokenImpl()
     started = asyncio.Event()
