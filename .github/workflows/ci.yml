@@ -13,6 +13,8 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
       - run: cd python-runtime && uv sync --group dev
       - run: cd python-runtime && uv run ruff check .
+      - name: Install Playwright Chromium for browser tests
+        run: cd python-runtime && uv run playwright install --with-deps chromium
       - run: cd python-runtime && uv run pytest -m "not live"
       - name: Validate FakeRunner fixture export
         run: cd python-runtime && uv run python scripts/export_fixtures.py
