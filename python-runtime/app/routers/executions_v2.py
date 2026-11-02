@@ -57,6 +57,11 @@ class ResolveApprovalRequest(BaseModel):
     decision: Literal["allow_once", "allow_run", "deny"]
 
 
+class LiveMessageRequest(BaseModel):
+    conversation_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=100_000)
+
+
 def _execution_detail(row: models.Execution) -> dict:
     return {
         "id": row.id,
@@ -428,6 +433,72 @@ def get_execution_file(execution_id: str, relpath: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Workspace file not found")
     return FileResponse(path=path, headers=file_response_headers(path))
+
+@router.post("/{execution_id}/messages")
+async def send_live_execution_message(
+    execution_id: str,
+    payload: LiveMessageRequest,
+):
+    """Persist and deliver a new user instruction to an already-running execution."""
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if execution.status != "running":
+            raise HTTPException(status_code=409, detail="Execution is no longer running")
+        conversation = db.get(models.Conversation, payload.conversation_id)
+        if (
+            conversation is None
+            or conversation.project_id != execution.project_id
+            or conversation.agent_id != execution.root_agent_id
+        ):
+            raise HTTPException(status_code=404, detail="Conversation not found for this execution")
+
+        message = models.ConversationMessage(
+            conversation_id=conversation.id,
+            role="user",
+            content=payload.content.strip(),
+            execution_id=execution_id,
+        )
+        if not message.content:
+            raise HTTPException(status_code=422, detail="Message content cannot be empty")
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        response = {
+            "id": message.id,
+            "conversation_id": message.conversation_id,
+            "role": message.role,
+            "content": message.content,
+            "execution_id": message.execution_id,
+            "created_at": message.created_at,
+        }
+    finally:
+        db.close()
+
+    if not manager.send_message(execution_id, payload.content):
+        raise HTTPException(status_code=409, detail="Execution stopped before the instruction could be delivered")
+    return {"status": "queued", "message": response}
+
+
+@router.post("/{execution_id}/tools/{tool_call_id}/cancel")
+async def stop_execution_tool(execution_id: str, tool_call_id: str):
+    """Stop one active tool call without cancelling the surrounding agent run."""
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if execution.status != "running":
+            raise HTTPException(status_code=409, detail="Execution is no longer running")
+    finally:
+        db.close()
+
+    if not manager.stop_tool(execution_id, tool_call_id):
+        raise HTTPException(status_code=409, detail="Tool call is no longer running")
+    return {"status": "stopping", "tool_call_id": tool_call_id}
+
 
 @router.post("/{execution_id}/cancel")
 async def cancel_execution(execution_id: str):
