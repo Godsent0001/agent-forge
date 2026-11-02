@@ -57,6 +57,7 @@ async def test_typed_shell_requires_approval_for_another_local_directory(monkeyp
     tool = shell_capability.ShellCapability()
     assert not tool.requires_approval({"command": "dir", "working_directory": str(external)})
     assert tool.requires_approval({"command": "rm -rf /important-data"})
+    assert tool.requires_approval({"action": "write", "input": "sudo rm -rf /important-data"})
     assert not tool.requires_approval({"command": "npm install", "working_directory": str(external)})
     result = await tool.run(
         tool.Input(command="dir", working_directory=str(external)), ctx
