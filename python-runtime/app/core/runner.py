@@ -95,6 +95,19 @@ def _safe_tool_arguments(arguments: dict[str, Any], *, max_chars: int = 1600) ->
 
 
 
+def _drain_live_instructions(cancel: Any) -> list[str]:
+    """Read live user messages from the execution control channel, if supported."""
+    drain = getattr(cancel, "drain_messages", None)
+    if not callable(drain):
+        return []
+    try:
+        messages = drain()
+    except Exception:
+        logger.exception("Could not read live execution instructions")
+        return []
+    return [message.strip() for message in messages if isinstance(message, str) and message.strip()]
+
+
 def _with_attachment_context(task: str, attachments: list[Any]) -> str:
     """Tell every agent in a run which clean, run-private files are available."""
     if not attachments or "[Available attachments for this run]" in task:
@@ -404,11 +417,17 @@ class RunnerCore:
                     "\n\n[AgentForge project workspace]\n"
                     f"Absolute workspace path: {workspace.root}\n"
                     "This is a persistent project workspace shared by executions in this project. "
-                    "Use workspace-relative paths for file tools and shell commands. "
-                    "After creating or modifying files, report their absolute paths using this root. "
-                    "Do not run extra commands just to rediscover paths or repeat checks already "
-                    "confirmed by a successful tool result. Verify a deliverable once at a meaningful "
-                    "checkpoint, then summarize the exact files created."
+                    "Use workspace-relative paths for file tools and shell commands. The shell can also "
+                    "work in other absolute directories on this local computer when the task requires it. "
+                    "Ordinary project work, file creation/modification, dependency installation, tests, builds, "
+                    "and local process management are autonomous by default. Ask for approval only for clearly "
+                    "destructive system-wide actions or exposing private data/credentials. "
+                    "The user may send new instructions while you work: incorporate them immediately at the "
+                    "next safe checkpoint, let newer explicit instructions override conflicting older ones, "
+                    "preserve completed work, and revise only the remaining plan. If a live instruction explicitly "
+                    "says to stop the current command/tool, stop that in-flight operation before continuing. "
+                    "After creating or modifying files, report their absolute paths. Avoid redundant discovery "
+                    "or checks; verify deliverables at meaningful checkpoints."
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -466,9 +485,41 @@ class RunnerCore:
                         scenario=req.options.scenario,
                     )
 
+                    # A message received while the model was thinking makes its
+                    # just-produced plan potentially stale. Discard that turn and
+                    # ask the model again with the latest instruction in context.
+                    live_messages = _drain_live_instructions(cancel)
+                    if live_messages:
+                        for live_message in live_messages:
+                            messages.append({
+                                "role": "user",
+                                "content": (
+                                    "[Live instruction from the user — update the active task]\n"
+                                    f"{live_message}\n"
+                                    "Apply this instruction to the unfinished work. It supersedes any "
+                                    "conflicting earlier requirement. Preserve valid completed work and "
+                                    "continue unless the user explicitly asked you to stop."
+                                ),
+                            })
+                        continue
+
                     messages.append(turn.message)
 
                     if not turn.tool_calls:
+                        # Catch instructions that arrived just as the final model
+                        # response completed; never finish on a stale answer.
+                        live_messages = _drain_live_instructions(cancel)
+                        if live_messages:
+                            for live_message in live_messages:
+                                messages.append({
+                                    "role": "user",
+                                    "content": (
+                                        "[Live instruction from the user — update the active task]\n"
+                                        f"{live_message}\n"
+                                        "Apply it to the unfinished work and respond to the user."
+                                    ),
+                                })
+                            continue
                         return turn.text or ""
 
                     tool_call_tuples = []
@@ -621,6 +672,19 @@ class RunnerCore:
                                 "tool_call_id": tc.id,
                                 "content": content,
                             })
+
+                    # Deliver messages received while tools were running. Explicit stop
+                    # instructions cancel the in-flight process; other updates are applied here.
+                    for live_message in _drain_live_instructions(cancel):
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "[Live instruction from the user — update the active task]\n"
+                                f"{live_message}\n"
+                                "Apply this to the remaining work, preserving valid completed work. "
+                                "Newer explicit instructions override conflicting older ones."
+                            ),
+                        })
 
                     # Keep a compact, tool-agnostic execution ledger in the model context.
                     # It survives compaction of old raw outputs and makes progress/recovery
@@ -856,11 +920,24 @@ class RunnerCore:
                 timeout_seconds = _TOOL_TIMEOUT_SECONDS_BY_KIND.get(
                     getattr(tool_obj, "kind", tc.name), _DEFAULT_TOOL_TIMEOUT_SECONDS
                 )
+                tool_task = asyncio.create_task(tool_obj.run(args_inst, ctx))
+                register_tool = getattr(cancel, "register_tool", None)
+                unregister_tool = getattr(cancel, "unregister_tool", None)
+                if callable(register_tool):
+                    register_tool(tc.id, tool_task)
                 try:
                     res: ToolResult = await asyncio.wait_for(
-                        tool_obj.run(args_inst, ctx),
+                        tool_task,
                         timeout=timeout_seconds,
                     )
+                except asyncio.CancelledError:
+                    if getattr(cancel, "cancelled", False):
+                        raise
+                    logger.info(
+                        "Tool stopped independently execution_id=%s tool=%s tool_call_id=%s",
+                        req.execution_id, tc.name, tc.id,
+                    )
+                    return f"ERROR: tool '{tc.name}' was stopped before completion. Re-evaluate the user's latest instruction and choose the next action."
                 except asyncio.TimeoutError:
                     logger.warning(
                         "Tool timed out execution_id=%s tool=%s tool_call_id=%s timeout_seconds=%s",
@@ -870,6 +947,9 @@ class RunnerCore:
                         f"ERROR: tool '{tc.name}' exceeded its {timeout_seconds}s execution "
                         "deadline. The operation was cancelled; inspect its configuration or retry."
                     )
+                finally:
+                    if callable(unregister_tool):
+                        unregister_tool(tc.id, tool_task)
                 # Persist files explicitly returned by a tool, using workspace path guards.
                 if res.artifacts:
                     lifecycle = ExecutionArtifactLifecycle(project_dir(req.project_id), req.project_id)
