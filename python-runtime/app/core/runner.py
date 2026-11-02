@@ -778,6 +778,146 @@ class RunnerCore:
         finally:
             active_agent_ids.remove(agent_id)
 
+    async def _monitor_live_messages(
+        self,
+        *,
+        spec: AgentSpec,
+        messages: list[dict[str, Any]],
+        active_tool_names: str,
+        parent_span_id: str,
+        emit: Emit,
+        budget: BudgetTracker,
+        cancel: CancelToken,
+        stop_event: asyncio.Event,
+        scenario: str | None,
+    ) -> None:
+        """Answer live user messages while a root-agent tool batch is still running."""
+        wait_for_message = getattr(cancel, "wait_for_message", None)
+        if not callable(wait_for_message):
+            return
+        reply_context: list[dict[str, str]] = []
+        while not getattr(cancel, "cancelled", False):
+            message_task = asyncio.create_task(wait_for_message())
+            stop_task = asyncio.create_task(stop_event.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    {message_task, stop_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if message_task not in done:
+                    break
+                live_message = message_task.result()
+            finally:
+                for task in (message_task, stop_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(message_task, stop_task, return_exceptions=True)
+
+            interrupt_check = getattr(cancel, "message_interrupts", None)
+            if callable(interrupt_check) and interrupt_check(live_message):
+                # The main execution loop will re-plan after the obsolete tool is stopped.
+                continue
+            await self._send_live_interim_reply(
+                spec=spec,
+                messages=messages,
+                reply_context=reply_context,
+                live_message=live_message,
+                active_tool_names=active_tool_names,
+                parent_span_id=parent_span_id,
+                emit=emit,
+                budget=budget,
+                cancel=cancel,
+                scenario=scenario,
+            )
+
+    async def _send_live_interim_reply(
+        self,
+        *,
+        spec: AgentSpec,
+        messages: list[dict[str, Any]],
+        reply_context: list[dict[str, str]],
+        live_message: str,
+        active_tool_names: str,
+        parent_span_id: str,
+        emit: Emit,
+        budget: BudgetTracker,
+        cancel: CancelToken,
+        scenario: str | None,
+    ) -> None:
+        """Generate a short no-tools reply without touching the main task context."""
+        response = ""
+        if not self.fake_llm:
+            reply_messages = [dict(message) for message in messages]
+            if reply_messages and reply_messages[-1].get("tool_calls"):
+                reply_messages.pop()
+                reply_messages.append({
+                    "role": "assistant",
+                    "content": (
+                        f"The main task is currently executing: {active_tool_names}. "
+                        "That operation has not returned yet."
+                    ),
+                })
+            live_reply_system = {
+                "role": "system",
+                "content": (
+                    "You are answering one live user message while the main AgentForge execution "
+                    "continues in the background. The current operation is still running: "
+                    f"{active_tool_names}. Do not claim its result or say the task is complete. "
+                    "Answer briefly and truthfully, acknowledge any new instruction, and make clear "
+                    "that the main agent will continue working after this operation reaches a safe checkpoint. "
+                    "Do not attempt to call tools."
+                ),
+            }
+            if reply_messages and reply_messages[0].get("role") == "system":
+                reply_messages.insert(1, live_reply_system)
+            else:
+                reply_messages.insert(0, live_reply_system)
+            reply_messages.extend(reply_context)
+            reply_messages.append({
+                "role": "user",
+                "content": f"[Live message from the user]\n{live_message}",
+            })
+            try:
+                turn = await self._execute_llm_turn(
+                    spec=spec,
+                    messages=reply_messages,
+                    tools=[],
+                    parent_span_id=parent_span_id,
+                    emit=emit,
+                    budget=budget,
+                    scenario=scenario,
+                )
+                response = (turn.text or "").strip()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Could not generate an interim response to a live user message")
+        if not response:
+            response = (
+                f"I received your message. I'm currently working on {active_tool_names}. "
+                "I'll apply your instruction when this operation reaches a safe checkpoint."
+            )
+
+        reply_context.extend([
+            {"role": "user", "content": live_message},
+            {"role": "assistant", "content": response},
+        ])
+        await emit(EventDraft(
+            type="assistant_message",
+            name=spec.name,
+            parent_span_id=parent_span_id,
+            data={
+                "content": response,
+                "interim": True,
+                "live_response": True,
+                "message_id": str(uuid4()),
+                "active_tools": active_tool_names,
+            },
+        ))
+        mark_replied = getattr(cancel, "mark_message_replied", None)
+        if callable(mark_replied):
+            mark_replied(live_message)
+
     async def _execute_llm_turn(
         self,
         spec: AgentSpec,
