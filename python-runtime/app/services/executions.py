@@ -89,6 +89,7 @@ class CancelTokenImpl:
     def __init__(self) -> None:
         self._cancelled = False
         self._live_messages: list[str] = []
+        self._control_notices: list[str] = []
         self._message_notifications: asyncio.Queue[str] = asyncio.Queue()
         self._replied_messages: set[str] = set()
         self._active_tools: dict[str, asyncio.Task] = {}
@@ -119,8 +120,9 @@ class CancelTokenImpl:
         return interrupted
 
     def drain_messages(self) -> list[str]:
-        messages = self._live_messages
+        messages = self._live_messages + self._control_notices
         self._live_messages = []
+        self._control_notices = []
         # Keep the notification channel aligned for messages handled at a safe
         # checkpoint before a tool-monitor task has consumed their notification.
         while True:
@@ -137,6 +139,9 @@ class CancelTokenImpl:
         return bool(
             self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content)
         )
+
+    def has_pending_interrupt(self) -> bool:
+        return any(self.message_interrupts(message) for message in self._live_messages)
 
     def mark_message_replied(self, content: str) -> None:
         self._replied_messages.add(content.strip())
@@ -157,8 +162,9 @@ class CancelTokenImpl:
             "Do not restart that same operation unless a different approach requires it. "
             "Continue with the remaining task and the user's latest instructions."
         )
-        self._live_messages.append(notice)
-        self._message_notifications.put_nowait(notice)
+        # Internal control notices belong in the next model context, but must not
+        # wake the live-user-message monitor or trigger a fabricated user reply.
+        self._control_notices.append(notice)
 
     def stop_tool(self, tool_call_id: str) -> bool:
         task = self._active_tools.get(tool_call_id)
