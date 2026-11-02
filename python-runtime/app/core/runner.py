@@ -453,7 +453,7 @@ class RunnerCore:
                     "next safe checkpoint, let newer explicit instructions override conflicting older ones, "
                     "preserve completed work, and revise only the remaining plan. If a live instruction explicitly "
                     "says to stop the current command/tool, stop that in-flight operation before continuing. "
-                    "You also have reply_user: call it to acknowledge a live instruction or answer a status question "
+                    "You also have agentforge_reply_user: call it to acknowledge a live instruction or answer a status question "
                     "while work is still in progress; after it returns, continue the unfinished task. Do not treat "
                     "reply_user as task completion. Only finish when the requested work is actually complete or "
                     "the user asks you to stop. "
@@ -473,7 +473,7 @@ class RunnerCore:
                 native_tool_specs, requested_tool = constrain_tools_for_task(task, all_tool_specs)
                 # Keep the internal reply control available even when task-aware
                 # selection narrows ordinary tools to a smaller subset.
-                reply_user_spec = next((item for item in all_tool_specs if item.name == "reply_user"), None)
+                reply_user_spec = next((item for item in all_tool_specs if item.name == "agentforge_reply_user"), None)
                 if reply_user_spec and all(item.name != "reply_user" for item in native_tool_specs):
                     native_tool_specs.append(reply_user_spec)
                 allowed_tool_names = {tool.name for tool in native_tool_specs}
@@ -1080,7 +1080,7 @@ class RunnerCore:
         raw_names.append("file")
         # A built-in conversational control lets the agent send interim replies
         # without ending the shared execution loop.
-        raw_names.append("reply_user")
+        raw_names.append("agentforge_reply_user")
         existing_kinds = {tb.kind.casefold() for tb in spec.tools}
         builtin_knowledge = [
             ("knowledge_search", KnowledgeSearchTool),
