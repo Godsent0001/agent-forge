@@ -76,8 +76,8 @@ class CancelTokenImpl:
     """Execution-scoped control channel for cancellation, live instructions and tool stops."""
 
     _STOP_REQUEST = re.compile(
-        r"\b(stop|cancel|kill|interrupt|abort)\\b.{0,100}\\b("
-        r"tool|command|process|shell|it|that|this|current|running|active)\\b",
+        r"\b(stop|cancel|kill|interrupt|abort)\b.{0,100}\b("
+        r"tool|command|process|shell|it|that|this|current|running|active)\b",
         re.IGNORECASE,
     )
 
