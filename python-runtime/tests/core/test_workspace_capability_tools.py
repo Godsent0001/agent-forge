@@ -126,13 +126,16 @@ async def test_workspace_files_tool_creates_reads_lists_and_overwrites_in_worksp
 
 
 @pytest.mark.asyncio
-async def test_workspace_files_tool_rejects_path_traversal_and_requires_delete_approval(tmp_path):
+async def test_workspace_files_tool_rejects_traversal_and_only_gates_sensitive_deletes(tmp_path):
     ctx = SimpleNamespace(workspace=Workspace(tmp_path), execution_id="file-run", project_id="project-1", agent_id="agent-1")
     tool = WorkspaceFilesTool()
     with pytest.raises(ToolError, match="path escapes workspace|outside the project workspace"):
         await tool.run(tool.Input(action="read", path="../outside.txt"), ctx)
-    assert tool.requires_approval({"action": "delete"})
-    assert not tool.requires_approval({"action": "read"})
+    assert not tool.requires_approval({"action": "delete", "path": "calculator/main.py"})
+    assert tool.requires_approval({"action": "delete", "path": ".env"})
+    assert tool.requires_approval({"action": "delete", "path": "data/customer.sqlite3"})
+    assert tool.requires_approval({"action": "delete", "path": ".git/config"})
+    assert not tool.requires_approval({"action": "read", "path": ".env"})
 
 
 @pytest.mark.asyncio
