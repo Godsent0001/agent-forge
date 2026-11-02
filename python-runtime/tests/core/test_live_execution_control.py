@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from uuid import uuid4
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -12,14 +13,13 @@ from sqlalchemy.pool import StaticPool
 from app import models
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec
+from app.contracts.tools import ToolResult
 from app.core.llm.types import ToolCall
 from app.core.runner import ReplyUserTool, RunnerCore
-from app.contracts.tools import ToolResult
 from app.db import Base
 from app.services import executions as execution_service
 from app.services.executions import CancelTokenImpl, Emitter, Hub
 from app.tools.registry import DefaultToolFactory
-
 
 @pytest.mark.asyncio
 async def test_live_stop_instruction_cancels_the_active_tool_without_cancelling_the_run():
