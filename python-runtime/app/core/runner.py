@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 from uuid import uuid4
 
 from app.contracts.events import EventDraft
@@ -16,6 +18,7 @@ from app.contracts.run import RunRequest, RunResult
 from app.contracts.runner import ApprovalGate, CancelToken, Clock, Emit, ToolFactory
 from app.contracts.tools import (
     RunWorkspace,
+    Tool,
     ToolError,
     ToolResult,
 )
@@ -192,6 +195,30 @@ def _compact_old_tool_outputs(messages: list[dict[str, Any]], *, keep_recent: in
 
 class AgentCycleError(RuntimeError):
     """Raised when delegation would re-enter an active agent."""
+
+
+class ReplyUserInput(BaseModel):
+    message: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="A concise interim reply or status update for the user.",
+    )
+
+
+class ReplyUserTool(Tool):
+    """Internal control capability for replying without ending the active task."""
+
+    kind = "reply_user"
+    default_description = (
+        "Send an interim message to the user while the current task keeps running. "
+        "Use this to acknowledge a live instruction or answer a status question, then continue "
+        "the unfinished task. This tool does not finish or cancel the execution."
+    )
+    Input = ReplyUserInput
+    permissions = set()
+
+    async def run(self, args: ReplyUserInput, ctx: Any) -> ToolResult:
+        return ToolResult(content=args.message.strip())
 
 
 class RunnerCore:
@@ -426,6 +453,10 @@ class RunnerCore:
                     "next safe checkpoint, let newer explicit instructions override conflicting older ones, "
                     "preserve completed work, and revise only the remaining plan. If a live instruction explicitly "
                     "says to stop the current command/tool, stop that in-flight operation before continuing. "
+                    "You also have reply_user: call it to acknowledge a live instruction or answer a status question "
+                    "while work is still in progress; after it returns, continue the unfinished task. Do not treat "
+                    "reply_user as task completion. Only finish when the requested work is actually complete or "
+                    "the user asks you to stop. "
                     "After creating or modifying files, report their absolute paths. Avoid redundant discovery "
                     "or checks; verify deliverables at meaningful checkpoints."
                 )
@@ -435,11 +466,16 @@ class RunnerCore:
                     messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
                 messages.append({"role": "user", "content": task})
 
-                native_tool_specs, tool_instances = self._assemble_tools(
+                all_tool_specs, tool_instances = self._assemble_tools(
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
                 )
-                native_tool_specs, requested_tool = constrain_tools_for_task(task, native_tool_specs)
+                native_tool_specs, requested_tool = constrain_tools_for_task(task, all_tool_specs)
+                # Keep the internal reply control available even when task-aware
+                # selection narrows ordinary tools to a smaller subset.
+                reply_user_spec = next((item for item in all_tool_specs if item.name == "reply_user"), None)
+                if reply_user_spec and all(item.name != "reply_user" for item in native_tool_specs):
+                    native_tool_specs.append(reply_user_spec)
                 allowed_tool_names = {tool.name for tool in native_tool_specs}
                 tool_instances = {
                     name: instance for name, instance in tool_instances.items()
@@ -974,6 +1010,17 @@ class RunnerCore:
                         req.execution_id, tc.name, tc.id, _safe_tool_arguments(tc.arguments), detail[:1200],
                     )
                     return f"ERROR: {detail}"
+                if getattr(tool_obj, "kind", "") == "reply_user":
+                    await emit(EventDraft(
+                        type="assistant_message",
+                        name=spec.name,
+                        data={
+                            "content": res.content.strip(),
+                            "interim": True,
+                            "tool_call_id": tc.id,
+                        },
+                    ))
+                    return "Interim reply delivered. Continue the unfinished task; this did not complete the execution."
                 content = res.content
 
                 saved_ref = None
@@ -1031,6 +1078,9 @@ class RunnerCore:
         # The workspace-scoped file interface is always available under one
         # canonical name, even when an older project has a custom binding for it.
         raw_names.append("file")
+        # A built-in conversational control lets the agent send interim replies
+        # without ending the shared execution loop.
+        raw_names.append("reply_user")
         existing_kinds = {tb.kind.casefold() for tb in spec.tools}
         builtin_knowledge = [
             ("knowledge_search", KnowledgeSearchTool),
@@ -1083,6 +1133,16 @@ class RunnerCore:
             name=name,
             description=tool_inst.default_description,
             parameters=tool_inst.Input.model_json_schema(),
+        ))
+
+        name = deduped[idx]
+        idx += 1
+        reply_tool = ReplyUserTool()
+        tool_instances[name] = reply_tool
+        tool_specs.append(ToolSpec(
+            name=name,
+            description=reply_tool.default_description,
+            parameters=reply_tool.Input.model_json_schema(),
         ))
 
         # Project knowledge is a shared runtime capability, not an optional
