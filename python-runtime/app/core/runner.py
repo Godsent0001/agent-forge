@@ -99,6 +99,12 @@ def _safe_tool_arguments(arguments: dict[str, Any], *, max_chars: int = 1600) ->
 
 
 def _format_live_instruction(cancel: Any, message: str) -> str:
+    if message.startswith("[Runtime control notice]"):
+        return (
+            f"{message}\n"
+            "This is an internal tool-control notice, not a new user request. Do not reply to it. "
+            "Do not repeat the stopped operation unless a different approach requires it."
+        )
     was_replied = getattr(cancel, "was_message_replied", None)
     if callable(was_replied) and was_replied(message):
         return (
