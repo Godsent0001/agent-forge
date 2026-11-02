@@ -126,7 +126,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       if (event.type !== "assistant_message") continue;
       const content = event.data?.content;
       if (typeof content !== "string" || !content.trim()) continue;
-      const messageId = `interim-${activeExecutionId}-${event.seq}`;
+      const messageId = typeof event.data.message_id === "string"
+        ? event.data.message_id
+        : `interim-${activeExecutionId}-${event.seq}`;
       if (processedInterimRepliesRef.current.has(messageId)) continue;
       processedInterimRepliesRef.current.add(messageId);
       const existing = useStore.getState().chatMessages[agent.id] || [];
