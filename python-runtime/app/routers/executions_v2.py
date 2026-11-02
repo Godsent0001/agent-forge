@@ -488,6 +488,16 @@ async def send_live_execution_message(
         db.close()
 
     if not manager.send_message(execution_id, payload.content):
+        # The run may have completed between the database check and queue delivery.
+        # Do not leave an instruction in the conversation that was never delivered.
+        cleanup_db = SessionLocal()
+        try:
+            saved_message = cleanup_db.get(models.ConversationMessage, response["id"])
+            if saved_message is not None:
+                cleanup_db.delete(saved_message)
+                cleanup_db.commit()
+        finally:
+            cleanup_db.close()
         raise HTTPException(status_code=409, detail="Execution stopped before the instruction could be delivered")
     return {"status": "queued", "message": response}
 
