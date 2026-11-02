@@ -21,6 +21,7 @@ from app.services import executions as execution_service
 from app.services.executions import CancelTokenImpl, Emitter, Hub
 from app.tools.registry import DefaultToolFactory
 
+
 @pytest.mark.asyncio
 async def test_agent_can_reply_while_a_tool_batch_is_still_running(monkeypatch):
     runner = RunnerCore()
