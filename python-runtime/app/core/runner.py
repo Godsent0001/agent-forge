@@ -688,8 +688,14 @@ class RunnerCore:
                                 return_exceptions=True,
                             )
                             for tc, res in zip(tool_call_tuples, results):
-                                if isinstance(res, Exception):
-                                    content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
+                                if isinstance(res, BaseException):
+                                    if isinstance(res, asyncio.CancelledError):
+                                        content = (
+                                            "ERROR: tool was stopped before completion. "
+                                            "Apply the latest user instruction and continue with the remaining task."
+                                        )
+                                    else:
+                                        content = f"ERROR: tool crashed ({type(res).__name__}: {res})"
                                     task_plan_store.fail(plan_id, tc.id, content, retryable=False)
                                 else:
                                     content = await persist_tool_result(tc, res)
