@@ -315,3 +315,44 @@ async def test_explicit_ask_policy_is_honored_for_routine_tools():
     assert events[0].type == "approval_requested"
     assert resolve_approval(execution_id="run-explicit-ask", approval_id=approval_id, decision="allow_once")
     assert await task is True
+
+
+@pytest.mark.asyncio
+async def test_stopping_one_tool_denies_only_its_pending_approval():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-scoped-stop",
+        settings={"tool_policy": {"shell": "ask"}},
+        emit=emit,
+        tool_kinds={"shell": "shell"},
+        timeout_seconds=1,
+    )
+    first = asyncio.create_task(gate.check(
+        tool="shell", permissions={"subprocess"}, args_preview="npm run dev",
+        span_id="span-one", tool_call_id="tool-one",
+    ))
+    second = asyncio.create_task(gate.check(
+        tool="shell", permissions={"subprocess"}, args_preview="npm test",
+        span_id="span-two", tool_call_id="tool-two",
+    ))
+    for _ in range(30):
+        if len([item for item in PENDING.values() if item.execution_id == "run-scoped-stop"]) == 2:
+            break
+        await asyncio.sleep(0)
+
+    assert deny_pending_approvals("run-scoped-stop", "tool-one") == 1
+    assert await first is False
+    assert any(
+        item.execution_id == "run-scoped-stop" and item.tool_call_id == "tool-two"
+        for item in PENDING.values()
+    )
+    second_id = next(
+        key for key, item in PENDING.items()
+        if item.execution_id == "run-scoped-stop" and item.tool_call_id == "tool-two"
+    )
+    assert resolve_approval(execution_id="run-scoped-stop", approval_id=second_id, decision="allow_once")
+    assert await second is True
