@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
-from app.tools.shell import _terminate_process_tree
+from app.tools.shell import _safe_environment, _terminate_process_tree
 
 _MAX_BUFFER_CHARS = 120_000
 
@@ -79,7 +79,7 @@ class ShellSessionManager:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
-            env=os.environ.copy(),
+            env=_safe_environment(cwd),
             creationflags=creationflags,
             start_new_session=(os.name != "nt"),
         )
