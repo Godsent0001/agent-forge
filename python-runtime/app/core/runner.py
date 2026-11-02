@@ -474,7 +474,7 @@ class RunnerCore:
                 # Keep the internal reply control available even when task-aware
                 # selection narrows ordinary tools to a smaller subset.
                 reply_user_spec = next((item for item in all_tool_specs if item.name == "agentforge_reply_user"), None)
-                if reply_user_spec and all(item.name != "reply_user" for item in native_tool_specs):
+                if reply_user_spec and all(item.name != "agentforge_reply_user" for item in native_tool_specs):
                     native_tool_specs.append(reply_user_spec)
                 allowed_tool_names = {tool.name for tool in native_tool_specs}
                 tool_instances = {
