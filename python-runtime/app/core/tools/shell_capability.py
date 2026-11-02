@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from types import SimpleNamespace
 from typing import ClassVar, Literal
 
@@ -66,15 +67,15 @@ class ShellCapability(Tool):
         # Gate only commands that can damage the operating system or broadly destroy data.
         command = str(arguments.get("command", "")).strip()
         dangerous_patterns = (
-            r"\\brm\\s+-[^\\n]*r[^\\n]*f",
-            r"\\b(del|erase)\\s+/(?:s|q).*",
-            r"\\b(rmdir|rd)\\s+/(?:s|q)",
-            r"\\b(format|diskpart|shutdown|restart-computer|stop-computer)\\b",
-            r"\\b(remove-item|clear-disk)\\b.*(?:-recurse|-force)",
-            r"\\b(reg\\s+delete|reg\\s+add)\\b",
-            r"\\b(sudo\\s+)?(mkfs|fdisk|parted|dd)\\b",
-            r"\\b(sudo\\s+)?(userdel|usermod|passwd|iptables|ufw)\\b",
-            r"\\b(sudo\\s+)?(systemctl|service)\\s+(stop|disable|mask)",
+            r"\brm\s+-[^\n]*r[^\n]*f",
+            r"\b(del|erase)\s+/(?:s|q).*",
+            r"\b(rmdir|rd)\s+/(?:s|q)",
+            r"\b(format|diskpart|shutdown|restart-computer|stop-computer)\\b",
+            r"\b(remove-item|clear-disk)\\b.*(?:-recurse|-force)",
+            r"\b(reg\s+delete|reg\s+add)\\b",
+            r"\b(sudo\s+)?(mkfs|fdisk|parted|dd)\\b",
+            r"\b(sudo\s+)?(userdel|usermod|passwd|iptables|ufw)\\b",
+            r"\b(sudo\s+)?(systemctl|service)\s+(stop|disable|mask)",
         )
         return any(re.search(pattern, command, re.IGNORECASE) for pattern in dangerous_patterns)
 
@@ -99,7 +100,7 @@ class ShellCapability(Tool):
                     return ToolResult(content=f"Sent input to terminal session {args.session_id}.")
                 if args.action == "read":
                     output = await session.read(args.max_output_chars)
-                    return ToolResult(content=f"Terminal session {args.session_id} ({session.cwd}):\\n{output}")
+                    return ToolResult(content=f"Terminal session {args.session_id} ({session.cwd}):\n{output}")
                 await shell_sessions.stop(args.session_id.strip(), ctx.project_id)
                 return ToolResult(content=f"Stopped terminal session {args.session_id}.")
             except ValueError as exc:
@@ -150,10 +151,10 @@ class ShellCapability(Tool):
             except (OSError, RuntimeError) as exc:
                 raise ToolError(f"Could not start persistent terminal session: {exc}", retryable=True) from exc
             return ToolResult(content=(
-                f"Started persistent terminal session.\\n"
-                f"session_id: {session.session_id}\\n"
-                f"working_directory: {cwd}\\n"
-                f"process_id: {session.process.pid}\\n"
+                f"Started persistent terminal session.\n"
+                f"session_id: {session.session_id}\n"
+                f"working_directory: {cwd}\n"
+                f"process_id: {session.process.pid}\n"
                 "Use action=read to inspect output, action=write to send more commands, "
                 "and action=stop to terminate this process."
             ))
