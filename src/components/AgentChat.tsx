@@ -139,7 +139,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         agentName: agent.name,
         text: content,
         timestamp: new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        executionId: activeExecutionId,
+        executionId: event.execution_id,
       });
     }
   }, [activeExecutionEvents, activeExecutionId, agent?.id, agent?.name, addChatMessage]);
