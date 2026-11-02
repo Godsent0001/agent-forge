@@ -249,6 +249,20 @@ class Emitter:
     def _persist(self, event: RunEvent) -> None:
         db = SessionLocal()
         try:
+            if event.type == "assistant_message" and isinstance(event.data, dict):
+                message_id = event.data.get("message_id")
+                if not isinstance(message_id, str) or not message_id.strip():
+                    message_id = str(uuid4())
+                    event.data["message_id"] = message_id
+                content = event.data.get("content")
+                if self.conversation_id and isinstance(content, str) and content.strip():
+                    db.add(models.ConversationMessage(
+                        id=message_id,
+                        conversation_id=self.conversation_id,
+                        role="assistant",
+                        content=content.strip(),
+                        execution_id=event.execution_id,
+                    ))
             db.add(models.ExecutionEventRow(
                 id=str(uuid4()),
                 execution_id=event.execution_id,
@@ -262,16 +276,6 @@ class Emitter:
                 data=event.data,
                 timestamp=event.ts,
             ))
-            if event.type == "assistant_message" and self.conversation_id:
-                content = event.data.get("content") if isinstance(event.data, dict) else None
-                if isinstance(content, str) and content.strip():
-                    db.add(models.ConversationMessage(
-                        id=f"interim-{event.execution_id}-{event.seq}",
-                        conversation_id=self.conversation_id,
-                        role="assistant",
-                        content=content.strip(),
-                        execution_id=event.execution_id,
-                    ))
             db.commit()
         finally:
             db.close()
