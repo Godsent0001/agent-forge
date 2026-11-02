@@ -425,6 +425,21 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const activeTaskGoal = latestUserTask?.text
     ? latestUserTask.text.replace(/\s+/g, " ").trim().slice(0, 110)
     : null;
+  const activeToolCallId = (() => {
+    const ended = new Set(
+      activeExecutionEvents.filter((event) => event.type === "span_ended" && event.span_id)
+        .map((event) => event.span_id as string),
+    );
+    const activeTool = [...activeExecutionEvents].reverse().find(
+      (event) => event.type === "span_started"
+        && event.kind === "tool_call"
+        && event.span_id
+        && !ended.has(event.span_id),
+    );
+    const id = activeTool?.data?.tool_call_id;
+    return typeof id === "string" ? id : null;
+  })();
+
   const activeProgressBrief = (() => {
     const open = new Map<string, import("../types").ExecutionEvent>();
     for (const event of [...activeExecutionEvents].sort((a, b) => a.seq - b.seq)) {
@@ -695,6 +710,18 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     }
   };
 
+  const handleStopActiveTool = async () => {
+    const executionId = activeExecutionId;
+    const toolCallId = activeToolCallId;
+    if (!executionId || !toolCallId) return;
+    try {
+      await api.executions.stopTool(executionId, toolCallId);
+      setChatNotice("Stopping the current tool. The agent will continue with the remaining task.");
+    } catch (cause) {
+      setChatError(cause instanceof Error ? cause.message : "Could not stop the current tool.");
+    }
+  };
+
   const handleCancelExecution = async () => {
     const executionId = activeExecutionId;
     if (!executionId || isCancelling) return;
@@ -938,6 +965,15 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             <div className="min-w-0">
               <p className="font-mono text-xs sm:text-sm">{activeProgressBrief || `${agent.name} is working through the task…`}</p>
               {activeTaskGoal && <p className="mt-1 text-[10px] leading-4 text-studio-500">Goal: {activeTaskGoal}{latestUserTask && latestUserTask.text.trim().length > 110 ? "…" : ""}</p>}
+              {activeToolCallId && (
+                <button
+                  type="button"
+                  onClick={() => void handleStopActiveTool()}
+                  className="mt-2 rounded-md border border-amber-800/70 px-2.5 py-1 text-[10px] font-semibold text-amber-200 hover:bg-amber-950/50"
+                >
+                  Stop current tool
+                </button>
+              )}
             </div>
           </div>
         )}
