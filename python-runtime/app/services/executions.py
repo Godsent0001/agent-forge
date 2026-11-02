@@ -151,11 +151,7 @@ class CancelTokenImpl:
         if self._active_tools.get(tool_call_id) is task:
             self._active_tools.pop(tool_call_id, None)
 
-    def stop_tool(self, tool_call_id: str) -> bool:
-        task = self._active_tools.get(tool_call_id)
-        if task is None or task.done():
-            return False
-        task.cancel()
+    def record_tool_stop_notice(self, tool_call_id: str) -> None:
         notice = (
             f"[Runtime control notice] The user stopped tool call {tool_call_id}. "
             "Do not restart that same operation unless a different approach requires it. "
@@ -163,6 +159,13 @@ class CancelTokenImpl:
         )
         self._live_messages.append(notice)
         self._message_notifications.put_nowait(notice)
+
+    def stop_tool(self, tool_call_id: str) -> bool:
+        task = self._active_tools.get(tool_call_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        self.record_tool_stop_notice(tool_call_id)
         return True
 
     def stop_active_tools(self) -> int:
@@ -457,7 +460,17 @@ class ExecutionManager:
         token = self.tokens.get(execution_id)
         if not token:
             return False
-        return token.stop_tool(tool_call_id)
+        if token.stop_tool(tool_call_id):
+            return True
+        # A span may already be visible while its tool is still waiting for approval
+        # and therefore has not registered an executable child task yet.
+        from app.infra.approvals import deny_pending_approvals
+
+        denied = deny_pending_approvals(execution_id)
+        if denied:
+            token.record_tool_stop_notice(tool_call_id)
+            return True
+        return False
 
     async def cancel(self, execution_id: str) -> bool:
         token = self.tokens.get(execution_id)
