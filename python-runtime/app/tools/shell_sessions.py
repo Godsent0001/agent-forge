@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
@@ -19,7 +20,8 @@ class ShellSession:
     project_id: str
     cwd: Path
     process: asyncio.subprocess.Process
-    output: str = ""
+    output_chunks: deque[str] = field(default_factory=deque)
+    output_chars: int = 0
     reader_task: asyncio.Task | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -31,16 +33,40 @@ class ShellSession:
                 return
             text = chunk.decode("utf-8", errors="replace")
             async with self.lock:
-                self.output = (self.output + text)[-_MAX_BUFFER_CHARS:]
+                self.output_chunks.append(text)
+                self.output_chars += len(text)
+                excess = self.output_chars - _MAX_BUFFER_CHARS
+                while excess > 0 and self.output_chunks:
+                    first = self.output_chunks[0]
+                    if len(first) <= excess:
+                        self.output_chunks.popleft()
+                        self.output_chars -= len(first)
+                        excess -= len(first)
+                    else:
+                        self.output_chunks[0] = first[excess:]
+                        self.output_chars -= excess
+                        excess = 0
 
     async def read(self, max_chars: int = 12_000) -> str:
         async with self.lock:
-            if not self.output:
+            if not self.output_chunks:
                 status = "running" if self.process.returncode is None else f"exited ({self.process.returncode})"
                 return f"No new terminal output. Session {status}."
-            result = self.output[:max_chars]
-            self.output = self.output[len(result):]
-            if len(result) == max_chars and self.output:
+            parts: list[str] = []
+            remaining = max_chars
+            while remaining > 0 and self.output_chunks:
+                chunk = self.output_chunks[0]
+                if len(chunk) <= remaining:
+                    parts.append(self.output_chunks.popleft())
+                    self.output_chars -= len(chunk)
+                    remaining -= len(chunk)
+                else:
+                    parts.append(chunk[:remaining])
+                    self.output_chunks[0] = chunk[remaining:]
+                    self.output_chars -= remaining
+                    remaining = 0
+            result = "".join(parts)
+            if self.output_chunks:
                 result += "\n[More output is available; call read again.]"
             return result
 
