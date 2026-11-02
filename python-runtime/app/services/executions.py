@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -72,8 +73,18 @@ def _apply_project_defaults(req: RunRequest, settings: dict, parallel_execution:
 
 
 class CancelTokenImpl:
+    """Execution-scoped control channel for cancellation, live instructions and tool stops."""
+
+    _STOP_REQUEST = re.compile(
+        r"\\b(stop|cancel|kill|interrupt|abort)\\b.{0,100}\\b("
+        r"tool|command|process|shell|it|that|this|current|running|active)\\b",
+        re.IGNORECASE,
+    )
+
     def __init__(self) -> None:
         self._cancelled = False
+        self._live_messages: asyncio.Queue[str] = asyncio.Queue()
+        self._active_tools: dict[str, asyncio.Task] = {}
 
     @property
     def cancelled(self) -> bool:
@@ -81,6 +92,50 @@ class CancelTokenImpl:
 
     def cancel(self) -> None:
         self._cancelled = True
+        for task in tuple(self._active_tools.values()):
+            if not task.done():
+                task.cancel()
+
+    def enqueue_message(self, content: str) -> None:
+        content = content.strip()
+        if not content or self._cancelled:
+            return
+        self._live_messages.put_nowait(content)
+        # Explicit stop instructions interrupt the underlying in-flight tool.
+        # Other messages are delivered at the next safe RunnerCore checkpoint.
+        if self._STOP_REQUEST.search(content):
+            self.stop_active_tools()
+
+    def drain_messages(self) -> list[str]:
+        messages: list[str] = []
+        while True:
+            try:
+                messages.append(self._live_messages.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        return messages
+
+    def register_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
+        self._active_tools[tool_call_id] = task
+
+    def unregister_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
+        if self._active_tools.get(tool_call_id) is task:
+            self._active_tools.pop(tool_call_id, None)
+
+    def stop_tool(self, tool_call_id: str) -> bool:
+        task = self._active_tools.get(tool_call_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        return True
+
+    def stop_active_tools(self) -> int:
+        stopped = 0
+        for task in tuple(self._active_tools.values()):
+            if not task.done():
+                task.cancel()
+                stopped += 1
+        return stopped
 
     def raise_if_cancelled(self) -> None:
         if self._cancelled:
@@ -328,6 +383,20 @@ class ExecutionManager:
 
             self.active.pop(req.execution_id, None)
             self.tokens.pop(req.execution_id, None)
+
+    def send_message(self, execution_id: str, content: str) -> bool:
+        token = self.tokens.get(execution_id)
+        task = self.active.get(execution_id)
+        if not token or not task or task.done():
+            return False
+        token.enqueue_message(content)
+        return True
+
+    def stop_tool(self, execution_id: str, tool_call_id: str) -> bool:
+        token = self.tokens.get(execution_id)
+        if not token:
+            return False
+        return token.stop_tool(tool_call_id)
 
     async def cancel(self, execution_id: str) -> bool:
         token = self.tokens.get(execution_id)
