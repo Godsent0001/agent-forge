@@ -283,7 +283,8 @@ async def test_emitter_persists_interim_replies_in_the_execution_conversation(mo
             saved = db.query(models.ConversationMessage).filter_by(
                 execution_id=execution_id
             ).one()
-            assert saved.id == f"interim-{execution_id}-{event.seq}"
+            assert saved.id == event.data["message_id"]
+            assert len(saved.id) == 36
             assert saved.role == "assistant"
             assert saved.content == "I understand. I am updating the implementation now."
         finally:
