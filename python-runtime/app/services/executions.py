@@ -81,7 +81,7 @@ class CancelTokenImpl:
         re.IGNORECASE,
     )
     _REPLAN_INTERRUPT = re.compile(
-        r"\b(instead of|rather than|switch to|replace|stop using|don't use|do not use|"
+        r"\b(instead|rather than|switch to|change to|replace|avoid|stop using|don't use|do not use|"
         r"don't run|do not run|no longer use)\b",
         re.IGNORECASE,
     )
