@@ -15,7 +15,7 @@ Clock = Callable[[], datetime]          # returns timezone-aware UTC; tests pass
 
 class ApprovalGate(Protocol):
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str,
-                    span_id: str, force: bool = False, reason: str = "") -> bool: ...
+                    span_id: str, force: bool = False, reason: str = "", tool_call_id: str | None = None) -> bool: ...
     # True = go ahead, False = denied. The gate emits approval_requested / approval_resolved itself.
 
 
