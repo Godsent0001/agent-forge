@@ -59,6 +59,7 @@ class RunRequest(BaseModel):
     execution_id: str
     project_id: str
     root_agent_id: str
+    conversation_id: str | None = None
     task: str                              # the latest user message
     history: list[ChatMessage] = []        # earlier turns NOT covered by history_summary (oldest first)
     history_summary: str = ""              # summary of older messages that are no longer in `history`
