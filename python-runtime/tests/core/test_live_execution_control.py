@@ -122,7 +122,7 @@ async def test_live_stop_instruction_cancels_the_active_tool_without_cancelling_
         await asyncio.Event().wait()
 
     task = asyncio.create_task(long_running_tool())
-    token.register_tool("tool-call-1", task)
+    token.register_tool("tool-call-1", task, "shell")
     await started.wait()
 
     instruction = "Stop the current command and use the new approach instead."
@@ -145,7 +145,7 @@ async def test_live_replacement_instruction_interrupts_an_obsolete_tool():
         await asyncio.Event().wait()
 
     task = asyncio.create_task(long_running_tool())
-    token.register_tool("tool-call-replan", task)
+    token.register_tool("tool-call-replan", task, "shell")
     await started.wait()
 
     instruction = "Use PostgreSQL instead of MongoDB."
@@ -167,7 +167,7 @@ async def test_live_status_message_does_not_stop_an_active_tool():
         await asyncio.Event().wait()
 
     task = asyncio.create_task(long_running_tool())
-    token.register_tool("tool-call-2", task)
+    token.register_tool("tool-call-2", task, "shell")
     await started.wait()
 
     instruction = "Can you give me a quick status update?"
@@ -392,3 +392,28 @@ def test_internal_tool_stop_notice_does_not_enter_live_user_notification_queue()
     drained = token.drain_messages()
     assert len(drained) == 1
     assert drained[0].startswith("[Runtime control notice]")
+
+
+@pytest.mark.asyncio
+async def test_stop_current_command_does_not_cancel_parallel_browser_tool():
+    token = CancelTokenImpl()
+    shell_started = asyncio.Event()
+    browser_started = asyncio.Event()
+
+    async def wait(started):
+        started.set()
+        await asyncio.Event().wait()
+
+    shell_task = asyncio.create_task(wait(shell_started))
+    browser_task = asyncio.create_task(wait(browser_started))
+    token.register_tool("shell-call", shell_task, "shell")
+    token.register_tool("browser-call", browser_task, "browser")
+    await asyncio.gather(shell_started.wait(), browser_started.wait())
+
+    token.enqueue_message("Stop the current command.")
+    with pytest.raises(asyncio.CancelledError):
+        await shell_task
+    assert not browser_task.done()
+    browser_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await browser_task
