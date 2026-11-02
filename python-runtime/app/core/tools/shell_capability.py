@@ -70,11 +70,11 @@ class ShellCapability(Tool):
             r"\brm\s+-[^\n]*r[^\n]*f",
             r"\b(del|erase)\s+/(?:s|q).*",
             r"\b(rmdir|rd)\s+/(?:s|q)",
-            r"\b(format|diskpart|shutdown|restart-computer|stop-computer)\\b",
-            r"\b(remove-item|clear-disk)\\b.*(?:-recurse|-force)",
-            r"\b(reg\s+delete|reg\s+add)\\b",
-            r"\b(sudo\s+)?(mkfs|fdisk|parted|dd)\\b",
-            r"\b(sudo\s+)?(userdel|usermod|passwd|iptables|ufw)\\b",
+            r"\b(format|diskpart|shutdown|restart-computer|stop-computer)\b",
+            r"\b(remove-item|clear-disk)\b.*(?:-recurse|-force)",
+            r"\b(reg\s+delete|reg\s+add)\b",
+            r"\b(sudo\s+)?(mkfs|fdisk|parted|dd)\b",
+            r"\b(sudo\s+)?(userdel|usermod|passwd|iptables|ufw)\b",
             r"\b(sudo\s+)?(systemctl|service)\s+(stop|disable|mask)",
         )
         return any(re.search(pattern, command, re.IGNORECASE) for pattern in dangerous_patterns)
