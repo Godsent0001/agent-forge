@@ -44,6 +44,7 @@ class CreateExecutionRequest(BaseModel):
     project_id: str
     root_agent_id: str
     task: str
+    conversation_id: str | None = None
     history: list[dict] = Field(default_factory=list)
     options: RunOptions = Field(default_factory=RunOptions)
     attachment_ids: list[str] = Field(default_factory=list, max_length=MAX_RUN_ATTACHMENTS)
@@ -80,6 +81,14 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
     workspace: Workspace | None = None
     copied_attachment_paths: list[str] = []
     try:
+        if payload.conversation_id:
+            conversation = db.get(models.Conversation, payload.conversation_id)
+            if (
+                conversation is None
+                or conversation.project_id != payload.project_id
+                or conversation.agent_id != payload.root_agent_id
+            ):
+                raise HTTPException(status_code=404, detail="Conversation not found for this agent and project")
         attachment_refs = []
         if payload.attachment_ids:
             if len(set(payload.attachment_ids)) != len(payload.attachment_ids):
@@ -121,6 +130,7 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
             execution_id=execution_id,
             project_id=payload.project_id,
             root_agent_id=payload.root_agent_id,
+            conversation_id=payload.conversation_id,
             task=payload.task,
             history=payload.history,
             attachments=attachment_refs,
