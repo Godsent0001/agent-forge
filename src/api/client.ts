@@ -412,6 +412,15 @@ export const api = {
       request<{ status: string }>(`/v2/executions/${id}/cancel`, {
         method: "POST",
       }),
+    message: (id: string, conversation_id: string, content: string) =>
+      request<{ status: string; message: ConversationMessageRecord }>(`/v2/executions/${encodeURIComponent(id)}/messages`, {
+        method: "POST", body: JSON.stringify({ conversation_id, content }),
+      }),
+    stopTool: (id: string, toolCallId: string) =>
+      request<{ status: string; tool_call_id: string }>(
+        `/v2/executions/${encodeURIComponent(id)}/tools/${encodeURIComponent(toolCallId)}/cancel`,
+        { method: "POST" },
+      ),
     resolveApproval: (executionId: string, approvalId: string, decision: "allow_once" | "allow_run" | "deny") =>
       request<{ status: string; decision: string }>(
         `/v2/executions/${encodeURIComponent(executionId)}/approvals/${encodeURIComponent(approvalId)}`,
