@@ -161,6 +161,16 @@ class ApprovalGateImpl:
         return decision in {"allow_once", "allow_run"}
 
 
+def deny_pending_approvals(execution_id: str) -> int:
+    """Deny all pending approvals made stale by a live stop/replan instruction."""
+    denied = 0
+    for pending in tuple(PENDING.values()):
+        if pending.execution_id == execution_id and not pending.future.done():
+            pending.future.set_result("deny")
+            denied += 1
+    return denied
+
+
 def resolve_approval(*, execution_id: str, approval_id: str, decision: str) -> bool:
     """Resolve a live request once; return False when it is missing or belongs to another run."""
     if decision not in {"allow_once", "allow_run", "deny"}:
