@@ -58,6 +58,7 @@ async def test_typed_shell_runs_in_another_local_directory_without_approval(monk
     assert not tool.requires_approval({"command": "dir", "working_directory": str(external)})
     assert tool.requires_approval({"command": "rm -rf /important-data"})
     assert tool.requires_approval({"action": "write", "input": "sudo rm -rf /important-data"})
+    assert tool.requires_approval({"command": "del .env"})
     assert not tool.requires_approval({"command": "npm install", "working_directory": str(external)})
     result = await tool.run(
         tool.Input(command="dir", working_directory=str(external)), ctx
