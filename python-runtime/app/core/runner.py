@@ -761,11 +761,16 @@ class RunnerCore:
 
                     # Deliver messages received while tools were running. Explicit stop
                     # instructions cancel the in-flight process; other updates are applied here.
-                    for live_message in _drain_live_instructions(cancel):
+                    live_instructions = _drain_live_instructions(cancel)
+                    for live_message in live_instructions:
                         messages.append({
                             "role": "user",
                             "content": _format_live_instruction(cancel, live_message),
                         })
+                    if live_instructions:
+                        # A user-directed stop/replan is not evidence that the agent
+                        # failed to make progress. Give the revised task a fresh attempt.
+                        consecutive_no_progress_batches = 0
 
                     # Keep a compact, tool-agnostic execution ledger in the model context.
                     # It survives compaction of old raw outputs and makes progress/recovery
@@ -792,7 +797,7 @@ class RunnerCore:
                     # Feedback control is based on outcomes, not tool names. A failed
                     # batch earns one materially different recovery attempt; a second
                     # consecutive no-progress batch ends tool use and requires an honest report.
-                    if batch_outcomes and all(not outcome.succeeded for outcome in batch_outcomes):
+                    if not live_instructions and batch_outcomes and all(not outcome.succeeded for outcome in batch_outcomes):
                         consecutive_no_progress_batches += 1
                         reasons = "; ".join(outcome.reason for outcome in batch_outcomes[:3])
                         if consecutive_no_progress_batches >= 2:
