@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from app.infra.approvals import PENDING, ApprovalGateImpl, resolve_approval
+from app.infra.approvals import PENDING, ApprovalGateImpl, deny_pending_approvals, resolve_approval
 
 
 @pytest.mark.asyncio
@@ -227,6 +227,35 @@ async def test_internal_reply_and_attachment_tools_are_autonomous_by_default():
             span_id=f"{tool}-span",
         ) is True
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_live_replan_denies_stale_pending_approvals():
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    gate = ApprovalGateImpl(
+        execution_id="run-replan",
+        settings={"tool_policy": {"shell": "ask"}},
+        emit=emit,
+        tool_kinds={"shell": "shell"},
+        timeout_seconds=1,
+    )
+    task = asyncio.create_task(gate.check(
+        tool="shell", permissions={"subprocess"}, args_preview="format D:", span_id="shell-span"
+    ))
+    for _ in range(20):
+        if any(item.execution_id == "run-replan" for item in PENDING.values()):
+            break
+        await asyncio.sleep(0)
+
+    assert deny_pending_approvals("run-replan") == 1
+    assert await task is False
+    assert events[-1].type == "approval_resolved"
+    assert events[-1].data["decision"] == "deny"
+    assert not any(item.execution_id == "run-replan" for item in PENDING.values())
 
 
 @pytest.mark.asyncio
