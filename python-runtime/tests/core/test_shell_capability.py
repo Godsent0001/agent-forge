@@ -37,7 +37,7 @@ async def test_typed_shell_runs_in_project_workspace_by_default(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_typed_shell_requires_approval_for_another_local_directory(monkeypatch, tmp_path: Path):
+async def test_typed_shell_runs_in_another_local_directory_without_approval(monkeypatch, tmp_path: Path):
     project = tmp_path / "project"
     external = tmp_path / "documents"
     project.mkdir()
