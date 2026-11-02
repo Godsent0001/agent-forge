@@ -136,7 +136,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       addChatMessage(agent.id, {
         id: messageId,
         sender: "agent",
-        agentName: agent.name,
+        agentName: event.name || agent.name,
         text: content,
         timestamp: new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         executionId: event.execution_id,
