@@ -77,7 +77,12 @@ class CancelTokenImpl:
 
     _STOP_REQUEST = re.compile(
         r"\b(stop|cancel|kill|interrupt|abort)\b.{0,100}\b("
-        r"tool|command|process|shell|it|that|this|current|running|active)\b",
+        r"tool|command|process|shell|terminal|browser|search|it|that|this|current|running|active)\b",
+        re.IGNORECASE,
+    )
+    _REPLAN_INTERRUPT = re.compile(
+        r"\b(instead of|rather than|switch to|replace|stop using|don't use|do not use|"
+        r"don't run|do not run|no longer use)\b",
         re.IGNORECASE,
     )
 
@@ -103,7 +108,7 @@ class CancelTokenImpl:
         self._live_messages.put_nowait(content)
         # Explicit stop instructions interrupt the underlying in-flight tool.
         # Other messages are delivered at the next safe RunnerCore checkpoint.
-        if self._STOP_REQUEST.search(content):
+        if self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content):
             self.stop_active_tools()
 
     def drain_messages(self) -> list[str]:
