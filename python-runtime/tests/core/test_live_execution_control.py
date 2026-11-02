@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from pydantic import BaseModel
 
 from app import models
 from app.contracts.events import EventDraft
