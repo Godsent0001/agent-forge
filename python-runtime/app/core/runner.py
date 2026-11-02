@@ -1130,6 +1130,7 @@ class RunnerCore:
                 span_id=tool_span_id,
                 force=force_approval,
                 reason=approval_reason,
+                tool_call_id=tc.id,
             )
             if not allowed:
                 return "ERROR: the user denied this action"
