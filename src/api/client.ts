@@ -388,10 +388,11 @@ export const api = {
       task: string,
       history: RunChatMessage[] = [],
       attachment_ids: string[] = [],
+      conversation_id?: string,
     ) =>
       request<{ id: string; status: "running" }>("/v2/executions", {
         method: "POST",
-        body: JSON.stringify({ project_id, root_agent_id, task, history, attachment_ids }),
+        body: JSON.stringify({ project_id, root_agent_id, task, history, attachment_ids, conversation_id }),
       }),
     get: (id: string) => request<ExecutionResult>(`/v2/executions/${id}`),
     workspaceFiles: (id: string) => request<{
