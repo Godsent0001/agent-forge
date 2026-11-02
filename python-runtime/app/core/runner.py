@@ -1033,6 +1033,7 @@ class RunnerCore:
                         data={
                             "content": res.content.strip(),
                             "interim": True,
+                            "message_id": str(uuid4()),
                             "tool_call_id": tc.id,
                         },
                     ))
