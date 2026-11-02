@@ -46,13 +46,9 @@ def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
         key: value for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in blocked)
     }
-    if workspace_root is not None:
-        venv_dir = workspace_root / ".venv"
-        venv_bin = venv_dir / ("Scripts" if os.name == "nt" else "bin")
-        python_exe = venv_bin / ("python.exe" if os.name == "nt" else "python")
-        if python_exe.is_file():
-            env["VIRTUAL_ENV"] = str(venv_dir)
-            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+    # Deliberately do not auto-activate project .venv folders. AgentForge uses
+    # the user's shared local Python/Node toolchain unless they explicitly invoke
+    # another interpreter in a shell command.
     return env
 
 
