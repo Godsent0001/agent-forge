@@ -101,15 +101,19 @@ class CancelTokenImpl:
             if not task.done():
                 task.cancel()
 
-    def enqueue_message(self, content: str) -> None:
+    def enqueue_message(self, content: str) -> bool:
         content = content.strip()
         if not content or self._cancelled:
-            return
+            return False
         self._live_messages.put_nowait(content)
-        # Explicit stop instructions interrupt the underlying in-flight tool.
-        # Other messages are delivered at the next safe RunnerCore checkpoint.
-        if self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content):
+        # Explicit stop/replan instructions interrupt in-flight tools and invalidate
+        # any approval that was requested for the now-obsolete operation.
+        interrupted = bool(
+            self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content)
+        )
+        if interrupted:
             self.stop_active_tools()
+        return interrupted
 
     def drain_messages(self) -> list[str]:
         messages: list[str] = []
@@ -415,7 +419,11 @@ class ExecutionManager:
         task = self.active.get(execution_id)
         if not token or not task or task.done():
             return False
-        token.enqueue_message(content)
+        interrupted = token.enqueue_message(content)
+        if interrupted:
+            from app.infra.approvals import deny_pending_approvals
+
+            deny_pending_approvals(execution_id)
         return True
 
     def stop_tool(self, execution_id: str, tool_call_id: str) -> bool:
