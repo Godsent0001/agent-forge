@@ -455,7 +455,7 @@ class RunnerCore:
                     "says to stop the current command/tool, stop that in-flight operation before continuing. "
                     "You also have agentforge_reply_user: call it to acknowledge a live instruction or answer a status question "
                     "while work is still in progress; after it returns, continue the unfinished task. Do not treat "
-                    "reply_user as task completion. Only finish when the requested work is actually complete or "
+                    "agentforge_reply_user as task completion. Only finish when the requested work is actually complete or "
                     "the user asks you to stop. "
                     "After creating or modifying files, report their absolute paths. Avoid redundant discovery "
                     "or checks; verify deliverables at meaningful checkpoints."
