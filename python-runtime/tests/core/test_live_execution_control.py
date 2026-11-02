@@ -14,12 +14,102 @@ from app import models
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink
 from app.contracts.tools import ToolResult
-from app.core.llm.types import ToolCall
+from app.core.llm.types import LLMTurn, ToolCall
 from app.core.runner import ReplyUserTool, RunnerCore
 from app.db import Base
 from app.services import executions as execution_service
 from app.services.executions import CancelTokenImpl, Emitter, Hub
 from app.tools.registry import DefaultToolFactory
+
+@pytest.mark.asyncio
+async def test_agent_can_reply_while_a_tool_batch_is_still_running(monkeypatch):
+    runner = RunnerCore()
+    token = CancelTokenImpl()
+    stop_event = asyncio.Event()
+    spec = AgentSpec(
+        id="agent-live-reply",
+        name="Live reply agent",
+        provider="venice",
+        model="test-model",
+    )
+    events = []
+
+    async def fake_turn(**kwargs):
+        return LLMTurn(text="I am checking the current command. I will continue as soon as it finishes.")
+
+    async def emit(event):
+        events.append(event)
+
+    monkeypatch.setattr(runner, "_execute_llm_turn", fake_turn)
+    monitor = asyncio.create_task(runner._monitor_live_messages(
+        spec=spec,
+        messages=[
+            {"role": "system", "content": "Build the requested app."},
+            {"role": "assistant", "tool_calls": [{"id": "shell-call", "type": "function"}]},
+        ],
+        active_tool_names="shell",
+        parent_span_id="agent-span",
+        emit=emit,
+        budget=SimpleNamespace(),
+        cancel=token,
+        stop_event=stop_event,
+        scenario=None,
+    ))
+
+    instruction = "Can you give me a status update?"
+    token.enqueue_message(instruction)
+    for _ in range(50):
+        if events:
+            break
+        await asyncio.sleep(0)
+
+    assert len(events) == 1
+    assert events[0].type == "assistant_message"
+    assert events[0].data["live_response"] is True
+    assert "I am checking the current command" in events[0].data["content"]
+    assert token.was_message_replied(instruction)
+    assert token.drain_messages() == [instruction]
+
+    stop_event.set()
+    await monitor
+
+
+@pytest.mark.asyncio
+async def test_agent_does_not_send_a_stale_reply_for_a_replan_instruction():
+    runner = RunnerCore()
+    token = CancelTokenImpl()
+    stop_event = asyncio.Event()
+    spec = AgentSpec(
+        id="agent-replan",
+        name="Replanning agent",
+        provider="venice",
+        model="test-model",
+    )
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    monitor = asyncio.create_task(runner._monitor_live_messages(
+        spec=spec,
+        messages=[{"role": "system", "content": "Build an app."}],
+        active_tool_names="shell",
+        parent_span_id="agent-span",
+        emit=emit,
+        budget=SimpleNamespace(),
+        cancel=token,
+        stop_event=stop_event,
+        scenario=None,
+    ))
+    instruction = "Use PostgreSQL instead of MongoDB."
+    token.enqueue_message(instruction)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert events == []
+    assert token.drain_messages() == [instruction]
+    stop_event.set()
+    await monitor
+
 
 @pytest.mark.asyncio
 async def test_live_stop_instruction_cancels_the_active_tool_without_cancelling_the_run():
