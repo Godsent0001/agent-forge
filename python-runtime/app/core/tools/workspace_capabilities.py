@@ -222,10 +222,26 @@ class WorkspaceFilesTool(Tool):
         return {"fs_write"} if arguments.get("action") in {"write", "mkdir", "delete"} else set()
 
     def requires_approval(self, arguments: dict) -> bool:
-        return arguments.get("action") == "delete"
+        if arguments.get("action") != "delete":
+            return False
+        path = str(arguments.get("path", "")).replace("\\", "/").casefold()
+        name = Path(path).name
+        sensitive_names = (
+            name.startswith(".env"),
+            "secret" in name,
+            "credential" in name,
+            name in {"id_rsa", "id_ed25519"},
+            name.endswith((".pem", ".key", ".p12", ".pfx", ".keystore")),
+            name.endswith((".db", ".sqlite", ".sqlite3")),
+            ".git/" in f"{path}/" or name == ".git",
+        )
+        return any(sensitive_names)
 
     def approval_reason(self, arguments: dict) -> str:
-        return "Delete a file from the persistent project workspace."
+        return (
+            "This file may contain credentials, private keys, persistent data, or Git metadata. "
+            "Confirm before deleting it from the project workspace."
+        )
 
     async def run(self, args: WorkspaceFilesInput, ctx: ToolContext) -> ToolResult:
         try:
