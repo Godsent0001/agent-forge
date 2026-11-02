@@ -118,6 +118,29 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
   const activeScopeRef = useRef<string | null>(null);
   const currentScope = agent && project ? `${project.id}:${agent.id}` : null;
   const { events: activeExecutionEvents } = useExecutionStream(activeExecutionId);
+  const processedInterimRepliesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!agent || !activeExecutionId) return;
+    for (const event of activeExecutionEvents) {
+      if (event.type !== "assistant_message") continue;
+      const content = event.data?.content;
+      if (typeof content !== "string" || !content.trim()) continue;
+      const messageId = `interim-${activeExecutionId}-${event.seq}`;
+      if (processedInterimRepliesRef.current.has(messageId)) continue;
+      processedInterimRepliesRef.current.add(messageId);
+      const existing = useStore.getState().chatMessages[agent.id] || [];
+      if (existing.some((message) => message.id === messageId)) continue;
+      addChatMessage(agent.id, {
+        id: messageId,
+        sender: "agent",
+        agentName: agent.name,
+        text: content,
+        timestamp: new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        executionId: activeExecutionId,
+      });
+    }
+  }, [activeExecutionEvents, activeExecutionId, agent?.id, agent?.name, addChatMessage]);
 
   useEffect(() => {
     // Run state is scoped to the selected project/agent. A long-running or stuck
@@ -677,7 +700,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         addChatMessage(agent.id, userMsg);
       }
 
-      const execution = await api.executions.run(project.id, agent.id, userText, history, selectedAttachmentIds);
+      const execution = await api.executions.run(
+        project.id, agent.id, userText, history, selectedAttachmentIds, activeConversationId,
+      );
       if (activeScopeRef.current === runScope) {
         setSelectedAttachmentIds([]);
         setEditingMessageId(null);
