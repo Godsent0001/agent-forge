@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import models
 from app.contracts.events import EventDraft
-from app.contracts.graph import AgentGraph, AgentSpec
+from app.contracts.graph import AgentGraph, AgentSpec, ChildLink
 from app.contracts.tools import ToolResult
 from app.core.llm.types import ToolCall
 from app.core.runner import ReplyUserTool, RunnerCore
@@ -153,6 +153,57 @@ async def test_runner_can_stop_one_active_tool_without_cancelling_the_run(tmp_pa
     assert stopped.is_set()
     assert token.cancelled is False
     assert "was stopped before completion" in result
+
+
+@pytest.mark.asyncio
+async def test_runner_can_stop_a_running_sub_agent_tool(tmp_path):
+    started = asyncio.Event()
+
+    class SlowChildRunner(RunnerCore):
+        async def _run_agent(self, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+
+    runner = SlowChildRunner()
+    token = CancelTokenImpl()
+    root = AgentSpec(
+        id="root",
+        name="Root",
+        provider="venice",
+        model="test-model",
+        children=[ChildLink(agent_id="child")],
+    )
+    child = AgentSpec(id="child", name="Child", provider="venice", model="test-model")
+    graph = AgentGraph(root_id="root", agents={"root": root, "child": child})
+
+    async def emit(_event):
+        return None
+
+    tool_task = asyncio.create_task(runner._execute_single_tool(
+        tc=ToolCall(id="child-call", name="child", arguments={"task": "do work"}),
+        spec=root,
+        graph=graph,
+        tool_instances={},
+        req=SimpleNamespace(execution_id="run-child", project_id="project-child"),
+        parent_span_id=None,
+        depth=0,
+        emit=emit,
+        cancel=token,
+        approvals=None,
+        workspace=SimpleNamespace(root=tmp_path),
+        tools_factory=None,
+        memory=None,
+        lessons=None,
+        intents=None,
+        run_history=None,
+        budget=SimpleNamespace(record_tool_call=lambda: None),
+        active_agent_ids=set(),
+    ))
+    await started.wait()
+    assert token.stop_tool("child-call") is True
+    result = await tool_task
+    assert "sub-agent 'child' was stopped" in result
+    assert token.cancelled is False
 
 
 async def _allow_tool() -> bool:
