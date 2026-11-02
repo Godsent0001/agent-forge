@@ -877,33 +877,48 @@ class RunnerCore:
             child_link = next((c for c in spec.children if sanitize_tool_name(c.agent_id) == tc.name or c.agent_id == tc.name), None)
             if child_link:
                 child_task = tc.arguments.get("task", tc.arguments.get("input", ""))
+                child_run_task = asyncio.create_task(self._run_agent(
+                    agent_id=child_link.agent_id,
+                    graph=graph,
+                    req=req,
+                    task=child_task,
+                    history=[],
+                    history_summary="",
+                    parent_span_id=tool_span_id,
+                    depth=depth + 1,
+                    emit=emit,
+                    cancel=cancel,
+                    approvals=approvals,
+                    workspace=workspace,
+                    tools_factory=tools_factory,
+                    memory=memory,
+                    lessons=lessons,
+                    intents=intents,
+                    run_history=run_history,
+                    budget=budget,
+                    active_agent_ids=active_agent_ids,
+                ))
+                register_tool = getattr(cancel, "register_tool", None)
+                unregister_tool = getattr(cancel, "unregister_tool", None)
+                if callable(register_tool):
+                    register_tool(tc.id, child_run_task)
                 try:
-                    res = await self._run_agent(
-                        agent_id=child_link.agent_id,
-                        graph=graph,
-                        req=req,
-                        task=child_task,
-                        history=[],
-                        history_summary="",
-                        parent_span_id=tool_span_id,
-                        depth=depth + 1,
-                        emit=emit,
-                        cancel=cancel,
-                        approvals=approvals,
-                        workspace=workspace,
-                        tools_factory=tools_factory,
-                        memory=memory,
-                        lessons=lessons,
-                        intents=intents,
-                        run_history=run_history,
-                        budget=budget,
-                        active_agent_ids=active_agent_ids,
+                    return await child_run_task
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if getattr(cancel, "cancelled", False) or (current and current.cancelling()):
+                        raise
+                    return (
+                        f"ERROR: sub-agent '{child_link.agent_id}' was stopped before completion. "
+                        "Re-evaluate the user's latest instruction and continue with the remaining task."
                     )
-                    return res
                 except AgentCycleError:
                     raise
                 except Exception as exc:
                     return f"ERROR: sub-agent '{child_link.agent_id}' failed: {exc}"
+                finally:
+                    if callable(unregister_tool):
+                        unregister_tool(tc.id, child_run_task)
 
             tool_obj = tool_instances.get(tc.name)
             if not tool_obj:
@@ -967,7 +982,8 @@ class RunnerCore:
                         timeout=timeout_seconds,
                     )
                 except asyncio.CancelledError:
-                    if getattr(cancel, "cancelled", False):
+                    current = asyncio.current_task()
+                    if getattr(cancel, "cancelled", False) or (current and current.cancelling()):
                         raise
                     logger.info(
                         "Tool stopped independently execution_id=%s tool=%s tool_call_id=%s",
