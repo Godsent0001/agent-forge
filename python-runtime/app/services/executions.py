@@ -446,6 +446,9 @@ class ExecutionManager:
         return interrupted_count
 
     async def shutdown(self) -> None:
+        from app.tools.shell_sessions import shell_sessions
+
+        await shell_sessions.stop_all()
         tasks = list(self.active.values())
         for token in self.tokens.values():
             token.cancel()
