@@ -14,6 +14,14 @@ from app.contracts.tools import Permission
 DEFAULT_POLICIES = {
     "python": "allow",
     "python_environment": "ask",
+    "agentforge_reply_user": "allow",
+    "reply_user": "allow",
+    "read_attachment": "allow",
+    "knowledge_search": "allow",
+    "knowledge_ingest": "allow",
+    "intent_create": "allow",
+    "intent_list": "allow",
+    "intent_cancel": "allow",
     "shell": "allow",
     "http_request": "allow",
     "browser": "allow",
@@ -68,7 +76,17 @@ class ApprovalGateImpl:
         configured = self.settings.get("tool_policy", {})
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
-            policy = DEFAULT_POLICIES.get(kind, "ask")
+            policy = DEFAULT_POLICIES.get(kind)
+            if policy is None:
+                # Every tool the runtime factory knows how to build is autonomous
+                # by default. Truly unknown tool kinds still require an explicit
+                # project policy or user approval.
+                try:
+                    from app.tools.registry import known_tool_kinds
+
+                    policy = "allow" if kind in known_tool_kinds() else "ask"
+                except Exception:
+                    policy = "ask"
         return policy
 
     async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
