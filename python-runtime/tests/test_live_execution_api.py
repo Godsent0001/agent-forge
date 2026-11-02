@@ -30,6 +30,44 @@ def _running_execution(db_session):
     return execution, conversation
 
 
+def test_new_execution_carries_its_conversation_id_into_runner_request(
+    client, db_session, monkeypatch
+):
+    project = models.Project(name="Conversation binding")
+    db_session.add(project)
+    db_session.flush()
+    agent = models.Agent(project_id=project.id, name="Builder")
+    db_session.add(agent)
+    db_session.flush()
+    conversation = models.Conversation(
+        project_id=project.id,
+        agent_id=agent.id,
+        title="Active build",
+    )
+    db_session.add(conversation)
+    db_session.commit()
+    monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
+    captured = {}
+
+    def capture(req):
+        captured["req"] = req
+        return {"id": req.execution_id, "status": "running"}
+
+    monkeypatch.setattr(executions_v2.manager, "start", capture)
+    response = client.post(
+        "/v2/executions",
+        json={
+            "project_id": project.id,
+            "root_agent_id": agent.id,
+            "conversation_id": conversation.id,
+            "task": "Build a web application",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert captured["req"].conversation_id == conversation.id
+
+
 def test_live_instruction_is_persisted_and_delivered_to_active_execution(
     client, db_session, monkeypatch
 ):
