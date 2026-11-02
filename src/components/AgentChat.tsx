@@ -561,7 +561,32 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
     );
   }
 
-  const handleSendMessage = () => void sendTask(promptInput, true);
+  const sendLiveMessage = async (rawText: string) => {
+    const executionId = activeExecutionId;
+    if (!rawText.trim() || !executionId || !activeConversationId || !agent || !project || isCancelling) return;
+    const content = rawText.trim();
+    setPromptInput("");
+    setChatError(null);
+    setChatNotice(null);
+    try {
+      const result = await api.executions.message(executionId, activeConversationId, content);
+      const saved = result.message;
+      addChatMessage(agent.id, {
+        id: saved.id,
+        sender: "user",
+        text: saved.content,
+        timestamp: new Date(saved.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      });
+      setChatNotice("Instruction delivered. The agent will apply it to the active task.");
+    } catch (cause) {
+      setChatError(cause instanceof Error ? cause.message : "Could not deliver the live instruction.");
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (isProcessing) void sendLiveMessage(promptInput);
+    else void sendTask(promptInput, true);
+  };
 
   const copyMessage = async (text: string) => {
     try {
@@ -954,33 +979,32 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
             }}
             rows={Math.min(5, Math.max(1, promptInput.split("\n").length))}
             aria-label={`Task for ${agent.name}`}
-            placeholder={editingMessageId ? "Edit your message and resend…" : `Message ${agent.name}…`}
-            disabled={isProcessing}
+            placeholder={isProcessing ? "Send an instruction while the agent is working…" : editingMessageId ? "Edit your message and resend…" : `Message ${agent.name}…`}
+            disabled={isCancelling}
             className="flex-1 bg-transparent shadow-none focus-visible:shadow-none text-sm text-studio-100 placeholder:text-studio-500 focus:outline-none resize-none py-2 px-3 min-h-[40px] max-h-40 overflow-y-auto"
           />
           {editingMessageId && !isProcessing && (
             <button type="button" onClick={cancelEditMessage} className="h-10 w-10 shrink-0 rounded-full bg-studio-800 text-studio-400 hover:text-white" aria-label="Cancel editing" title="Cancel editing">×</button>
           )}
-          {isProcessing ? (
+          {isProcessing && (
             <button
               onClick={handleCancelExecution}
               disabled={!activeExecutionId || isCancelling}
-              className="bg-red-900/80 neu-raised-sm hover:bg-red-800 active:shadow-neu-pressed disabled:opacity-40 text-red-100 text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
+              className="bg-red-900/80 neu-raised-sm hover:bg-red-800 active:shadow-pressed disabled:opacity-40 text-red-100 text-xs font-semibold px-3 py-2 rounded-xl transition-all flex items-center gap-1 shrink-0 h-9 cursor-pointer"
               aria-label="Stop execution"
             >
-              <span>{isCancelling ? "Stopping…" : "Stop"}</span>
-            </button>
-          ) : (
-            <button
-              onClick={handleSendMessage}
-              disabled={!promptInput.trim()}
-              className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white rounded-full transition-all flex items-center justify-center shrink-0 h-10 w-10 cursor-pointer"
-              aria-label={editingMessageId ? "Resend edited message" : "Send message"}
-              title={editingMessageId ? "Resend edited message" : "Send message"}
-            >
-              <span className="sr-only">{editingMessageId ? "Resend" : "Send"}</span><Icon name="chevron-right" size={17} />
+              <span>{isCancelling ? "Stopping…" : "Stop run"}</span>
             </button>
           )}
+          <button
+            onClick={handleSendMessage}
+            disabled={!promptInput.trim() || (isProcessing && (!activeExecutionId || isCancelling))}
+            className="neu-accent hover:brightness-110 active:shadow-neu-pressed disabled:opacity-40 disabled:shadow-none text-white rounded-full transition-all flex items-center justify-center shrink-0 h-10 w-10 cursor-pointer"
+            aria-label={isProcessing ? "Send instruction to active task" : editingMessageId ? "Resend edited message" : "Send message"}
+            title={isProcessing ? "Send instruction to active task" : editingMessageId ? "Resend edited message" : "Send message"}
+          >
+            <span className="sr-only">{isProcessing ? "Send instruction" : editingMessageId ? "Resend" : "Send"}</span><Icon name="chevron-right" size={17} />
+          </button>
         </div>
         <p className="mx-auto mt-1.5 max-w-4xl px-2 text-[10px] text-studio-500">Enter to send · Shift+Enter for a new line</p>
       </div>
