@@ -88,7 +88,9 @@ class CancelTokenImpl:
 
     def __init__(self) -> None:
         self._cancelled = False
-        self._live_messages: asyncio.Queue[str] = asyncio.Queue()
+        self._live_messages: list[str] = []
+        self._message_notifications: asyncio.Queue[str] = asyncio.Queue()
+        self._replied_messages: set[str] = set()
         self._active_tools: dict[str, asyncio.Task] = {}
 
     @property
@@ -105,7 +107,8 @@ class CancelTokenImpl:
         content = content.strip()
         if not content or self._cancelled:
             return False
-        self._live_messages.put_nowait(content)
+        self._live_messages.append(content)
+        self._message_notifications.put_nowait(content)
         # Explicit stop/replan instructions interrupt in-flight tools and invalidate
         # any approval that was requested for the now-obsolete operation.
         interrupted = bool(
@@ -116,13 +119,30 @@ class CancelTokenImpl:
         return interrupted
 
     def drain_messages(self) -> list[str]:
-        messages: list[str] = []
+        messages = self._live_messages
+        self._live_messages = []
+        # Keep the notification channel aligned for messages handled at a safe
+        # checkpoint before a tool-monitor task has consumed their notification.
         while True:
             try:
-                messages.append(self._live_messages.get_nowait())
+                self._message_notifications.get_nowait()
             except asyncio.QueueEmpty:
                 break
         return messages
+
+    async def wait_for_message(self) -> str:
+        return await self._message_notifications.get()
+
+    def message_interrupts(self, content: str) -> bool:
+        return bool(
+            self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content)
+        )
+
+    def mark_message_replied(self, content: str) -> None:
+        self._replied_messages.add(content.strip())
+
+    def was_message_replied(self, content: str) -> bool:
+        return content.strip() in self._replied_messages
 
     def register_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
         self._active_tools[tool_call_id] = task
