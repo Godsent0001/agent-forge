@@ -65,9 +65,12 @@ class ShellCapability(Tool):
     def requires_approval(self, arguments: dict) -> bool:
         # Local directories are part of the user's delegated computer-use scope.
         # Gate only commands that can damage the operating system or broadly destroy data.
-        command = str(arguments.get("command", "")).strip()
+        action = str(arguments.get("action", "run")).strip().casefold()
+        command = str(
+            arguments.get("input", "") if action == "write" else arguments.get("command", "")
+        ).strip()
         dangerous_patterns = (
-            r"\brm\s+-[^\n]*r[^\n]*f",
+            r"\b(sudo\s+)?rm\s+-[^\n]*r[^\n]*f",
             r"\b(del|erase)\s+/(?:s|q).*",
             r"\b(rmdir|rd)\s+/(?:s|q)",
             r"\b(format|diskpart|shutdown|restart-computer|stop-computer)\b",
@@ -80,7 +83,10 @@ class ShellCapability(Tool):
         return any(re.search(pattern, command, re.IGNORECASE) for pattern in dangerous_patterns)
 
     def approval_reason(self, arguments: dict) -> str:
-        command = str(arguments.get("command", "")).strip()
+        action = str(arguments.get("action", "run")).strip().casefold()
+        command = str(
+            arguments.get("input", "") if action == "write" else arguments.get("command", "")
+        ).strip()
         directory = str(arguments.get("working_directory", "")).strip()
         return (
             "This command may perform a destructive or system-wide operation. "
