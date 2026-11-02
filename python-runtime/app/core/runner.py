@@ -821,7 +821,7 @@ class RunnerCore:
         if not callable(wait_for_message):
             return
         reply_context: list[dict[str, str]] = []
-        while not getattr(cancel, "cancelled", False):
+        while not getattr(cancel, "cancelled", False) and not stop_event.is_set():
             message_task = asyncio.create_task(wait_for_message())
             stop_task = asyncio.create_task(stop_event.wait())
             try:
