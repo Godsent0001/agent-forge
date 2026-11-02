@@ -261,6 +261,7 @@ class Emitter:
                 content = event.data.get("content") if isinstance(event.data, dict) else None
                 if isinstance(content, str) and content.strip():
                     db.add(models.ConversationMessage(
+                        id=f"interim-{event.execution_id}-{event.seq}",
                         conversation_id=self.conversation_id,
                         role="assistant",
                         content=content.strip(),
