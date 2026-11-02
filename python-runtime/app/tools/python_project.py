@@ -1,7 +1,7 @@
 """Unified agent-facing Python capability using the shared AgentForge runtime."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.tools.base import ToolExecutionError
@@ -9,6 +9,8 @@ from app.tools.python_exec import PythonExecTool
 
 
 class PythonProjectInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(
         min_length=1,
         max_length=200_000,
