@@ -6,9 +6,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
-from uuid import uuid4
 
 from app.contracts.events import EventDraft
 from app.contracts.graph import AgentGraph, AgentSpec
