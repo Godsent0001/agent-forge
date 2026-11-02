@@ -19,6 +19,7 @@ DEFAULT_POLICIES = {
     "read_attachment": "allow",
     "knowledge_search": "allow",
     "knowledge_ingest": "allow",
+    "recall_run": "allow",
     "intent_create": "allow",
     "intent_list": "allow",
     "intent_cancel": "allow",
