@@ -59,7 +59,7 @@ def test_new_execution_carries_its_conversation_id_into_runner_request(
         json={
             "project_id": project.id,
             "root_agent_id": agent.id,
-            "conversation_id": conversation_id,
+            "conversation_id": conversation.id,
             "task": "Build a web application",
         },
     )
@@ -120,7 +120,7 @@ def test_live_instruction_rejects_a_conversation_from_another_agent(
     monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
 
     response = client.post(
-        f"/v2/executions/{execution_id}/messages",
+        f"/v2/executions/{execution.id}/messages",
         json={"conversation_id": other_conversation.id, "content": "Change the plan."},
     )
     assert response.status_code == 404
