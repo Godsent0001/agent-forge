@@ -19,7 +19,7 @@ from app import models
 from app.deps import get_db
 from app.infra.paths import data_dir, project_dir
 
-router = APIRouter(prefix="/projects", tags=["project-workspace"])
+router = APIRouter(tags=["project-workspace"])
 IGNORED_DIRS = {".agentforge", ".git", "node_modules", "__pycache__", ".venv"}
 MAX_FILES = 20_000
 MAX_TOTAL_BYTES = 512 * 1024 * 1024
@@ -65,7 +65,8 @@ def _files(root: Path) -> list[tuple[Path, str, int]]:
     return sorted(entries, key=lambda item: item[1].casefold())
 
 
-@router.get("/{project_id}/workspace")
+@router.get("/v2/projects/{project_id}/workspace", include_in_schema=False)
+@router.get("/projects/{project_id}/workspace")
 def list_project_workspace(project_id: str, db: Session = Depends(get_db)):
     root = _workspace(project_id, db)
     files = _files(root)
@@ -78,7 +79,8 @@ def list_project_workspace(project_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{project_id}/workspace/file")
+@router.get("/v2/projects/{project_id}/workspace/file", include_in_schema=False)
+@router.get("/projects/{project_id}/workspace/file")
 def read_project_workspace_file(
     project_id: str,
     path: str = Query(min_length=1, max_length=1024),
@@ -109,7 +111,8 @@ def read_project_workspace_file(
     return FileResponse(path=candidate, headers=file_response_headers(candidate))
 
 
-@router.post("/{project_id}/workspace/open")
+@router.post("/v2/projects/{project_id}/workspace/open", include_in_schema=False)
+@router.post("/projects/{project_id}/workspace/open")
 def open_project_workspace(project_id: str, db: Session = Depends(get_db)):
     """Open the current project's workspace in the operating-system file manager."""
     root = _workspace(project_id, db)
@@ -133,7 +136,8 @@ def open_project_workspace(project_id: str, db: Session = Depends(get_db)):
     return {"opened": True, "workspace_path": str(root)}
 
 
-@router.get("/{project_id}/workspace.zip")
+@router.get("/v2/projects/{project_id}/workspace.zip", include_in_schema=False)
+@router.get("/projects/{project_id}/workspace.zip")
 def download_project_workspace(project_id: str, db: Session = Depends(get_db)):
     root = _workspace(project_id, db)
     files = _files(root)

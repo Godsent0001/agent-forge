@@ -1,5 +1,6 @@
 """Runner v2 (the agent loop engine) for AgentForge Core."""
 import asyncio
+import inspect
 import json
 import logging
 import re
@@ -73,6 +74,39 @@ _DEFAULT_TOOL_TIMEOUT_SECONDS = 60
 
 
 _SENSITIVE_ARGUMENT_KEY = re.compile(r"(?:api.?key|token|secret|password|passwd|authorization|cookie|credential)", re.IGNORECASE)
+
+
+async def _check_tool_approval(
+    approvals: ApprovalGate,
+    *,
+    tool: str,
+    permissions: set,
+    args_preview: str,
+    span_id: str,
+    force: bool,
+    reason: str,
+    tool_call_id: str,
+) -> bool:
+    """Call current and legacy ApprovalGate implementations safely."""
+    check = approvals.check
+    kwargs = {
+        "tool": tool,
+        "permissions": permissions,
+        "args_preview": args_preview,
+        "span_id": span_id,
+        "force": force,
+        "reason": reason,
+    }
+    try:
+        parameters = inspect.signature(check).parameters.values()
+        supports_extra = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters)
+        supports_tool_call_id = supports_extra or any(p.name == "tool_call_id" for p in parameters)
+    except (TypeError, ValueError):
+        # Uninspectable proxy callables are expected to implement the current protocol.
+        supports_tool_call_id = True
+    if supports_tool_call_id:
+        kwargs["tool_call_id"] = tool_call_id
+    return await check(**kwargs)
 
 
 def _safe_tool_arguments(arguments: dict[str, Any], *, max_chars: int = 1600) -> str:
@@ -1134,7 +1168,8 @@ class RunnerCore:
             force_approval = bool(approval_resolver(tc.arguments)) if callable(approval_resolver) else False
             reason_resolver = getattr(tool_obj, "approval_reason", None)
             approval_reason = reason_resolver(tc.arguments) if callable(reason_resolver) else ""
-            allowed = await approvals.check(
+            allowed = await _check_tool_approval(
+                approvals,
                 tool=tc.name,
                 permissions=needed_perms,
                 args_preview=json.dumps(tc.arguments)[:500],

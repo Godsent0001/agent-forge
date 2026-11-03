@@ -59,7 +59,7 @@ def test_new_execution_carries_its_conversation_id_into_runner_request(
         json={
             "project_id": project.id,
             "root_agent_id": agent.id,
-            "conversation_id": conversation.id,
+            "conversation_id": conversation_id,
             "task": "Build a web application",
         },
     )
@@ -72,6 +72,8 @@ def test_live_instruction_is_persisted_and_delivered_to_active_execution(
     client, db_session, monkeypatch
 ):
     execution, conversation = _running_execution(db_session)
+    execution_id = execution.id
+    conversation_id = conversation.id
     monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
     delivered = []
     monkeypatch.setattr(
@@ -81,9 +83,9 @@ def test_live_instruction_is_persisted_and_delivered_to_active_execution(
     )
 
     response = client.post(
-        f"/v2/executions/{execution.id}/messages",
+        f"/v2/executions/{execution_id}/messages",
         json={
-            "conversation_id": conversation.id,
+            "conversation_id": conversation_id,
             "content": "Use PostgreSQL instead of MongoDB.",
         },
     )
@@ -91,11 +93,11 @@ def test_live_instruction_is_persisted_and_delivered_to_active_execution(
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["status"] == "queued"
-    assert payload["message"]["execution_id"] == execution.id
-    assert delivered == [(execution.id, "Use PostgreSQL instead of MongoDB.")]
+    assert payload["message"]["execution_id"] == execution_id
+    assert delivered == [(execution_id, "Use PostgreSQL instead of MongoDB.")]
 
     saved = db_session.query(models.ConversationMessage).filter_by(
-        execution_id=execution.id
+        execution_id=execution_id
     ).one()
     assert saved.role == "user"
     assert saved.content == "Use PostgreSQL instead of MongoDB."
@@ -118,7 +120,7 @@ def test_live_instruction_rejects_a_conversation_from_another_agent(
     monkeypatch.setattr(executions_v2, "SessionLocal", lambda: db_session)
 
     response = client.post(
-        f"/v2/executions/{execution.id}/messages",
+        f"/v2/executions/{execution_id}/messages",
         json={"conversation_id": other_conversation.id, "content": "Change the plan."},
     )
     assert response.status_code == 404

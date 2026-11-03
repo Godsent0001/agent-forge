@@ -41,7 +41,7 @@ async def _read_bounded(stream: asyncio.StreamReader, limit: int) -> tuple[bytes
 
 def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
     """Keep basic process variables but do not leak provider credentials to commands."""
-    blocked = ("_API_KEY", "_TOKEN", "_SECRET", "PASSWORD", "PASSWD")
+    blocked = ("_API_KEY", "_TOKEN", "_SECRET", "PASSWORD", "PASSWD", "VIRTUAL_ENV", "PYTHONHOME")
     env = {
         key: value for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in blocked)

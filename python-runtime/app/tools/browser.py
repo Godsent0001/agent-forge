@@ -30,7 +30,7 @@ class _PageTextParser(HTMLParser):
         elif tag == "title":
             self._in_title = True
         elif tag in {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "tr"} and not self._skip_depth:
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -39,7 +39,7 @@ class _PageTextParser(HTMLParser):
         elif tag == "title":
             self._in_title = False
         elif tag in {"p", "div", "li", "h1", "h2", "h3", "h4", "tr"} and not self._skip_depth:
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
@@ -60,8 +60,9 @@ class BrowserTool(Tool):
     )
 
     def __init__(self, http_tool=None):
-        # Keep the legacy constructor argument accepted for callers, but browser
-        # navigation is performed by Playwright rather than raw HTTP fetching.
+        # Production uses Playwright. An injected adapter remains supported for
+        # legacy callers and deterministic tests that supply their own transport.
+        self._http_tool = http_tool
         self._sessions: dict[str, tuple[Any, Any, Any]] = {}
         self._session_expiry: dict[str, asyncio.Task] = {}
         self._session_lock = asyncio.Lock()
@@ -71,7 +72,26 @@ class BrowserTool(Tool):
         url = input.strip()
         if not url:
             raise ToolExecutionError("browser requires an absolute public HTTP(S) URL")
+        if self._http_tool is not None:
+            return await self._legacy_http_extract(url, context)
         return await self._operate(url=url, action="navigate", selector="", text="", context=context)
+
+    async def _legacy_http_extract(self, url: str, context: Any) -> str:
+        try:
+            assert_public_url(url)
+        except UnsafeURL as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        response = await self._http_tool.execute(f"GET {url}", context=context)
+        marker = "Body:\n"
+        body = response.split(marker, 1)[1] if marker in response else response
+        body = body.split("\ntruncated:", 1)[0].strip()
+        parser = _PageTextParser()
+        parser.feed(body)
+        title = " ".join(parser.title_parts).strip() or "(no page title)"
+        readable = " ".join(" ".join(parser.parts).split())
+        if len(readable) > MAX_PAGE_TEXT_CHARS:
+            readable = readable[:MAX_PAGE_TEXT_CHARS] + "…[page text truncated]"
+        return f"Title: {title}\nURL: {url}\n\n{readable or 'No readable page text was found.'}"
 
     async def operate(
         self, *, url: str, action: str = "navigate", selector: str = "",
@@ -139,7 +159,7 @@ class BrowserTool(Tool):
             body = " ".join(body.split())
             if len(body) > MAX_PAGE_TEXT_CHARS:
                 body = body[:MAX_PAGE_TEXT_CHARS] + "…[page text truncated]"
-            return f"Title: {title or '(no page title)'}\\nURL: {page.url}\\n\\n{body or 'No readable page text was found.'}"
+            return f"Title: {title or '(no page title)'}\nURL: {page.url}\n\n{body or 'No readable page text was found.'}"
         except ToolExecutionError:
             raise
         except Exception as exc:
