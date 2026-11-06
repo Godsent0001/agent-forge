@@ -98,3 +98,58 @@ def test_cached_prompt_tokens_are_billed_once_at_cache_rate():
     # claude-3-5-sonnet in models.yaml: $3 in, $15 out, $0.30 cache read per million.
     usage = Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=400_000)
     assert calculate_cost("anthropic/claude-3-5-sonnet-20241022", usage) == pytest.approx(0.6 * 3 + 0.4 * 0.3)
+
+
+
+def test_venice_model_uses_litellm_openai_compatible_route():
+    from app.core.llm.model_names import litellm_model
+
+    assert litellm_model("venice", "deepseek-v4-1-flash-uncensored") == (
+        "openai/deepseek-v4-1-flash-uncensored"
+    )
+
+
+@pytest.mark.asyncio
+async def test_venice_completion_uses_request_scoped_endpoint_and_key(monkeypatch):
+    from types import SimpleNamespace
+
+    import litellm
+
+    from app.core.llm.adapter import complete
+    from app.core.llm.model_names import litellm_model
+
+    monkeypatch.setenv("VENICE_API_KEY", "venice-test-secret")
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        message = SimpleNamespace(role="assistant", content="Venice connected", tool_calls=[])
+        choice = SimpleNamespace(message=message, finish_reason="stop")
+        return SimpleNamespace(choices=[choice], usage=None)
+
+    monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+    turn = await complete(
+        [{"role": "user", "content": "Say hello"}],
+        model=litellm_model("venice", "deepseek-v4-1-flash-uncensored"),
+        provider="venice",
+    )
+
+    assert turn.text == "Venice connected"
+    assert captured["model"] == "openai/deepseek-v4-1-flash-uncensored"
+    assert captured["api_base"] == "https://api.venice.ai/api/v1"
+    assert captured["api_key"] == "venice-test-secret"
+
+
+@pytest.mark.asyncio
+async def test_venice_completion_fails_clearly_when_key_is_missing(monkeypatch):
+    from app.core.llm.adapter import complete
+    from app.core.llm.types import LLMBadRequest
+    from app.core.llm.model_names import litellm_model
+
+    monkeypatch.delenv("VENICE_API_KEY", raising=False)
+    with pytest.raises(LLMBadRequest, match="Venice API key is not configured"):
+        await complete(
+            [{"role": "user", "content": "Say hello"}],
+            model=litellm_model("venice", "deepseek-v4-1-flash-uncensored"),
+            provider="venice",
+        )
