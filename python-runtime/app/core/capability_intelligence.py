@@ -1,0 +1,83 @@
+"""Compact, run-specific self-awareness derived from the live tool registry.
+
+The model already receives full JSON schemas through the tool-calling API. This
+manifest intentionally avoids duplicating those schemas or dumping source/docs
+into the prompt.
+"""
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from app.core.llm.types import ToolSpec
+
+_MAX_MANIFEST_CHARS = 1800
+_MAX_DESCRIPTION_CHARS = 96
+
+
+def build_runtime_capability_manifest(
+    tools: Sequence[ToolSpec],
+    workspace_root: str,
+) -> str:
+    """Describe only the capabilities and workspace that are real for this run."""
+    lines = [
+        "AgentForge runtime self-awareness (current run)",
+        "- Execution uses the shared RunnerCore for tool dispatch, approvals, cancellation, memory, artifacts, and events; do not assume a separate execution engine.",
+        "- Shell access is not the same as graphical desktop control. Claim GUI/computer-use ability only when a dedicated tool is declared for this run.",
+        "- Architecture map: RunnerCore owns execution lifecycle; the prompt builder supplies stable instructions; the registry/catalog defines tools; tool specs define call schemas; workspace/knowledge tools provide file and indexed-document operations when declared. Inspect source only if it is actually accessible in the current workspace.",
+        "- Select tools by task intent. Their live API schemas are supplied separately; follow those exact names, fields, and required arguments.",
+        "- A tool omitted from this run's declarations is not available to this run. Do not invent tools, parameters, access, or completed actions.",
+        f"- Persistent project workspace: {workspace_root[:240]}",
+        "- Conversation messages supplied in this request are conversation history; semantic memory is separate and only available when explicitly provided or through a declared memory tool.",
+    ]
+    if tools:
+        lines.append("- Tools available in this run:")
+        lines.extend(
+            f"  - {tool.name}: {' '.join((tool.description or 'No description provided.').split())[:_MAX_DESCRIPTION_CHARS]}"
+            for tool in tools
+        )
+    else:
+        lines.append("- No tool calls are available in this run; answer from supplied context or explain the limitation.")
+
+    manifest = "\n".join(lines)
+    if len(manifest) <= _MAX_MANIFEST_CHARS:
+        return manifest
+
+    # Keep architectural facts and the workspace, then trim descriptions before
+    # dropping capability names. Full input schemas remain available separately.
+    compact_header = [
+        line for line in lines
+        if line.startswith((
+            "AgentForge runtime self-awareness",
+            "- Execution uses",
+            "- Shell access",
+            "- Architecture map:",
+            "- Select tools",
+            "- A tool omitted",
+            "- Persistent project workspace:",
+        ))
+    ]
+    compact_lines = compact_header.copy()
+    if tools:
+        compact_lines.append("- Tools available in this run:")
+        compact_lines.extend(f"  - {tool.name[:80]}" for tool in tools)
+    else:
+        compact_lines.append("- No tool calls are available in this run.")
+    compact = "\n".join(compact_lines)
+    if len(compact) <= _MAX_MANIFEST_CHARS:
+        return compact
+
+    # An unusually large custom-tool catalog stays bounded; preserve as many names
+    # as fit and explicitly disclose any omitted tail rather than implying completeness.
+    names = [tool.name[:80] for tool in tools]
+    prefix = "\n".join(compact_header + ["- Available tool names:"])
+    budget = max(0, _MAX_MANIFEST_CHARS - len(prefix) - 32)
+    selected: list[str] = []
+    used = 0
+    for name in names:
+        addition = len(name) + (2 if selected else 0)
+        if used + addition > budget:
+            break
+        selected.append(name)
+        used += addition
+    suffix = "" if len(selected) == len(names) else f" … (+{len(names) - len(selected)} more registered tools)"
+    return prefix + "\n  " + ", ".join(selected) + suffix

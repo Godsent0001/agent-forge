@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 EventType = Literal["execution_started", "span_started", "span_ended",
                     "approval_requested", "approval_resolved", "execution_ended",
-                    "artifact_persisted", "artifact_verification"]
+                    "artifact_persisted", "artifact_verification", "assistant_message"]
 SpanKind = Literal["agent", "llm_call", "tool_call"]
 SpanStatus = Literal["ok", "error", "cancelled"]
 

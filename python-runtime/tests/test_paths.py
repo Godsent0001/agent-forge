@@ -10,7 +10,6 @@ from app.tools.asset_cache import (
 from app.tools.audio import VoiceGeneratorTool
 from app.tools.character import CharacterAssetManagerTool
 from app.tools.graphics import VisualAssetManagerTool
-from app.tools.rendering import RenderQueueTool
 from app.tools.scene import SceneTemplateManagerTool
 
 
@@ -56,5 +55,4 @@ def test_legacy_tool_storage_defaults_follow_configured_data_directory(monkeypat
     assert VoiceGeneratorTool()._voices_dir == root / "assets" / "voices"
     assert CharacterAssetManagerTool()._root == root / "assets" / "characters"
     assert VisualAssetManagerTool()._root == root / "assets" / "visuals"
-    assert RenderQueueTool()._path == root / "queues" / "render_queue.json"
     assert SceneTemplateManagerTool()._root == root / "assets" / "scene_templates"

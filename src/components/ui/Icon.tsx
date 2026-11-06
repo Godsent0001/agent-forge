@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-export type IconName = "agents" | "tools" | "settings" | "catalog" | "sidebar-collapse" | "chevron-left" | "chevron-right" | "inspector" | "logs" | "close" | "chat" | "editor" | "play" | "plus" | "workflow" | "paperclip" | "chevron-up" | "chevron-down" | "upload" | "file-up" | "download" | "shield-check" | "trash-2";
+export type IconName = "agents" | "tools" | "settings" | "catalog" | "sidebar-collapse" | "chevron-left" | "chevron-right" | "inspector" | "logs" | "close" | "chat" | "editor" | "play" | "plus" | "workflow" | "paperclip" | "folder-open" | "chevron-up" | "chevron-down" | "upload" | "file-up" | "download" | "shield-check" | "trash-2";
 const glyphs: Record<IconName, ReactNode> = {
   agents: <><circle cx="9" cy="8" r="3" /><path d="M3.5 20v-1.5A4.5 4.5 0 0 1 8 14h2a4.5 4.5 0 0 1 4.5 4.5V20" /><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14h.5a3.5 3.5 0 0 1 3.5 3.5V20" /></>,
   tools: <><path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L3.5 17.5a2.1 2.1 0 0 0 3 3l5.7-5.7a4 4 0 0 0 5.3-5.3l-2.4 2.4-3.1-3.1z" /><path d="m15 5 4-1 1 4" /></>,
@@ -14,6 +14,7 @@ const glyphs: Record<IconName, ReactNode> = {
   editor: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h10M7 16h6" /></>,
   play: <path d="m8 5 11 7-11 7z" />, plus: <path d="M12 5v14M5 12h14" />,
   workflow: <><rect x="3" y="4" width="6" height="6" rx="1" /><rect x="15" y="14" width="6" height="6" rx="1" /><path d="M9 7h4a2 2 0 0 1 2 2v5M12 14l3 3" /></>,
+  "folder-open": <><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2" /><path d="M3 7v10a2 2 0 0 0 2 2h12l4-7H5l-2 7" /></>,
   "paperclip": <path d="m8.5 12.5 6.7-6.7a3.2 3.2 0 0 1 4.5 4.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l8.5-8.5" />,
   "chevron-up": <path d="m6 14 6-6 6 6" />,
   "chevron-down": <path d="m6 10 6 6 6-6" />,

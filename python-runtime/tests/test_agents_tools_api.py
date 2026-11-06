@@ -27,7 +27,7 @@ def test_tool_creation_validates_kind_and_project(client):
     project_id = _project(client)
     assert client.post("/tools", json={"project_id": project_id, "name": "x", "kind": "not_a_tool"}).status_code == 422
     assert client.post("/tools", json={"project_id": "missing", "name": "x", "kind": "web_search"}).status_code == 404
-    _tool(client, project_id, "clip_finder")
+    _tool(client, project_id, "web_search")
 
 
 def test_agent_creation_requires_existing_project(client):

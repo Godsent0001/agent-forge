@@ -17,7 +17,7 @@ export interface Tool {
   config: Record<string, unknown>;
 }
 
-export type AttachmentStatus = "quarantined" | "clean" | "rejected";
+export type AttachmentStatus = "unscanned" | "quarantined" | "clean" | "rejected";
 
 export interface ProjectAttachment {
   id: string;

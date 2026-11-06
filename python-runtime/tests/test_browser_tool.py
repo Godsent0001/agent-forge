@@ -23,3 +23,36 @@ async def test_browser_extracts_title_and_readable_text():
     assert "Setup" in result
     assert "Install the runtime." in result
     assert "alert(" not in result
+
+
+async def test_browser_retries_transient_navigation_failure():
+    from app.tools.browser import _navigate_page
+
+    class FakePage:
+        def __init__(self):
+            self.calls = []
+        async def goto(self, url, *, wait_until, timeout):
+            self.calls.append((url, wait_until, timeout))
+            if len(self.calls) == 1:
+                raise RuntimeError("Timeout 20000ms exceeded")
+
+    page = FakePage()
+    await _navigate_page(page, "https://www.google.com")
+    assert [call[1] for call in page.calls] == ["domcontentloaded", "commit"]
+
+
+async def test_browser_does_not_retry_non_transient_navigation_failure():
+    import pytest
+
+    from app.tools.browser import _navigate_page
+
+    class FakePage:
+        calls = 0
+        async def goto(self, url, *, wait_until, timeout):
+            self.calls += 1
+            raise RuntimeError("net::ERR_CERT_AUTHORITY_INVALID is not recoverable")
+
+    page = FakePage()
+    with pytest.raises(RuntimeError, match="ERR_CERT_AUTHORITY_INVALID"):
+        await _navigate_page(page, "https://example.com")
+    assert page.calls == 1

@@ -1,6 +1,9 @@
 """LLM adapter v2 integrating LiteLLM / provider models with retries and typed errors."""
 import asyncio
 import json
+import logging
+import os
+import re
 from typing import Any
 
 from .pricing import calculate_cost
@@ -24,12 +27,29 @@ from .types import (
     Usage,
 )
 
+logger = logging.getLogger(__name__)
+
+VENICE_API_BASE = "https://api.venice.ai/api/v1"
+
+
+def _provider_request_kwargs(provider: str | None) -> dict[str, Any]:
+    """Build request-scoped configuration for OpenAI-compatible providers."""
+    if (provider or "").casefold() != "venice":
+        return {}
+    api_key = os.environ.get("VENICE_API_KEY", "").strip()
+    if not api_key:
+        raise LLMBadRequest(
+            "Venice API key is not configured. Add your Venice API key in AgentForge Provider settings."
+        )
+    return {"api_base": VENICE_API_BASE, "api_key": api_key}
+
 
 async def complete(
     messages: list[dict[str, Any]],
     tools: list[ToolSpec] | None = None,
     params: LLMParams | None = None,
     model: str = "gpt-4o-mini",
+    provider: str | None = None,
     max_retries: int = 3,
 ) -> LLMTurn:
     """Call LLM backend with retries and error mapping."""
@@ -37,18 +57,14 @@ async def complete(
         raise LLMBadRequest("Empty model name provided.")
 
     params = params or LLMParams()
-    cache_key = None
-    if not tools and cache_enabled() and is_cacheable_messages(messages):
-        cache_key = make_cache_key(
-            model=model,
-            messages=messages,
-            temperature=params.temperature,
-            max_tokens=params.max_tokens,
-        )
-        cached_turn = get_cached(cache_key)
-        if cached_turn is not None:
-            return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
     tools_formatted = None
+    tool_names = [tool.name for tool in (tools or [])]
+    invalid_names = [name for name in tool_names if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name)]
+    if invalid_names:
+        raise LLMBadRequest(
+            "Refusing to send invalid tool identifier(s) to the model provider: "
+            + ", ".join(repr(name) for name in invalid_names)
+        )
     if tools:
         tools_formatted = [
             {
@@ -62,6 +78,23 @@ async def complete(
             for t in tools
         ]
 
+    # Tool-enabled agents can reuse a prior plain-text completion for an exactly
+    # identical prompt + tool schema. Tool-call responses themselves are never
+    # cached, so side effects are not skipped or replayed from cache.
+    cache_key = None
+    if cache_enabled() and is_cacheable_messages(messages):
+        cache_key = make_cache_key(
+            model=f"{provider}:{model}" if provider else model,
+            messages=messages,
+            temperature=params.temperature,
+            max_tokens=params.max_tokens,
+            tools=tools_formatted,
+        )
+        cached_turn = get_cached(cache_key)
+        if cached_turn is not None:
+            return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
+
+    provider_kwargs = _provider_request_kwargs(provider)
     attempt = 0
     while True:
         try:
@@ -75,6 +108,7 @@ async def complete(
                 "messages": messages,
                 "timeout": params.timeout_s,
             }
+            kwargs.update(provider_kwargs)
             if tools_formatted:
                 kwargs["tools"] = tools_formatted
             if params.temperature is not None:
@@ -100,6 +134,16 @@ async def complete(
                     f"Provider settings, then retry. ({type(err).__name__})"
                 ) from err
             if category == "bad_request":
+                if "invalid identifier" in str(err).lower() or "tool name" in str(err).lower():
+                    logger.error(
+                        "Provider rejected tool identifiers model=%s tool_names=%s error_type=%s",
+                        model, tool_names, type(err).__name__,
+                    )
+                    raise LLMBadRequest(
+                        f"Provider rejected a tool identifier for model {model}. "
+                        f"AgentForge sent these validated identifiers: {tool_names}. "
+                        f"Provider detail: {err}"
+                    ) from err
                 raise LLMBadRequest(f"Bad request to LLM provider: {err}") from err
             if category == "rate_limit":
                 if attempt >= max_retries:
@@ -154,7 +198,7 @@ def _classify_error(err: Exception) -> str:
         return "rate_limit"
     if "timeout" in text or "timed out" in text:
         return "timeout"
-    if "invalid_request" in text:
+    if "invalid_request" in text or "invalid identifier" in text or "tool name" in text:
         return "bad_request"
     return "other"
 

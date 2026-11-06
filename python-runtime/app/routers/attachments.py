@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,12 +19,10 @@ from app.infra.attachment_storage import (
     AttachmentStorageError,
     content_disposition,
     new_storage_key,
-    promote_quarantined_blob_to_clean,
     promote_staged_file,
     remove_attachment_blobs,
     resolve_blob,
     safe_original_name,
-    scan_attachment,
     stream_to_staging,
     validate_attachment,
 )
@@ -43,7 +40,7 @@ def attachment_out(row: models.ProjectAttachment) -> dict:
         "name": row.original_name,
         "mime": row.detected_mime,
         "size_bytes": row.size_bytes,
-        "status": row.status,
+        "status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
         "created_at": row.created_at,
         "scanned_at": row.scanned_at,
     }
@@ -127,15 +124,11 @@ async def upload_project_attachment(project_id: str, request: Request, db: Sessi
                 except AttachmentStorageError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-                scan_result, scanner_version = await scan_attachment(staging)
-                if scan_result == "clean":
-                    status, clean, scanned_at = "clean", True, datetime.now(timezone.utc)
-                elif scan_result == "infected":
-                    status, clean, scanned_at = "rejected", False, datetime.now(timezone.utc)
-                else:
-                    # Scanner absent, timed out, crashed or returned an uncertain verdict:
-                    # preserve the file in quarantine, never make it downloadable or runnable.
-                    status, clean, scanned_at = "quarantined", False, None
+                # Attachments are user-provided inputs, not executable commands.
+                # Do not quarantine or invoke host antivirus; downstream tools still
+                # treat every attachment as untrusted data.
+                status, clean, scanned_at = "unscanned", True, None
+                scanner_version = None
 
                 promote_staged_file(staging, storage_key, clean=clean)
                 promoted = True
@@ -221,10 +214,13 @@ def download_project_attachment(
 ):
     _project_or_404(db, project_id)
     row = _lookup_attachment_or_404(db, project_id, attachment_id)
-    if row.status != "clean":
-        raise HTTPException(status_code=409, detail="Attachment is quarantined or rejected and cannot be downloaded")
     try:
-        path = resolve_blob(row.storage_key, clean=True)
+        try:
+            path = resolve_blob(row.storage_key, clean=True)
+        except FileNotFoundError:
+            # Compatibility for files quarantined by older releases. They remain
+            # downloadable as untrusted attachments; current uploads never scan.
+            path = resolve_blob(row.storage_key, clean=False)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Attachment content not found") from exc
     except AttachmentStorageError as exc:
@@ -241,72 +237,6 @@ def download_project_attachment(
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )
-
-
-@router.post("/{project_id}/attachments/{attachment_id}/scan")
-async def rescan_project_attachment(
-    project_id: str, attachment_id: str, db: Session = Depends(get_db)
-) -> dict:
-    _project_or_404(db, project_id)
-    row = _lookup_attachment_or_404(db, project_id, attachment_id)
-    if row.status == "clean":
-        return {**attachment_out(row), "scan_result": "already_clean"}
-    if row.status != "quarantined":
-        raise HTTPException(status_code=409, detail="Only quarantined attachments can be rescanned")
-
-    try:
-        path = resolve_blob(row.storage_key, clean=False)
-        detected_mime = validate_attachment(path, row.original_name, row.declared_mime)
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        if path.stat().st_size != row.size_bytes or digest.hexdigest() != row.sha256:
-            raise AttachmentStorageError("Attachment integrity changed while quarantined")
-        if detected_mime != row.detected_mime:
-            raise AttachmentStorageError("Attachment MIME changed while quarantined")
-    except (FileNotFoundError, OSError):
-        row.status = "rejected"
-        row.scanned_at = datetime.now(timezone.utc)
-        db.commit()
-        raise HTTPException(status_code=409, detail="Quarantined attachment content is missing")
-    except AttachmentStorageError as exc:
-        row.status = "rejected"
-        row.scanned_at = datetime.now(timezone.utc)
-        db.commit()
-        raise HTTPException(status_code=422, detail="Quarantined attachment failed integrity or format validation") from exc
-
-    scan_result, scanner_version = await scan_attachment(path)
-    row.scanner_version = scanner_version
-    if scan_result == "clean":
-        try:
-            promote_quarantined_blob_to_clean(row.storage_key)
-        except (AttachmentStorageError, OSError) as exc:
-            raise HTTPException(status_code=409, detail="Attachment could not be safely promoted") from exc
-        row.status = "clean"
-        row.scanned_at = datetime.now(timezone.utc)
-    elif scan_result == "infected":
-        row.status = "rejected"
-        row.scanned_at = datetime.now(timezone.utc)
-    # Missing scanner, timeout or an uncertain result remain quarantined.
-    try:
-        db.commit()
-        db.refresh(row)
-    except Exception as exc:
-        db.rollback()
-        if scan_result == "clean":
-            # Restore the quarantine location if the metadata update did not commit.
-            try:
-                from app.infra.attachment_storage import upload_dirs
-                _, quarantine, objects = upload_dirs()
-                clean_path = objects / f"{row.storage_key}.blob"
-                quarantine_path = quarantine / f"{row.storage_key}.blob"
-                if clean_path.is_file() and not clean_path.is_symlink() and not quarantine_path.exists():
-                    clean_path.replace(quarantine_path)
-            except OSError:
-                pass
-        raise HTTPException(status_code=500, detail="Attachment scan status could not be saved") from exc
-    return {**attachment_out(row), "scan_result": scan_result}
 
 
 @router.delete("/{project_id}/attachments/{attachment_id}")

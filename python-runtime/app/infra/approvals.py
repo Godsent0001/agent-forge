@@ -9,23 +9,36 @@ from uuid import uuid4
 from app.contracts.events import EventDraft
 from app.contracts.tools import Permission
 
+# Known tools default to Allow for frictionless execution. Unknown tool types
+# default to Ask so newly added tools cannot silently bypass approval.
 DEFAULT_POLICIES = {
-    "python": "ask",
-    "http_request": "ask",
+    "python": "allow",
+    "python_environment": "ask",
+    "agentforge_reply_user": "allow",
+    "reply_user": "allow",
+    "read_attachment": "allow",
+    "knowledge_search": "allow",
+    "knowledge_ingest": "allow",
+    "recall_run": "allow",
+    "intent_create": "allow",
+    "intent_list": "allow",
+    "intent_cancel": "allow",
+    "shell": "allow",
+    "http_request": "allow",
+    "browser": "allow",
     "web_search": "allow",
-    # Read-only metadata/caption lookups; clip_extractor writes only to the run workspace.
     "video_source": "allow",
     "video_transcript": "allow",
     "clip_finder": "allow",
     "clip_extractor": "allow",
     "file_system": "allow",
-    # Shared-data mutators require approval unless the project explicitly changes policy.
-    "scene_template_manager": "ask",
-    "render_queue": "ask",
-    "project_manager": "ask",
-    "asset_cache_store": "ask",
-    "production_config": "ask",
-    "cache_engine": "ask",
+    "file": "allow",
+    "scene_template_manager": "allow",
+    "render_queue": "allow",
+    "project_manager": "allow",
+    "asset_cache_store": "allow",
+    "production_config": "allow",
+    "cache_engine": "allow",
 }
 APPROVAL_TIMEOUT_SECONDS = 300
 
@@ -36,6 +49,7 @@ class PendingApproval:
     execution_id: str
     tool: str
     kind: str
+    tool_call_id: str | None
     future: asyncio.Future[str]
     gate: "ApprovalGateImpl"
 
@@ -52,26 +66,33 @@ class ApprovalGateImpl:
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.allowed_for_run: set[tuple[str, str]] = set()
 
-    def _kind_for(self, tool: str, permissions: set[Permission]) -> str:
+    def _kind_for(self, tool: str) -> str:
         if tool in self.tool_kinds:
             return self.tool_kinds[tool]
-        if "subprocess" in permissions:
-            return "python"
-        if "net" in permissions:
-            return "http_request"
-        if "fs_write" in permissions:
-            return "file_system"
+        # Only known built-in tool names inherit their own default policy.
+        # Unknown names remain unknown even if their permissions resemble a
+        # built-in tool, so they fall back to Ask rather than silently Allow.
         return tool
 
     def _policy_for(self, kind: str, permissions: set[Permission]) -> str:
         configured = self.settings.get("tool_policy", {})
         policy = configured.get(kind) if isinstance(configured, dict) else None
         if policy not in {"allow", "ask", "deny"}:
-            policy = DEFAULT_POLICIES.get(kind, "ask" if permissions else "allow")
+            policy = DEFAULT_POLICIES.get(kind)
+            if policy is None:
+                # Every tool the runtime factory knows how to build is autonomous
+                # by default. Truly unknown tool kinds still require an explicit
+                # project policy or user approval.
+                try:
+                    from app.tools.registry import known_tool_kinds
+
+                    policy = "allow" if kind in known_tool_kinds() else "ask"
+                except Exception:
+                    policy = "ask"
         return policy
 
-    async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "") -> bool:
-        kind = self._kind_for(tool, permissions)
+    async def check(self, *, tool: str, permissions: set[Permission], args_preview: str, span_id: str, force: bool = False, reason: str = "", tool_call_id: str | None = None) -> bool:
+        kind = self._kind_for(tool)
         if (self.execution_id, tool) in self.allowed_for_run:
             return True
 
@@ -84,7 +105,7 @@ class ApprovalGateImpl:
         loop = asyncio.get_running_loop()
         approval_id = str(uuid4())
         future: asyncio.Future[str] = loop.create_future()
-        pending = PendingApproval(approval_id, self.execution_id, tool, kind, future, self)
+        pending = PendingApproval(approval_id, self.execution_id, tool, kind, tool_call_id, future, self)
         PENDING[approval_id] = pending
         decision = "deny"
         timed_out = False
@@ -132,7 +153,6 @@ class ApprovalGateImpl:
                     },
                 )))
             except Exception:
-                # Resolution must not resurrect a completed/failed execution.
                 pass
 
         if cancelled:
@@ -140,6 +160,18 @@ class ApprovalGateImpl:
         if decision == "allow_run":
             self.allowed_for_run.add((self.execution_id, tool))
         return decision in {"allow_once", "allow_run"}
+
+
+def deny_pending_approvals(execution_id: str, tool_call_id: str | None = None) -> int:
+    """Deny pending approvals for an execution, optionally limited to one tool call."""
+    denied = 0
+    for pending in tuple(PENDING.values()):
+        if (pending.execution_id == execution_id
+                and (tool_call_id is None or pending.tool_call_id == tool_call_id)
+                and not pending.future.done()):
+            pending.future.set_result("deny")
+            denied += 1
+    return denied
 
 
 def resolve_approval(*, execution_id: str, approval_id: str, decision: str) -> bool:

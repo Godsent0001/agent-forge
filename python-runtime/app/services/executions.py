@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -72,8 +73,27 @@ def _apply_project_defaults(req: RunRequest, settings: dict, parallel_execution:
 
 
 class CancelTokenImpl:
+    """Execution-scoped control channel for cancellation, live instructions and tool stops."""
+
+    _STOP_REQUEST = re.compile(
+        r"\b(stop|cancel|kill|interrupt|abort)\b.{0,100}\b("
+        r"tool|command|process|shell|terminal|browser|search|it|that|this|current|running|active)\b",
+        re.IGNORECASE,
+    )
+    _REPLAN_INTERRUPT = re.compile(
+        r"\b(instead|rather than|switch to|change to|replace|avoid|stop using|don't use|do not use|"
+        r"don't run|do not run|no longer use)\b",
+        re.IGNORECASE,
+    )
+
     def __init__(self) -> None:
         self._cancelled = False
+        self._live_messages: list[str] = []
+        self._control_notices: list[str] = []
+        self._message_notifications: asyncio.Queue[str] = asyncio.Queue()
+        self._replied_messages: set[str] = set()
+        self._active_tools: dict[str, asyncio.Task] = {}
+        self._active_tool_names: dict[str, str] = {}
 
     @property
     def cancelled(self) -> bool:
@@ -81,6 +101,101 @@ class CancelTokenImpl:
 
     def cancel(self) -> None:
         self._cancelled = True
+        for task in tuple(self._active_tools.values()):
+            if not task.done():
+                task.cancel()
+
+    def enqueue_message(self, content: str) -> bool:
+        content = content.strip()
+        if not content or self._cancelled:
+            return False
+        self._live_messages.append(content)
+        self._message_notifications.put_nowait(content)
+        # Explicit stop/replan instructions interrupt in-flight tools and invalidate
+        # any approval that was requested for the now-obsolete operation.
+        stop_match = self._STOP_REQUEST.search(content)
+        replan = bool(self._REPLAN_INTERRUPT.search(content))
+        interrupted = bool(stop_match or replan)
+        if stop_match:
+            lowered = content.casefold()
+            target = next(
+                (name for marker, name in (
+                    ("command", "shell"), ("shell", "shell"), ("terminal", "shell"),
+                    ("browser", "browser"), ("search", "web_search"),
+                ) if marker in lowered),
+                None,
+            )
+            self.stop_active_tools(tool_name=target)
+        elif replan:
+            self.stop_active_tools()
+        return interrupted
+
+    def drain_messages(self) -> list[str]:
+        messages = self._live_messages + self._control_notices
+        self._live_messages = []
+        self._control_notices = []
+        # Keep the notification channel aligned for messages handled at a safe
+        # checkpoint before a tool-monitor task has consumed their notification.
+        while True:
+            try:
+                self._message_notifications.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        return messages
+
+    async def wait_for_message(self) -> str:
+        return await self._message_notifications.get()
+
+    def message_interrupts(self, content: str) -> bool:
+        return bool(
+            self._STOP_REQUEST.search(content) or self._REPLAN_INTERRUPT.search(content)
+        )
+
+    def has_pending_interrupt(self) -> bool:
+        return any(self.message_interrupts(message) for message in self._live_messages)
+
+    def mark_message_replied(self, content: str) -> None:
+        self._replied_messages.add(content.strip())
+
+    def was_message_replied(self, content: str) -> bool:
+        return content.strip() in self._replied_messages
+
+    def register_tool(self, tool_call_id: str, task: asyncio.Task, tool_name: str = "") -> None:
+        self._active_tools[tool_call_id] = task
+        self._active_tool_names[tool_call_id] = tool_name.casefold()
+
+    def unregister_tool(self, tool_call_id: str, task: asyncio.Task) -> None:
+        if self._active_tools.get(tool_call_id) is task:
+            self._active_tools.pop(tool_call_id, None)
+            self._active_tool_names.pop(tool_call_id, None)
+
+    def record_tool_stop_notice(self, tool_call_id: str) -> None:
+        notice = (
+            f"[Runtime control notice] The user stopped tool call {tool_call_id}. "
+            "Do not restart that same operation unless a different approach requires it. "
+            "Continue with the remaining task and the user's latest instructions."
+        )
+        # Internal control notices belong in the next model context, but must not
+        # wake the live-user-message monitor or trigger a fabricated user reply.
+        self._control_notices.append(notice)
+
+    def stop_tool(self, tool_call_id: str) -> bool:
+        task = self._active_tools.get(tool_call_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        self.record_tool_stop_notice(tool_call_id)
+        return True
+
+    def stop_active_tools(self, tool_name: str | None = None) -> int:
+        stopped = 0
+        for tool_call_id, task in tuple(self._active_tools.items()):
+            if tool_name and self._active_tool_names.get(tool_call_id) != tool_name:
+                continue
+            if not task.done():
+                task.cancel()
+                stopped += 1
+        return stopped
 
     def raise_if_cancelled(self) -> None:
         if self._cancelled:
@@ -150,9 +265,16 @@ def legacy_event_payload(event) -> dict:
 
 
 class Emitter:
-    def __init__(self, execution_id: str, hub: Hub, start_seq: int = 0) -> None:
+    def __init__(
+        self,
+        execution_id: str,
+        hub: Hub,
+        start_seq: int = 0,
+        conversation_id: str | None = None,
+    ) -> None:
         self.execution_id = execution_id
         self.hub = hub
+        self.conversation_id = conversation_id
         self._seq = start_seq
         self._lock = asyncio.Lock()
 
@@ -182,6 +304,20 @@ class Emitter:
     def _persist(self, event: RunEvent) -> None:
         db = SessionLocal()
         try:
+            if event.type == "assistant_message" and isinstance(event.data, dict):
+                message_id = event.data.get("message_id")
+                if not isinstance(message_id, str) or not message_id.strip():
+                    message_id = str(uuid4())
+                    event.data["message_id"] = message_id
+                content = event.data.get("content")
+                if self.conversation_id and isinstance(content, str) and content.strip():
+                    db.add(models.ConversationMessage(
+                        id=message_id,
+                        conversation_id=self.conversation_id,
+                        role="assistant",
+                        content=content.strip(),
+                        execution_id=event.execution_id,
+                    ))
             db.add(models.ExecutionEventRow(
                 id=str(uuid4()),
                 execution_id=event.execution_id,
@@ -235,7 +371,7 @@ class ExecutionManager:
         return {"id": req.execution_id, "status": "running"}
 
     async def _run(self, req: RunRequest, token: CancelTokenImpl, project_settings: dict | None = None) -> None:
-        emitter = Emitter(req.execution_id, self.hub)
+        emitter = Emitter(req.execution_id, self.hub, conversation_id=req.conversation_id)
         status = "error"
         final_output = ""
         error: str | None = None
@@ -252,7 +388,7 @@ class ExecutionManager:
                 data={"root_agent_id": req.root_agent_id, "task_preview": req.task[:500]},
             ))
             runner = get_runner()
-            workspace = Workspace(req.execution_id)
+            workspace = Workspace(req.execution_id, req.project_id)
             approvals = ApprovalGateImpl(
                 execution_id=req.execution_id,
                 settings=project_settings or {},
@@ -329,6 +465,34 @@ class ExecutionManager:
             self.active.pop(req.execution_id, None)
             self.tokens.pop(req.execution_id, None)
 
+    def send_message(self, execution_id: str, content: str) -> bool:
+        token = self.tokens.get(execution_id)
+        task = self.active.get(execution_id)
+        if not token or not task or task.done():
+            return False
+        interrupted = token.enqueue_message(content)
+        if interrupted:
+            from app.infra.approvals import deny_pending_approvals
+
+            deny_pending_approvals(execution_id)
+        return True
+
+    def stop_tool(self, execution_id: str, tool_call_id: str) -> bool:
+        token = self.tokens.get(execution_id)
+        if not token:
+            return False
+        if token.stop_tool(tool_call_id):
+            return True
+        # A span may already be visible while its tool is still waiting for approval
+        # and therefore has not registered an executable child task yet.
+        from app.infra.approvals import deny_pending_approvals
+
+        denied = deny_pending_approvals(execution_id, tool_call_id)
+        if denied:
+            token.record_tool_stop_notice(tool_call_id)
+            return True
+        return False
+
     async def cancel(self, execution_id: str) -> bool:
         token = self.tokens.get(execution_id)
         task = self.active.get(execution_id)
@@ -377,6 +541,9 @@ class ExecutionManager:
         return interrupted_count
 
     async def shutdown(self) -> None:
+        from app.tools.shell_sessions import shell_sessions
+
+        await shell_sessions.stop_all()
         tasks = list(self.active.values())
         for token in self.tokens.values():
             token.cancel()

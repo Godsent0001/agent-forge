@@ -21,7 +21,7 @@ vi.mock("./store/useStore", () => ({
     selector({
       fetchProjects,
       loadProject,
-      project: null,
+      project: { id: "project-1", name: "Test Project" },
       projects: [],
       agents: [],
       tools: [],
@@ -91,6 +91,10 @@ vi.mock("./components/WorkflowCanvas", () => ({
 
 vi.mock("./components/PropertiesPanel", () => ({
   PropertiesPanel: () => <aside data-testid="properties-panel">Properties panel</aside>,
+}));
+
+vi.mock("./components/AgentWorkspacePanel", () => ({
+  AgentWorkspacePanel: () => <aside data-testid="agent-workspace">Agent Workspace</aside>,
 }));
 
 import App from "./App";
@@ -165,6 +169,22 @@ describe("App bootstrap and workspace layout", () => {
     expect(screen.getByTestId("properties-panel")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Model & delegation" }));
     expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
+  });
+
+  it("opens the workspace from the side rail and keeps it available on the Agent screen", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("agent-chat")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Agent Workspace" }));
+    expect(screen.getByTestId("agent-workspace")).toBeInTheDocument();
+    expect(screen.queryByTestId("properties-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agent Workspace" }));
+    expect(screen.queryByTestId("agent-workspace")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agent Workspace" }));
+    expect(screen.getByTestId("agent-workspace")).toBeInTheDocument();
   });
 
   it("opens the live Activity inspector when a chat execution starts", async () => {

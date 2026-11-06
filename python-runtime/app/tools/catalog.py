@@ -8,7 +8,7 @@ instances). The catalog is what the "Add Tool" picker in the UI browses;
 picking an entry creates a `models.Tool` row with `kind` = the catalog id.
 
 `status` is either:
-  - "real": execute() does real work (ffmpeg/PIL/matplotlib/local logic/
+  - "real": execute() does real work (PIL/matplotlib/local logic/
     Piper TTS), no external paid API required.
   - "stub": the Tool class exists with the right name/description/
     input-output contract, but execute() raises a clear
@@ -38,42 +38,40 @@ class CatalogEntry:
 SHELVES: dict[str, str] = {
     "general": "General Tools",
     "audio": "Audio",
+    "qc": "Quality Control",
+    "video": "Video Sources",
     "character": "Character",
     "scene": "Scene",
     "camera": "Camera",
     "graphics": "Graphics",
     "timeline": "Timeline",
     "composition": "Composition",
-    "rendering": "Rendering",
     "asset_cache": "Asset & Cache",
-    "qc": "Quality Control",
-    "orchestration": "Orchestration",
-    "video": "Video Sources",
 }
 
 
 CATALOG: list[CatalogEntry] = [
     # --- General-purpose tools (always available in the unified catalog) ---
     CatalogEntry("web_search", "Web Search", "general",
-                 "Search the web for documentation, references, and relevant sources. Requires Crawl4AI configuration.",
+                 "Search the web for documentation and references using Serper.dev when configured, with a free keyless DuckDuckGo fallback.",
                  "real", pack=None),
     CatalogEntry("browser", "Browser", "general",
-                 "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
+                 "Use Playwright Chromium to navigate JavaScript-rendered public websites, interact with pages, and extract readable content. Every request is checked against the public-URL policy.",
                  "real", pack=None),
     CatalogEntry("shell", "CMD / Shell", "general",
-                 "Execute a command in the current run workspace with bounded output and a saved log. Requires subprocess permission.",
+                 "Run commands in the user's local CMD, PowerShell, or Unix terminal. Work in the project workspace or an absolute local directory; manage long-running processes and stop them. Destructive system-wide commands require approval.",
                  "real", pack=None),
     CatalogEntry("log_search", "Log Search", "general",
                  "Search saved long shell logs with exact/keyword search and optional embedding-based retrieval.",
                  "real", pack=None),
-    CatalogEntry("python", "Python Execution", "general",
-                 "Execute a short Python snippet in a restricted subprocess with bounded output.",
+    CatalogEntry("python", "Python", "general",
+                 "Run Python code with the user shared/system interpreter and its installed packages. No project virtual environments are created or activated.",
                  "real", pack=None),
     CatalogEntry("http_request", "HTTP Request", "general",
                  "Make a bounded HTTP GET or POST request to a public URL.",
                  "real", pack=None),
-    CatalogEntry("file_system", "File Operations", "general",
-                 "Read, write, or list files within the current run workspace.",
+    CatalogEntry("workspace_files", "Workspace Files", "general",
+                 "List, read, write, create directories, and delete individual files inside the persistent project workspace with validated path handling.",
                  "real", pack=None),
 
     # --- Audio ---------------------------------------------------------
@@ -81,17 +79,9 @@ CATALOG: list[CatalogEntry] = [
                  "Converts character dialogue into speech using Piper TTS "
                  "(local, offline, neural). Outputs a WAV file + duration metadata.",
                  "real"),
-    CatalogEntry("audio_processing", "Audio Processing", "audio",
-                 "Normalizes loudness, trims silence, and cleans up a generated "
-                 "voice line via ffmpeg. Deterministic and fast.",
-                 "real"),
     CatalogEntry("audio_alignment", "Audio Alignment", "audio",
                  "Produces word-level timing for a voice line from its transcript "
                  "and duration — feeds captions, lip-sync, and camera timing.",
-                 "real"),
-    CatalogEntry("audio_mixer", "Audio Mixer", "audio",
-                 "Combines voice, music, and SFX tracks with volume automation, "
-                 "ducking, and fades via ffmpeg.",
                  "real"),
 
     # --- Character -------------------------------------------------------
@@ -204,21 +194,6 @@ CATALOG: list[CatalogEntry] = [
                  "vignette, motion blur, screen flash.",
                  "real"),
 
-    # --- Rendering -----------------------------------------------------
-    CatalogEntry("preview_renderer", "Preview Renderer", "rendering",
-                 "Fast, low-resolution render (360p) for checking timing, "
-                 "captions, camera, and lip-sync before a full render.",
-                 "real"),
-    CatalogEntry("final_renderer", "Final Renderer", "rendering",
-                 "Produces the final deliverable: 1080x1920, 30fps, H.264/AAC.",
-                 "real"),
-    CatalogEntry("render_queue", "Render Queue", "rendering",
-                 "Queues multiple episodes for rendering, tracks job status.",
-                 "real"),
-    CatalogEntry("render_worker", "Render Worker", "rendering",
-                 "Executes a single queued render job end to end.",
-                 "real"),
-
     # --- Asset & Cache -------------------------------------------------
     CatalogEntry("cache_engine", "Cache Engine", "asset_cache",
                  "Hashes tool inputs and skips regeneration when nothing "
@@ -246,10 +221,6 @@ CATALOG: list[CatalogEntry] = [
                  "Checks generated audio for clipping, excessive silence, "
                  "abnormal volume, or corruption.",
                  "real"),
-    CatalogEntry("video_qc", "Video QC", "qc",
-                 "Checks final video for resolution, frame rate, black frames, "
-                 "missing frames, and audio/video duration mismatch.",
-                 "real"),
     CatalogEntry("lip_sync_qc", "Lip-Sync QC", "qc",
                  "Measures audio timing against mouth-shape timing and flags "
                  "sections with suspicious drift.",
@@ -262,33 +233,12 @@ CATALOG: list[CatalogEntry] = [
                  "Compares script, generated voice, and final video to catch "
                  "accidentally omitted lines.",
                  "real"),
-    CatalogEntry("automated_preview_qc", "Automated Preview/QC", "qc",
-                 "Runs a checklist against a preview render before committing "
-                 "to an expensive final render.",
-                 "real"),
 
-    # --- Orchestration -------------------------------------------------
+    # --- Video source search ------------------------------------------
     CatalogEntry("video_source", "Video Source", "video",
-                 "Searches yt-dlp-supported video hosts and returns source metadata for clip selection.",
-                 "real"),
-    CatalogEntry("video_transcript", "Video Transcript", "video",
-                 "Gets a timestamped transcript + chapters for a video URL or file from its captions "
-                 "(local Whisper fallback) without watching it. Cached; ~12k tokens per hour if read.",
-                 "real"),
-    CatalogEntry("clip_finder", "Clip Finder", "video",
-                 "Finds the start/end of moments matching a description by searching the transcript "
-                 "locally — no video tokens. Returns ranked clips with excerpts.",
-                 "real"),
-    CatalogEntry("clip_extractor", "Clip Extractor", "video",
-                 "Cuts clips by timestamp into MP4s, downloading only those sections (yt-dlp) or "
-                 "trimming a local file (ffmpeg). Optional per-clip subtitles.",
+                 "Searches supported video hosts and returns metadata only; it does not download, transcode, or extract media.",
                  "real"),
 
-    CatalogEntry("pipeline_orchestrator", "Pipeline Orchestrator", "orchestration",
-                 "Coordinates the full script-to-mp4 pipeline stage by stage: "
-                 "voice -> alignment -> lip-sync -> performance -> graphics -> "
-                 "camera -> timeline -> compositor -> render -> QC.",
-                 "real"),
 ]
 
 

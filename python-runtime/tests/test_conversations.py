@@ -107,3 +107,72 @@ def test_feedback_only_accepts_assistant_messages(client, db_session):
         json={"role": "user", "content": "A question"},
     ).json()
     assert client.put(f"/v2/messages/{user['id']}/feedback", json={"value": 1}).status_code == 422
+
+
+def test_editing_user_message_truncates_later_turns_and_updates_title(client, db_session):
+    project, agent = _project_agent(db_session)
+    conversation = client.post(
+        "/v2/conversations", json={"project_id": project.id, "agent_id": agent.id}
+    ).json()
+    first = client.post(
+        f"/v2/conversations/{conversation['id']}/messages",
+        json={"role": "user", "content": "Old question"},
+    ).json()
+    execution = models.Execution(
+        id=str(uuid4()),
+        project_id=project.id,
+        root_agent_id=agent.id,
+        input_task="Old question",
+        status="completed",
+        final_output="Old answer",
+    )
+    db_session.add(execution)
+    db_session.commit()
+    client.post(
+        f"/v2/conversations/{conversation['id']}/messages",
+        json={"role": "assistant", "content": "Old answer", "execution_id": execution.id},
+    )
+    client.post(
+        f"/v2/conversations/{conversation['id']}/messages",
+        json={"role": "user", "content": "Follow-up"},
+    )
+
+    edited = client.patch(
+        f"/v2/messages/{first['id']}",
+        json={"content": "  Revised question  "},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["content"] == "Revised question"
+
+    messages = client.get(f"/v2/conversations/{conversation['id']}/messages").json()
+    assert [(message["role"], message["content"]) for message in messages] == [
+        ("user", "Revised question")
+    ]
+    listing = client.get(f"/v2/conversations?project_id={project.id}&agent_id={agent.id}").json()
+    assert listing[0]["title"] == "Revised question"
+
+
+def test_editing_assistant_message_is_rejected(client, db_session):
+    project, agent = _project_agent(db_session)
+    conversation = client.post(
+        "/v2/conversations", json={"project_id": project.id, "agent_id": agent.id}
+    ).json()
+    execution = models.Execution(
+        id=str(uuid4()),
+        project_id=project.id,
+        root_agent_id=agent.id,
+        input_task="Question",
+        status="completed",
+        final_output="Answer",
+    )
+    db_session.add(execution)
+    db_session.commit()
+    assistant = client.post(
+        f"/v2/conversations/{conversation['id']}/messages",
+        json={"role": "assistant", "content": "Answer", "execution_id": execution.id},
+    ).json()
+    response = client.patch(
+        f"/v2/messages/{assistant['id']}",
+        json={"content": "Edited answer"},
+    )
+    assert response.status_code == 422

@@ -12,6 +12,7 @@ import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ToolCatalogModal } from "./components/ToolCatalogModal";
 import { SystemEngineerWorkspace } from "./components/SystemEngineerWorkspace";
 import { FloatingSystemEngineer } from "./components/FloatingSystemEngineer";
+import { AgentWorkspacePanel } from "./components/AgentWorkspacePanel";
 import { useStore } from "./store/useStore";
 import { Icon } from "./components/ui/Icon";
 
@@ -42,6 +43,7 @@ export default function App() {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(true);
   const [showRunDialog, setShowRunDialog] = useState(false);
   const [isExecutionTreeOpen, setIsExecutionTreeOpen] = useState(false);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [showToolCatalogModal, setShowToolCatalogModal] = useState(false);
   const [isRunningQuickRun, setIsRunningQuickRun] = useState(false);
 
@@ -128,12 +130,20 @@ export default function App() {
   };
   const endResize = () => setResizeDrag(null);
   const toggleInspector = () => {
+    setIsWorkspaceOpen(false);
     if (isPropertiesOpen && !isExecutionTreeOpen) setIsPropertiesOpen(false);
     else { setIsPropertiesOpen(true); setIsExecutionTreeOpen(false); }
   };
   const toggleLogs = () => {
+    setIsWorkspaceOpen(false);
     if (isExecutionTreeOpen) setIsExecutionTreeOpen(false);
     else { setIsExecutionTreeOpen(true); setIsPropertiesOpen(false); }
+  };
+  const toggleWorkspace = () => {
+    if (!isWorkspaceOpen) setInspectorWidth((width) => Math.max(width, 420));
+    setIsWorkspaceOpen((open) => !open);
+    setIsPropertiesOpen(false);
+    setIsExecutionTreeOpen(false);
   };
 
   // Primary Run Workflow trigger
@@ -224,32 +234,36 @@ export default function App() {
           <div className="flex-1 min-w-0 h-full overflow-hidden rounded-panel bg-studio-900 neu-raised"><AgentEditor /></div>
         )}
 
-        {((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && activeTab !== "engineer" && (
+        {(isWorkspaceOpen || (((isPropertiesOpen && !isExecutionTreeOpen) || isExecutionTreeOpen) && activeTab !== "config" && activeTab !== "engineer")) && (
           <div className={`relative h-full shrink-0 rounded-panel bg-studio-900 neu-raised ${isCompactViewport ? "absolute inset-y-2.5 right-16 z-40 h-auto shadow-elevated" : ""}`} style={{ width: isCompactViewport ? "min(22rem, calc(100vw - 5.75rem))" : inspectorWidth }}>
             {!isCompactViewport && (
-              <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" tabIndex={0}
+              <div role="separator" aria-label={isWorkspaceOpen ? "Resize workspace" : "Resize inspector"} aria-orientation="vertical" tabIndex={0}
                 onPointerDown={(event) => beginResize("inspector", event)} onPointerMove={moveResize}
                 onPointerUp={endResize} onPointerCancel={endResize}
                 onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setInspectorWidth((width) => Math.max(240, Math.min(560, width + (event.key === "ArrowLeft" ? 12 : -12)))); } }}
                 className="absolute left-[-7px] top-3 bottom-3 z-30 w-1.5 cursor-col-resize touch-none rounded-full hover:bg-accent-500/50 focus-visible:bg-accent-500/60"
               />
             )}
-            {isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} onSelectExecution={setActiveExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
+            {isWorkspaceOpen && project ? <AgentWorkspacePanel projectId={project.id} executionId={activeExecutionId} /> : isExecutionTreeOpen ? <ExecutionTree executionId={activeExecutionId} onSelectExecution={setActiveExecutionId} /> : <PropertiesPanel onClose={() => setIsPropertiesOpen(false)} onOpenToolCatalog={() => setShowToolCatalogModal(true)} />}
           </div>
         )}
 
-        {activeTab !== "config" && activeTab !== "engineer" && (
-          <aside aria-label="Workspace panels" className="z-30 flex h-full w-12 shrink-0 flex-col items-center gap-2.5 rounded-panel bg-studio-900 neu-raised py-2.5">
-            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
-              className={`rounded-lg p-2 transition-all ${isPropertiesOpen && !isExecutionTreeOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
+        <aside aria-label="Workspace panels" className="z-30 flex h-full w-12 shrink-0 flex-col items-center gap-2.5 rounded-panel bg-studio-900 neu-raised py-2.5">
+          {activeTab !== "config" && activeTab !== "engineer" && <>
+            <button type="button" onClick={toggleInspector} aria-label={activeTab === "chat" ? "Model & delegation" : "Inspector"} aria-pressed={isPropertiesOpen && !isExecutionTreeOpen && !isWorkspaceOpen} title={activeTab === "chat" ? "Model and delegation" : "Inspector"}
+              className={`rounded-lg p-2 transition-all ${isPropertiesOpen && !isExecutionTreeOpen && !isWorkspaceOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
               <Icon name="inspector" />
             </button>
-            <button type="button" onClick={toggleLogs} aria-label={activeTab === "chat" ? "Activity" : "View logs"} aria-pressed={isExecutionTreeOpen} title={activeTab === "chat" ? "Activity" : "View logs"}
-              className={`rounded-lg p-2 transition-all ${isExecutionTreeOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
+            <button type="button" onClick={toggleLogs} aria-label={activeTab === "chat" ? "Activity" : "View logs"} aria-pressed={isExecutionTreeOpen && !isWorkspaceOpen} title={activeTab === "chat" ? "Activity" : "View logs"}
+              className={`rounded-lg p-2 transition-all ${isExecutionTreeOpen && !isWorkspaceOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
               <Icon name="logs" />
             </button>
-          </aside>
-        )}
+          </>}
+          <button type="button" onClick={toggleWorkspace} aria-label="Agent Workspace" aria-pressed={isWorkspaceOpen} title="Agent Workspace"
+            className={`rounded-lg p-2 transition-all ${isWorkspaceOpen ? "bg-studio-900 shadow-neu-pressed text-accent-300" : "text-studio-400 hover:text-studio-100 hover:shadow-neu-sm"}`}>
+            <Icon name="folder-open" />
+          </button>
+        </aside>
       </div>
 
       {showToolCatalogModal && <ToolCatalogModal onClose={() => setShowToolCatalogModal(false)} />}

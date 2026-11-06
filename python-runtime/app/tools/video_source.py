@@ -1,8 +1,6 @@
 """Video source tool backed by yt-dlp.
 
-Searches supported video hosts for clip candidates and returns stable metadata.
-The tool does not download media; pass a returned URL to video_transcript /
-clip_finder / clip_extractor (app/tools/video_clips.py) to locate and cut clips.
+Searches supported video hosts for stable metadata only. It does not download, transcode, or extract media.
 """
 
 from __future__ import annotations

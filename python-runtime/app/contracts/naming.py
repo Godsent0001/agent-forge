@@ -13,7 +13,15 @@ def sanitize_tool_name(name: str) -> str:
         return "tool"
     if not s[0].isalpha() or not s[0].isascii():
         s = "t_" + s
-    return s[:_MAX_LEN]
+    s = s[:_MAX_LEN]
+    if not re.fullmatch(TOOL_NAME_RE, s):
+        return "tool"
+    return s
+
+
+def canonical_tool_names(names: list[str]) -> list[str]:
+    """Return provider-safe, unique function identifiers for display names/kinds."""
+    return dedupe_names([sanitize_tool_name(name) for name in names])
 
 
 def dedupe_names(names: list[str]) -> list[str]:

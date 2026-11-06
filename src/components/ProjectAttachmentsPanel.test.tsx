@@ -37,6 +37,15 @@ const quarantinedAttachment: ProjectAttachment = {
   scanned_at: null,
 };
 
+const unscannedAttachment: ProjectAttachment = {
+  ...cleanAttachment,
+  id: "unscanned-attachment",
+  name: "calculator.py",
+  mime: "text/x-python",
+  status: "unscanned",
+  scanned_at: null,
+};
+
 function renderPanel(onSelectedIdsChange = vi.fn()) {
   return render(
     <ProjectAttachmentsPanel
@@ -52,9 +61,9 @@ beforeEach(() => {
 });
 
 describe("ProjectAttachmentsPanel", () => {
-  it("allows only clean-scanned files to be selected for a run", async () => {
+  it("allows clean and unscanned files to be selected but blocks quarantined files", async () => {
     vi.mocked(api.attachments.list).mockResolvedValue({
-      items: [cleanAttachment, quarantinedAttachment],
+      items: [cleanAttachment, quarantinedAttachment, unscannedAttachment],
       next_cursor: null,
     });
     const onSelectedIdsChange = vi.fn();
@@ -68,11 +77,15 @@ describe("ProjectAttachmentsPanel", () => {
     const quarantinedCheckbox = screen.getByRole("checkbox", {
       name: "Attach pending.txt to the next run",
     });
+    const unscannedCheckbox = screen.getByRole("checkbox", {
+      name: "Attach calculator.py to the next run",
+    });
 
     expect(cleanCheckbox).not.toBeDisabled();
     expect(quarantinedCheckbox).toBeDisabled();
-    fireEvent.click(cleanCheckbox);
-    expect(onSelectedIdsChange).toHaveBeenCalledWith(["clean-attachment"]);
+    expect(unscannedCheckbox).not.toBeDisabled();
+    fireEvent.click(unscannedCheckbox);
+    expect(onSelectedIdsChange).toHaveBeenCalledWith(["unscanned-attachment"]);
   });
 
   it("automatically selects a clean-scanned upload for the next task", async () => {

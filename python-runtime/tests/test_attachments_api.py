@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+import os
 
 from app import models
 from app.infra import attachment_storage
-from app.infra.attachment_storage import data_dir, upload_dirs
-from app.routers import attachments as attachments_router
+from app.infra.attachment_storage import upload_dirs
+from app.infra.paths import project_dir
 from app.routers import executions_v2
 
 
@@ -24,23 +24,14 @@ def _upload(client, project_id: str, name: str = "brief.txt", content: bytes = b
     )
 
 
-async def _clean_scan(path: Path):
-    return "clean", "test-scanner/1"
-
-
-async def _unavailable_scan(path: Path):
-    return "unavailable", None
-
-
-def test_upload_clean_file_lists_and_downloads_as_attachment(client, db_session, monkeypatch, tmp_path):
+def test_upload_file_lists_and_downloads_without_scanning(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
 
     response = _upload(client, project.id)
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "clean"
+    assert attachment["status"] == "unscanned"
     assert attachment["name"] == "brief.txt"
     assert "storage_key" not in attachment
     assert "path" not in attachment
@@ -60,7 +51,6 @@ def test_upload_clean_file_lists_and_downloads_as_attachment(client, db_session,
 
 def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
 
     content = b"Project brief\r\nOwner:\tKenny\r\n"
@@ -68,59 +58,97 @@ def test_multiline_text_with_windows_newlines_and_tabs_is_accepted(client, db_se
 
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "clean"
+    assert attachment["status"] == "unscanned"
     download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
     assert download.status_code == 200
     assert download.content == content
 
-def test_unavailable_scanner_quarantines_until_clean_rescan(client, db_session, monkeypatch, tmp_path):
+def test_uploads_are_available_without_invoking_scanner(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _unavailable_scan)
     project = _project(db_session)
 
     response = _upload(client, project.id)
     assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "quarantined"
-    denied = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
-    assert denied.status_code == 409
+    assert attachment["status"] == "unscanned"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == b"Project brief"
 
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
-    rescanned = client.post(f"/v2/projects/{project.id}/attachments/{attachment['id']}/scan")
-    assert rescanned.status_code == 200, rescanned.text
-    assert rescanned.json()["status"] == "clean"
-    assert rescanned.json()["scan_result"] == "clean"
-    assert client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content").content == b"Project brief"
+    agent = models.Agent(project_id=project.id, name="Upload agent")
+    db_session.add(agent)
+    db_session.commit()
+    captured = {}
+    def capture(req):
+        captured["req"] = req
+        return {"id": req.execution_id, "status": "running"}
+
+    monkeypatch.setattr(executions_v2.manager, "start", capture)
+    start = client.post("/v2/executions", json={
+        "project_id": project.id,
+        "root_agent_id": agent.id,
+        "task": "Read the attached brief",
+        "attachment_ids": [attachment["id"]],
+    })
+    assert start.status_code == 200, start.text
+    assert captured["req"].attachments[0].scan_status == "unscanned"
+    run_file = project_dir(project.id) / "workspace" / captured["req"].attachments[0].path
+    assert run_file.read_bytes() == b"Project brief"
+
+    # The same path must be visible through the project's normal workspace API,
+    # not just in an execution-private directory the agent cannot access.
+    relative_path = captured["req"].attachments[0].path
+    workspace_listing = client.get(f"/v2/projects/{project.id}/workspace")
+    assert workspace_listing.status_code == 200
+    assert relative_path in [item["path"] for item in workspace_listing.json()["files"]]
+    workspace_read = client.get(
+        f"/v2/projects/{project.id}/workspace/file", params={"path": relative_path}
+    )
+    assert workspace_read.status_code == 200
+    assert workspace_read.content == b"Project brief"
 
 
-def test_infected_file_is_rejected_and_cannot_be_downloaded(client, db_session, monkeypatch, tmp_path):
+
+def test_python_source_attachment_is_validated_and_available_for_inspection(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    async def infected(path: Path):
-        return "infected", "test-scanner/1"
-    monkeypatch.setattr(attachments_router, "scan_attachment", infected)
+    project = _project(db_session)
+    source = b"def add(a, b):\n    return a + b\n"
+    response = _upload(client, project.id, "calculator.py", source)
+    assert response.status_code == 201, response.text
+    attachment = response.json()
+    assert attachment["status"] == "unscanned"
+    assert attachment["mime"] == "text/x-python"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == source
+
+
+def test_upload_does_not_run_antivirus_or_quarantine(client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
     project = _project(db_session)
 
-    response = _upload(client, project.id)
-    assert response.status_code == 201
+    response = _upload(client, project.id, "sample.bin", b"\x00\x01arbitrary binary")
+    assert response.status_code == 201, response.text
     attachment = response.json()
-    assert attachment["status"] == "rejected"
-    assert client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content").status_code == 409
-    assert client.post(f"/v2/projects/{project.id}/attachments/{attachment['id']}/scan").status_code == 409
+    assert attachment["status"] == "unscanned"
+    download = client.get(f"/v2/projects/{project.id}/attachments/{attachment['id']}/content")
+    assert download.status_code == 200
+    assert download.content == b"\x00\x01arbitrary binary"
 
 
-def test_upload_validation_rejects_active_or_mismatched_content(client, db_session, monkeypatch, tmp_path):
+def test_upload_accepts_active_or_mismatched_content_as_untrusted_input(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     html = _upload(client, project.id, "readme.txt", b"<html><script>alert(1)</script></html>")
     mismatch = _upload(client, project.id, "portrait.png", b"plain text")
-    assert html.status_code == 422
-    assert mismatch.status_code == 422
+    assert html.status_code == 201, html.text
+    assert mismatch.status_code == 201, mismatch.text
+    assert html.json()["status"] == "unscanned"
+    assert mismatch.json()["status"] == "unscanned"
 
 
 def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     other = _project(db_session, "Other")
     response = _upload(client, project.id)
@@ -152,13 +180,52 @@ def test_attachment_ids_are_project_scoped_and_run_gets_private_copy(client, db_
     req = captured["req"]
     assert len(req.attachments) == 1
     assert req.attachments[0].path.startswith("attachments/")
-    run_file = data_dir() / "runs" / req.execution_id / req.attachments[0].path
+    run_file = project_dir(project.id) / "workspace" / req.attachments[0].path
     assert run_file.read_bytes() == b"Project brief"
+
+
+def test_legacy_quarantined_attachment_is_available_as_untrusted_input(client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
+    project = _project(db_session)
+    response = _upload(client, project.id, "legacy.bin", b"legacy content")
+    assert response.status_code == 201, response.text
+    attachment = response.json()
+    row = db_session.get(models.ProjectAttachment, attachment["id"])
+    assert row is not None
+    _, quarantine, objects = upload_dirs()
+    os.replace(objects / f"{row.storage_key}.blob", quarantine / f"{row.storage_key}.blob")
+    row.status = "rejected"
+    db_session.commit()
+
+    listed = client.get(f"/v2/projects/{project.id}/attachments")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["status"] == "unscanned"
+    downloaded = client.get(f"/v2/projects/{project.id}/attachments/{row.id}/content")
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"legacy content"
+
+    agent = models.Agent(project_id=project.id, name="Legacy upload agent")
+    db_session.add(agent)
+    db_session.commit()
+    captured = {}
+
+    def capture(req):
+        captured["req"] = req
+        return {"id": req.execution_id, "status": "running"}
+
+    monkeypatch.setattr(executions_v2.manager, "start", capture)
+    started = client.post("/v2/executions", json={
+        "project_id": project.id,
+        "root_agent_id": agent.id,
+        "task": "Inspect the attached legacy file",
+        "attachment_ids": [row.id],
+    })
+    assert started.status_code == 200, started.text
+    assert captured["req"].attachments[0].scan_status == "unscanned"
 
 
 def test_delete_removes_metadata_and_blobs(client, db_session, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENTFORGE_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setattr(attachments_router, "scan_attachment", _clean_scan)
     project = _project(db_session)
     response = _upload(client, project.id)
     attachment = response.json()

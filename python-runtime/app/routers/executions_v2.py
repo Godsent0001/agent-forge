@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import shutil
+import os
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -31,8 +32,9 @@ from app.infra.attachment_storage import (
 )
 from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
-from app.infra.workspace import RunWorkspace
+from app.services.core_adapters import Workspace
 from app.services.executions import manager
+from app.services.previews import preview_manager
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
@@ -42,13 +44,23 @@ class CreateExecutionRequest(BaseModel):
     project_id: str
     root_agent_id: str
     task: str
+    conversation_id: str | None = None
     history: list[dict] = Field(default_factory=list)
     options: RunOptions = Field(default_factory=RunOptions)
     attachment_ids: list[str] = Field(default_factory=list, max_length=MAX_RUN_ATTACHMENTS)
 
 
+class StartPreviewRequest(BaseModel):
+    package_path: str = Field(min_length=1, max_length=1024)
+
+
 class ResolveApprovalRequest(BaseModel):
     decision: Literal["allow_once", "allow_run", "deny"]
+
+
+class LiveMessageRequest(BaseModel):
+    conversation_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=100_000)
 
 
 def _execution_detail(row: models.Execution) -> dict:
@@ -66,8 +78,17 @@ def _execution_detail(row: models.Execution) -> dict:
 @router.post("")
 async def create_execution(payload: CreateExecutionRequest, db: Session = Depends(get_db)):
     execution_id = str(uuid4())
-    workspace: RunWorkspace | None = None
+    workspace: Workspace | None = None
+    copied_attachment_paths: list[str] = []
     try:
+        if payload.conversation_id:
+            conversation = db.get(models.Conversation, payload.conversation_id)
+            if (
+                conversation is None
+                or conversation.project_id != payload.project_id
+                or conversation.agent_id != payload.root_agent_id
+            ):
+                raise HTTPException(status_code=404, detail="Conversation not found for this agent and project")
         attachment_refs = []
         if payload.attachment_ids:
             if len(set(payload.attachment_ids)) != len(payload.attachment_ids):
@@ -86,46 +107,62 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
             if len(rows) != len(payload.attachment_ids):
                 # Unknown IDs and IDs from another project are deliberately indistinguishable.
                 raise HTTPException(status_code=404, detail="Attachment not found in this project")
-            if any(row.status != "clean" for row in rows):
-                raise HTTPException(status_code=409, detail="Only clean, scanned attachments can be used in a run")
             if sum(row.size_bytes for row in rows) > MAX_RUN_ATTACHMENT_BYTES:
                 raise HTTPException(status_code=413, detail="Run attachments exceed the 100 MiB combined limit")
 
             by_id = {row.id: row for row in rows}
-            workspace = RunWorkspace(execution_id)
+            workspace = Workspace(execution_id, payload.project_id)
             for attachment_id in payload.attachment_ids:
                 row = by_id[attachment_id]
                 try:
                     relative_path = copy_clean_attachment_to_workspace(row, workspace)
+                    copied_attachment_paths.append(relative_path)
                 except (AttachmentStorageError, OSError) as exc:
                     raise HTTPException(status_code=409, detail="Attachment failed integrity verification") from exc
                 attachment_refs.append({
                     "path": relative_path,
                     "mime": row.detected_mime,
                     "name": row.original_name,
+                    "scan_status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
                 })
 
         req = RunRequest(
             execution_id=execution_id,
             project_id=payload.project_id,
             root_agent_id=payload.root_agent_id,
+            conversation_id=payload.conversation_id,
             task=payload.task,
             history=payload.history,
             attachments=attachment_refs,
             options=payload.options,
         )
-        return manager.start(req)
+        started = manager.start(req)
+        # The copied attachments now belong to the persistent project workspace.
+        copied_attachment_paths.clear()
+        return started
     except HTTPException:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise
     except ValueError as exc:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception:
         if workspace is not None:
-            shutil.rmtree(workspace.root, ignore_errors=True)
+            for relative_path in copied_attachment_paths:
+                try:
+                    workspace.resolve(relative_path).unlink(missing_ok=True)
+                except (OSError, ToolExecutionError):
+                    pass
         raise
 
 
@@ -295,23 +332,193 @@ def download_execution_artifact(
     )
 
 
-@router.get("/{execution_id}/files/{relpath:path}")
-def get_execution_file(execution_id: str, relpath: str):
+@router.post("/{execution_id}/preview")
+def start_execution_preview(execution_id: str, payload: StartPreviewRequest):
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
+    finally:
+        db.close()
+    try:
+        return preview_manager.start(execution_id, payload.package_path, project_id=project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/{execution_id}/preview")
+def get_execution_preview(execution_id: str):
     db = SessionLocal()
     try:
         if db.get(models.Execution, execution_id) is None:
             raise HTTPException(status_code=404, detail="Execution not found")
     finally:
         db.close()
+    return preview_manager.status(execution_id)
+
+
+@router.delete("/{execution_id}/preview")
+def stop_execution_preview(execution_id: str):
+    db = SessionLocal()
+    try:
+        if db.get(models.Execution, execution_id) is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+    finally:
+        db.close()
+    return preview_manager.stop(execution_id)
+
+
+@router.get("/{execution_id}/files")
+def list_execution_files(execution_id: str):
+    """List files in the persistent project workspace used by this execution."""
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
+    finally:
+        db.close()
+
+    workspace = Workspace(execution_id, project_id)
+    root = workspace.root.resolve()
+    ignored_dirs = {".agentforge", ".git", "node_modules", "__pycache__", ".venv"}
+    files: list[dict[str, object]] = []
+    total_bytes = 0
+    for current, dirs, names in os.walk(root, followlinks=False):
+        base = Path(current)
+        dirs[:] = [
+            name for name in dirs
+            if name not in ignored_dirs and not (base / name).is_symlink()
+        ]
+        for name in names:
+            candidate = base / name
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            try:
+                resolved = candidate.resolve(strict=True)
+                relative = resolved.relative_to(root).as_posix()
+                size = resolved.stat().st_size
+            except (OSError, ValueError):
+                continue
+            if relative.startswith(".results/"):
+                continue
+            if len(files) >= 20_000 or total_bytes + size > 512 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Execution workspace is too large to browse (limit: 20,000 files / 512 MiB).",
+                )
+            files.append({"path": relative, "size_bytes": size})
+            total_bytes += size
+
+    files.sort(key=lambda item: str(item["path"]).casefold())
+    return {
+        "execution_id": execution_id,
+        "files": files,
+        "file_count": len(files),
+        "total_bytes": total_bytes,
+    }
+
+
+@router.get("/{execution_id}/files/{relpath:path}")
+def get_execution_file(execution_id: str, relpath: str):
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        project_id = execution.project_id
+    finally:
+        db.close()
 
     try:
-        workspace = RunWorkspace(execution_id)
+        workspace = Workspace(execution_id, project_id)
         path = workspace.resolve(relpath)
     except (ToolExecutionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Workspace file not found") from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Workspace file not found")
     return FileResponse(path=path, headers=file_response_headers(path))
+
+@router.post("/{execution_id}/messages")
+async def send_live_execution_message(
+    execution_id: str,
+    payload: LiveMessageRequest,
+):
+    """Persist and deliver a new user instruction to an already-running execution."""
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if execution.status != "running":
+            raise HTTPException(status_code=409, detail="Execution is no longer running")
+        conversation = db.get(models.Conversation, payload.conversation_id)
+        if (
+            conversation is None
+            or conversation.project_id != execution.project_id
+            or conversation.agent_id != execution.root_agent_id
+        ):
+            raise HTTPException(status_code=404, detail="Conversation not found for this execution")
+
+        message = models.ConversationMessage(
+            conversation_id=conversation.id,
+            role="user",
+            content=payload.content.strip(),
+            execution_id=execution_id,
+        )
+        if not message.content:
+            raise HTTPException(status_code=422, detail="Message content cannot be empty")
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        response = {
+            "id": message.id,
+            "conversation_id": message.conversation_id,
+            "role": message.role,
+            "content": message.content,
+            "execution_id": message.execution_id,
+            "created_at": message.created_at,
+        }
+    finally:
+        db.close()
+
+    if not manager.send_message(execution_id, payload.content):
+        # The run may have completed between the database check and queue delivery.
+        # Do not leave an instruction in the conversation that was never delivered.
+        cleanup_db = SessionLocal()
+        try:
+            saved_message = cleanup_db.get(models.ConversationMessage, response["id"])
+            if saved_message is not None:
+                cleanup_db.delete(saved_message)
+                cleanup_db.commit()
+        finally:
+            cleanup_db.close()
+        raise HTTPException(status_code=409, detail="Execution stopped before the instruction could be delivered")
+    return {"status": "queued", "message": response}
+
+
+@router.post("/{execution_id}/tools/{tool_call_id}/cancel")
+async def stop_execution_tool(execution_id: str, tool_call_id: str):
+    """Stop one active tool call without cancelling the surrounding agent run."""
+    db = SessionLocal()
+    try:
+        execution = db.get(models.Execution, execution_id)
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if execution.status != "running":
+            raise HTTPException(status_code=409, detail="Execution is no longer running")
+    finally:
+        db.close()
+
+    if not manager.stop_tool(execution_id, tool_call_id):
+        raise HTTPException(status_code=409, detail="Tool call is no longer running")
+    return {"status": "stopping", "tool_call_id": tool_call_id}
+
 
 @router.post("/{execution_id}/cancel")
 async def cancel_execution(execution_id: str):

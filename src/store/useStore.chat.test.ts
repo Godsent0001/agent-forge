@@ -21,7 +21,7 @@ describe("chat history persistence", () => {
     useStore.getState().queueTask("a1", "do a thing");
     useStore.getState().addChatMessage("a1", user("m1", "hi"));
     const saved = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) as string);
-    expect(Object.keys(saved.state)).toEqual(["chatMessages"]);
+    expect(Object.keys(saved.state)).toEqual(["chatMessages", "activeConversationByScope", "activeExecutionByScope"]);
   });
 
   it("clears one agent's conversation without touching others", () => {
