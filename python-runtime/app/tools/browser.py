@@ -27,7 +27,19 @@ async def _navigate_page(page: Any, url: str) -> None:
             return
         except Exception as exc:
             message = str(exc).lower()
-            retryable = "timeout" in message or "net::err_" in message or "temporarily" in message
+            transient_network_errors = (
+                "net::err_name_not_resolved",
+                "net::err_connection_reset",
+                "net::err_connection_closed",
+                "net::err_timed_out",
+                "net::err_network_changed",
+                "net::err_internet_disconnected",
+            )
+            retryable = (
+                "timeout" in message
+                or any(error in message for error in transient_network_errors)
+                or "temporarily" in message
+            )
             if attempt == 0 and retryable:
                 await asyncio.sleep(0.4)
                 continue
