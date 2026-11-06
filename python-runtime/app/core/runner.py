@@ -67,7 +67,7 @@ _TOOL_TIMEOUT_SECONDS_BY_KIND = {
     "browser": 45,
     "knowledge_search": 45,
     "knowledge_ingest": 120,
-    "python": 30,
+    "python": 90,
     "shell": 330,
 }
 _DEFAULT_TOOL_TIMEOUT_SECONDS = 60
