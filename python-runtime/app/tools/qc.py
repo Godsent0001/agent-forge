@@ -1,30 +1,14 @@
-"""
-QC shelf. Audio/Video QC use ffprobe for real structural checks. The
-rest check structured data the earlier pipeline stages produced (scene
-specs, alignment output, script text) rather than needing to inspect
-pixels/audio themselves.
-"""
+"""Quality checks for WAV audio and structured production data."""
 
 from __future__ import annotations
 
 import json
-import subprocess
 import wave
 from pathlib import Path
 from typing import Any
 
 from app.tools.base import Tool, ToolExecutionError
 from app.tools.shared import parse_json_input, to_json_output
-
-
-def _ffprobe_json(path: str) -> dict:
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", path],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise ToolExecutionError(f"ffprobe failed on {path}: {result.stderr[:500]}")
-    return json.loads(result.stdout)
 
 
 class AudioQCTool(Tool):
@@ -62,42 +46,6 @@ class AudioQCTool(Tool):
             issues.append(f"could not parse as WAV: {e}")
 
         return to_json_output({"path": path, "passed": not issues, "issues": issues})
-
-
-class VideoQCTool(Tool):
-    name = "video_qc"
-    description = "Check final video for resolution, frame rate, black frames, and AV duration mismatch."
-
-    async def execute(self, input: str, *, context: Any) -> str:
-        params = parse_json_input(input)
-        path = params.get("video_path")
-        expected = params.get("expected", {})  # {"width":1080,"height":1920,"fps":30}
-        if not path or not Path(path).exists():
-            raise ToolExecutionError(f"video_qc: file not found: {path}")
-
-        probe = _ffprobe_json(path)
-        video_stream = next((s for s in probe.get("streams", []) if s.get("codec_type") == "video"), None)
-        audio_stream = next((s for s in probe.get("streams", []) if s.get("codec_type") == "audio"), None)
-
-        issues = []
-        if not video_stream:
-            issues.append("no video stream found")
-        else:
-            width, height = video_stream.get("width"), video_stream.get("height")
-            if expected.get("width") and width != expected["width"]:
-                issues.append(f"width {width} != expected {expected['width']}")
-            if expected.get("height") and height != expected["height"]:
-                issues.append(f"height {height} != expected {expected['height']}")
-
-        if audio_stream and video_stream:
-            v_dur = float(video_stream.get("duration", probe.get("format", {}).get("duration", 0)) or 0)
-            a_dur = float(audio_stream.get("duration", 0) or 0)
-            if v_dur and a_dur and abs(v_dur - a_dur) > 0.5:
-                issues.append(f"audio/video duration mismatch: video={v_dur:.2f}s audio={a_dur:.2f}s")
-
-        return to_json_output({"path": path, "passed": not issues, "issues": issues, "probe_summary": {
-            "has_video": bool(video_stream), "has_audio": bool(audio_stream),
-        }})
 
 
 class LipSyncQCTool(Tool):
@@ -165,27 +113,3 @@ class ScriptToVideoQCTool(Tool):
         })
 
 
-class AutomatedPreviewQCTool(Tool):
-    name = "automated_preview_qc"
-    description = "Run a checklist against a preview render before committing to an expensive final render."
-
-    async def execute(self, input: str, *, context: Any) -> str:
-        params = parse_json_input(input)
-        preview_path = params.get("preview_path")
-        checks = params.get("checks", {})  # {"both_characters_visible": true, "audio_present": true, ...}
-
-        if not preview_path or not Path(preview_path).exists():
-            raise ToolExecutionError(f"automated_preview_qc: preview not found: {preview_path}")
-
-        probe = _ffprobe_json(preview_path)
-        has_video = any(s.get("codec_type") == "video" for s in probe.get("streams", []))
-        has_audio = any(s.get("codec_type") == "audio" for s in probe.get("streams", []))
-
-        checklist = {
-            "video_stream_present": has_video,
-            "audio_stream_present": has_audio,
-            **{k: bool(v) for k, v in checks.items()},
-        }
-        failed = [k for k, v in checklist.items() if not v]
-
-        return to_json_output({"passed": not failed, "checklist": checklist, "failed": failed})
