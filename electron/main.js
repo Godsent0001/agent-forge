@@ -262,19 +262,12 @@ function startPythonBackend() {
     executable = binaryPath;
   }
 
-  // Bundled ffmpeg/ffprobe (scripts/fetch-ffmpeg.mjs) go first on PATH so every media
-  // tool and yt-dlp find them; a system install is still used when none is bundled.
   const env = {
     ...process.env,
     AGENTFORGE_EMBEDDING_CACHE_DIR: isDev
       ? path.join(projectRoot, "python-runtime", "models", "embedding-cache")
       : path.join(process.resourcesPath, "embedding-model-cache"),
   };
-  const bundledFfmpeg = isDev ? null : path.join(process.resourcesPath, "ffmpeg");
-  if (bundledFfmpeg && fs.existsSync(bundledFfmpeg)) {
-    const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") || "PATH";
-    env[pathKey] = bundledFfmpeg + path.delimiter + (env[pathKey] || "");
-  }
 
   console.log(`[main] Starting local Python runtime (${isDev ? "development" : "packaged"}).`);
   try {
