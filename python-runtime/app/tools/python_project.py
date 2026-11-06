@@ -1,4 +1,4 @@
-"""Unified agent-facing Python capability using the shared AgentForge runtime."""
+"""Unified agent-facing Python capability using the user shared system Python."""
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,12 +14,12 @@ class PythonProjectInput(BaseModel):
     code: str = Field(
         min_length=1,
         max_length=200_000,
-        description="Python source code to execute in the shared AgentForge runtime. Keep substantial programs in workspace files.",
+        description="Python source code to execute with the user shared system Python interpreter. Keep substantial programs in workspace files.",
     )
 
 
 class PythonProjectTool(Tool):
-    """Run Python code in the shared runtime; never create project virtual environments."""
+    """Run Python code in the user shared system interpreter; never create project virtual environments."""
 
     kind = "python"
     default_description = (
