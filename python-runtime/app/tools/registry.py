@@ -26,12 +26,7 @@ from app.tools.asset_cache import (
     ProductionConfigTool,
     ProjectManagerTool,
 )
-from app.tools.audio import (
-    AudioAlignmentTool,
-    AudioMixerTool,
-    AudioProcessingTool,
-    VoiceGeneratorTool,
-)
+from app.tools.audio import AudioAlignmentTool, VoiceGeneratorTool
 from app.tools.base import Tool
 from app.tools.browser import BrowserTool
 from app.tools.camera import CameraAnimationTool, CameraDirectorTool
@@ -60,22 +55,13 @@ from app.tools.graphics import (
 )
 from app.tools.http_request import HttpRequestTool
 from app.tools.log_search import LogSearchTool
-from app.tools.orchestrator import PipelineOrchestratorTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.python_project import PythonProjectTool
 from app.tools.qc import (
     AudioQCTool,
-    AutomatedPreviewQCTool,
     LipSyncQCTool,
     SceneQCTool,
     ScriptToVideoQCTool,
-    VideoQCTool,
-)
-from app.tools.rendering import (
-    FinalRendererTool,
-    PreviewRendererTool,
-    RenderQueueTool,
-    RenderWorkerTool,
 )
 from app.tools.scene import (
     LightingEngineTool,
@@ -84,7 +70,6 @@ from app.tools.scene import (
 )
 from app.tools.shell import ShellTool
 from app.tools.timeline import TimelineEngineTool, TransitionEngineTool
-from app.tools.video_clips import ClipExtractorTool, ClipFinderTool, VideoTranscriptTool
 from app.tools.video_source import VideoSourceTool
 from app.tools.web_search import WebSearchTool
 
@@ -100,9 +85,7 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "http_request": HttpRequestTool,
     "video_source": VideoSourceTool,
     # Audio
-    "audio_processing": AudioProcessingTool,
     "audio_alignment": AudioAlignmentTool,
-    "audio_mixer": AudioMixerTool,
     # Character
     "lip_sync": LipSyncTool,
     "eye_engine": EyeEngineTool,
@@ -132,20 +115,14 @@ _SIMPLE_FACTORIES: dict[str, type[Tool]] = {
     "composition_engine": CompositionEngineTool,
     "effects_engine": EffectsEngineTool,
     # Rendering
-    "preview_renderer": PreviewRendererTool,
-    "final_renderer": FinalRendererTool,
-    "render_worker": RenderWorkerTool,
     # Asset & Cache
     "dependency_engine": DependencyEngineTool,
     # QC
     "audio_qc": AudioQCTool,
-    "video_qc": VideoQCTool,
     "lip_sync_qc": LipSyncQCTool,
     "scene_qc": SceneQCTool,
     "script_to_video_qc": ScriptToVideoQCTool,
-    "automated_preview_qc": AutomatedPreviewQCTool,
     # Orchestration
-    "pipeline_orchestrator": PipelineOrchestratorTool,
 }
 
 
@@ -164,8 +141,6 @@ def build_tool(kind: str, config: dict) -> Tool:
         return SceneTemplateManagerTool(templates_dir=config.get("templates_dir", "./assets/scene_templates"))
     if kind == "visual_asset_manager":
         return VisualAssetManagerTool(assets_dir=config.get("assets_dir", "./assets/visuals"))
-    if kind == "render_queue":
-        return RenderQueueTool(queue_path=config.get("queue_path", "./output/render_queue.json"))
     if kind == "cache_engine":
         return CacheEngineTool(cache_dir=config.get("cache_dir", "./cache"))
     if kind == "project_manager":
@@ -185,9 +160,6 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
     "web_search": WebSearchCapability,
     "browser": BrowserCapability,
     "agentforge_control": AgentForgeControlTool,
-    "video_transcript": VideoTranscriptTool,
-    "clip_finder": ClipFinderTool,
-    "clip_extractor": ClipExtractorTool,
     "python": PythonProjectTool,
 }
 
@@ -230,7 +202,6 @@ class DefaultToolFactory:
             "character_asset_manager": {"characters_dir": str(root / "assets" / "characters")},
             "scene_template_manager": {"templates_dir": str(root / "assets" / "scene_templates")},
             "visual_asset_manager": {"assets_dir": str(root / "assets" / "visuals")},
-            "render_queue": {"queue_path": str(root / "queues" / "render_queue.json")},
             "cache_engine": {"cache_dir": str(root / "cache")},
             "project_manager": {"projects_root": str(root / "projects")},
             "asset_cache_store": {"store_dir": str(root / "assets" / "shared")},
@@ -239,7 +210,7 @@ class DefaultToolFactory:
         config = dict(binding.config or {})
         for key in (
             "root_dir", "voices_dir", "characters_dir", "templates_dir", "assets_dir",
-            "queue_path", "cache_dir", "projects_root", "store_dir", "config_path",
+            "cache_dir", "projects_root", "store_dir", "config_path",
         ):
             config.pop(key, None)
         config.update(safe_roots.get(binding.kind, {}))
