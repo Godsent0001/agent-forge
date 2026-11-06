@@ -84,3 +84,38 @@ async def test_web_search_rejects_empty_query():
             "   ",
             context=types.SimpleNamespace(),
         )
+
+
+@pytest.mark.asyncio
+async def test_serper_backend_uses_configured_runtime_key(monkeypatch):
+    import httpx
+    import app.tools.web_search as module
+
+    monkeypatch.setenv("SERPER_API_KEY", "test-serper-key")
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {"organic": [{"title": "Power bank", "link": "https://shop.example/power", "snippet": "₦20,000"}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            seen["client"] = kwargs
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def post(self, url, *, headers, json):
+            seen.update({"url": url, "headers": headers, "payload": json})
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    results = await module._serper_search_backend("power bank Nigeria")
+
+    assert seen["url"] == "https://google.serper.dev/search"
+    assert seen["headers"]["X-API-KEY"] == "test-serper-key"
+    assert seen["payload"]["q"] == "power bank Nigeria"
+    assert results[0]["url"] == "https://shop.example/power"
