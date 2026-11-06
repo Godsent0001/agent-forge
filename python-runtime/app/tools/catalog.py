@@ -56,16 +56,16 @@ CATALOG: list[CatalogEntry] = [
                  "Search the web for documentation and references using Serper.dev when configured, with a free keyless DuckDuckGo fallback.",
                  "real", pack=None),
     CatalogEntry("browser", "Browser", "general",
-                 "Fetch a public webpage and extract readable text using the SSRF-protected HTTP client.",
+                 "Use Playwright Chromium to navigate JavaScript-rendered public websites, interact with pages, and extract readable content. Every request is checked against the public-URL policy.",
                  "real", pack=None),
     CatalogEntry("shell", "CMD / Shell", "general",
-                 "Run commands in the user's local terminal from the project workspace. Longer commands are supported; an explicit working-directory override requires approval. Output is bounded and full logs are saved.",
+                 "Run commands in the user's local CMD, PowerShell, or Unix terminal. Work in the project workspace or an absolute local directory; manage long-running processes and stop them. Destructive system-wide commands require approval.",
                  "real", pack=None),
     CatalogEntry("log_search", "Log Search", "general",
                  "Search saved long shell logs with exact/keyword search and optional embedding-based retrieval.",
                  "real", pack=None),
     CatalogEntry("python", "Python", "general",
-                 "Run Python code and manage the shared project .venv, dependencies, and requirements.txt through one action-based interface.",
+                 "Run Python code with the user shared/system interpreter and its installed packages. No project virtual environments are created or activated.",
                  "real", pack=None),
     CatalogEntry("http_request", "HTTP Request", "general",
                  "Make a bounded HTTP GET or POST request to a public URL.",
@@ -194,8 +194,6 @@ CATALOG: list[CatalogEntry] = [
                  "vignette, motion blur, screen flash.",
                  "real"),
 
-    # --- Rendering -----------------------------------------------------
-
     # --- Asset & Cache -------------------------------------------------
     CatalogEntry("cache_engine", "Cache Engine", "asset_cache",
                  "Hashes tool inputs and skips regeneration when nothing "
@@ -236,9 +234,9 @@ CATALOG: list[CatalogEntry] = [
                  "accidentally omitted lines.",
                  "real"),
 
-    # --- Orchestration -------------------------------------------------
+    # --- Video source search ------------------------------------------
     CatalogEntry("video_source", "Video Source", "video",
-                 "Searches yt-dlp-supported video hosts and returns source metadata for clip selection.",
+                 "Searches supported video hosts and returns metadata only; it does not download, transcode, or extract media.",
                  "real"),
 
 ]
