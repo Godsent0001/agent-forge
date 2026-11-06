@@ -136,3 +136,25 @@ def test_tool_diagnostic_arguments_are_bounded_and_redact_secrets():
     assert "bearer-secret" not in preview
     assert "REDACTED" in preview
     assert len(preview) <= 1620
+
+
+def test_core_computer_use_tools_are_available_to_agents_without_manual_binding():
+    from app.contracts.graph import AgentGraph, AgentSpec
+    from app.core.runner import RunnerCore
+    from app.tools.registry import DefaultToolFactory
+
+    spec = AgentSpec(
+        id="agent",
+        name="Agent",
+        provider="venice",
+        model="test-model",
+        tools=[],
+    )
+    graph = AgentGraph(root_id="agent", agents={"agent": spec})
+    tool_specs, instances = RunnerCore()._assemble_tools(
+        spec, graph, DefaultToolFactory()
+    )
+
+    names = {item.name for item in tool_specs}
+    assert {"python", "shell", "browser", "web_search", "file"} <= names
+    assert {"python", "shell", "browser", "web_search"} <= set(instances)
