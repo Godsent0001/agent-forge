@@ -166,3 +166,15 @@ def test_web_search_timeout_allows_primary_and_fallback_backends_to_finish():
     # Serper (12s), DDGS (12s), DuckDuckGo HTML (15s), and optional Crawl4AI
     # (20s) can be attempted sequentially before the search tool reports failure.
     assert _TOOL_TIMEOUT_SECONDS_BY_KIND["web_search"] >= 60
+
+
+def test_system_prompt_uses_shared_python_and_evidence_based_tool_recovery():
+    from app.contracts.graph import AgentSpec
+    from app.core.prompt_builder import build_system_prompt
+
+    spec = AgentSpec(id="a", name="Agent", provider="venice", model="test")
+    prompt = build_system_prompt(spec)
+    assert "shared/system Python interpreter" in prompt
+    assert "Never create or activate a project .venv" in prompt
+    assert "up to three materially different recovery strategies" in prompt
+    assert "Do not declare a tool unavailable after one failed invocation" in prompt
