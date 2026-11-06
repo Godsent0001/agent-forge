@@ -15,7 +15,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app.infra.paths import data_dir
 from app.tools.base import Tool, ToolExecutionError
-from app.tools.rendering import _run_ffmpeg_from_image_and_audio
 from app.tools.shared import (
     approximate_visemes_for_word,
     parse_json_input,
@@ -224,7 +223,7 @@ class CharacterAssetManagerTool(Tool):
 
 class CharacterRigTool(Tool):
     name = "character_rig"
-    description = "Render character performance into animated visual frames or video using a robust fallback generator."
+    description = "Generate a static character-rig preview image from expression, gesture, and pose."
 
     async def execute(self, input: str, *, context: Any) -> str:
         params = parse_json_input(input)
@@ -233,8 +232,6 @@ class CharacterRigTool(Tool):
         gesture = params.get("gesture", "default stance")
         pose = params.get("pose", "standing")
         output_image_path = params.get("output_image_path") or str(data_dir() / "output" / "character_rig.png")
-        output_video_path = params.get("output_video_path") or str(data_dir() / "output" / "character_rig.mp4")
-        audio_path = params.get("audio_path")
 
         Path(output_image_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -282,22 +279,6 @@ class CharacterRigTool(Tool):
 
         img.save(output_image_path)
 
-        # Attempt to assemble a preview video if ffmpeg is available
-        video_generated = False
-        try:
-            await _run_ffmpeg_from_image_and_audio(
-                image_path=output_image_path,
-                audio_path=audio_path,
-                out_path=output_video_path,
-                width=720,
-                height=1280,
-                fps=24,
-                fallback_duration=3.0,
-            )
-            video_generated = True
-        except Exception:
-            video_generated = False
-
         result = {
             "character_name": character_name,
             "expression": expression,
@@ -306,7 +287,5 @@ class CharacterRigTool(Tool):
             "image_path": output_image_path,
             "status": "rendered_fallback_rig",
         }
-        if video_generated:
-            result["video_path"] = output_video_path
 
         return to_json_output(result)
