@@ -72,3 +72,13 @@ def test_browser_and_web_search_have_provider_safe_names_and_string_input_schema
             assert properties["action"]["enum"] == ["navigate", "click", "fill", "screenshot", "read"]
         else:
             assert properties["query"]["type"] == "string"
+
+    
+def test_tool_spec_rejects_identifiers_outside_provider_contract():
+    import pytest
+    from pydantic import ValidationError
+    from app.core.llm.types import ToolSpec
+
+    with pytest.raises(ValidationError, match="1-64 ASCII letters"):
+        ToolSpec(name="web search", description="Search", parameters={})
+    assert ToolSpec(name="web_search-2", description="Search", parameters={}).name == "web_search-2"
