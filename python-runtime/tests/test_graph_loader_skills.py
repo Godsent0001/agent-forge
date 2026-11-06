@@ -45,3 +45,12 @@ def test_skill_catalogue_is_bounded_and_limited_to_ten_skills():
     assert len(skills) == 10
     assert result.count("skill-") <= 10
     assert len(result) < 7000
+
+    
+def test_graph_loader_ignores_retired_ffmpeg_media_tool_bindings():
+    from types import SimpleNamespace
+    from app.services.graph_loader import _active_tool_links
+
+    active = SimpleNamespace(tool=SimpleNamespace(kind="shell"))
+    retired = SimpleNamespace(tool=SimpleNamespace(kind="clip_extractor"))
+    assert _active_tool_links([active, retired]) == [active]
