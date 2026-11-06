@@ -12,7 +12,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -57,21 +56,66 @@ def _strip_markdown_fence(source: str) -> str:
     return match.group(1) if match else source
 
 
-def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
-    """Construct a small environment without inherited provider/API secrets."""
+def _filtered_path() -> str:
+    """Preserve the user's system PATH while excluding activated project venvs."""
+    entries = []
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        parts = {part.casefold() for part in Path(entry).parts}
+        if ".venv" in parts or "venv" in parts or "virtualenv" in parts:
+            continue
+        entries.append(entry)
     if os.name == "nt":
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
-        path_parts = [os.path.join(system_root, "System32")] if system_root else []
-        path_parts.append(os.path.dirname(sys.executable))
-        env = {"PATH": os.pathsep.join(path_parts), "PYTHONDONTWRITEBYTECODE": "1"}
-        for key in ("SYSTEMROOT", "TEMP", "TMP"):
-            value = os.environ.get(key) or os.environ.get(key.lower())
-            if value:
-                env[key] = value
-        if workspace_root is not None:
-            env["PYTHONPATH"] = str(workspace_root)
-        return env
-    env = {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+        if system_root:
+            system32 = str(Path(system_root) / "System32")
+            if system32 not in entries:
+                entries.insert(0, system32)
+    return os.pathsep.join(entries)
+
+
+def _resolve_shared_python_command() -> list[str]:
+    """Find the user's shared Python interpreter, never a project-local venv."""
+    explicit = os.environ.get("AGENTFORGE_PYTHON_EXECUTABLE", "").strip()
+    if explicit:
+        executable = Path(explicit).expanduser()
+        if not executable.is_file():
+            raise ToolExecutionError(
+                f"AGENTFORGE_PYTHON_EXECUTABLE points to a missing file: {executable}"
+            )
+        return [str(executable.resolve())]
+
+    search_path = _filtered_path()
+    names = ("python.exe", "python3.exe", "python") if os.name == "nt" else ("python3", "python")
+    for name in names:
+        executable = shutil.which(name, path=search_path)
+        if executable:
+            return [executable]
+
+    if os.name == "nt":
+        launcher = shutil.which("py.exe", path=search_path) or shutil.which("py", path=search_path)
+        if launcher:
+            return [launcher, "-3"]
+
+    raise ToolExecutionError(
+        "No shared system Python interpreter was found. Install Python 3.11 or newer and add it to PATH, "
+        "or set AGENTFORGE_PYTHON_EXECUTABLE to the full path of python.exe. AgentForge does not create "
+        "or silently select project virtual environments."
+    )
+
+
+def _safe_environment(workspace_root: Path | None = None) -> dict[str, str]:
+    """Preserve normal user environment variables but never leak credentials or inherit a venv."""
+    blocked_markers = ("API_KEY", "_TOKEN", "_SECRET", "PASSWORD", "PASSWD")
+    blocked_names = {"VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"}
+    env = {
+        key: value for key, value in os.environ.items()
+        if key.upper() not in blocked_names
+        and not any(marker in key.upper() for marker in blocked_markers)
+    }
+    env["PATH"] = _filtered_path()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     if workspace_root is not None:
         env["PYTHONPATH"] = str(workspace_root)
     return env
@@ -129,12 +173,9 @@ class PythonExecTool(Tool):
             with open(script_path, "w", encoding="utf-8") as handle:
                 handle.write(script)
 
-            # Always execute with the shared AgentForge runtime. Project-local
-            # virtual environments are deliberately ignored.
-            if getattr(sys, "frozen", False):
-                command = [sys.executable, "--run-snippet", script_path]
-            else:
-                command = [sys.executable, script_path]
+            # Execute with the user's shared/system Python, not the backend's
+            # bundled interpreter or any project-local virtual environment.
+            command = [*_resolve_shared_python_command(), script_path]
 
             kwargs: dict[str, Any] = {
                 "cwd": str(root),
