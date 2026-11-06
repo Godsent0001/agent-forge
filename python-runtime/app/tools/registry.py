@@ -166,7 +166,7 @@ NATIVE_TOOLS: dict[str, type[V2Tool]] = {
 
 _CONFIG_DRIVEN_KINDS = frozenset({
     "file_system", "voice_generator", "character_asset_manager", "scene_template_manager",
-    "visual_asset_manager", "render_queue", "cache_engine", "project_manager",
+    "visual_asset_manager", "cache_engine", "project_manager",
     "asset_cache_store", "production_config",
 })
 
