@@ -180,7 +180,7 @@ def _classify_error(err: Exception) -> str:
         return "rate_limit"
     if "timeout" in text or "timed out" in text:
         return "timeout"
-    if "invalid_request" in text:
+    if "invalid_request" in text or "invalid identifier" in text or "tool name" in text:
         return "bad_request"
     return "other"
 
