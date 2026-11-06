@@ -119,3 +119,13 @@ async def test_serper_backend_uses_configured_runtime_key(monkeypatch):
     assert seen["headers"]["X-API-KEY"] == "test-serper-key"
     assert seen["payload"]["q"] == "power bank Nigeria"
     assert results[0]["url"] == "https://shop.example/power"
+
+
+def test_runtime_settings_apply_serper_key_to_search_environment(monkeypatch):
+    import os
+    from app.routers.settings import set_api_keys
+
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    result = set_api_keys({"serper": "runtime-serper-test"})
+    assert result["status"] == "ok"
+    assert os.environ["SERPER_API_KEY"] == "runtime-serper-test"
