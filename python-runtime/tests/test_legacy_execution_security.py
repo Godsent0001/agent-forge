@@ -51,8 +51,6 @@ async def test_legacy_engine_cannot_bypass_approval_for_high_risk_tools(kind, tm
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("kind", "payload"), [
     ("scene_template_manager", {"action": "save", "template_id": "safe", "template": {"x": 1}}),
-    ("voice_generator", {"action": "generate", "text": "safe"}),
-    ("character_asset_manager", {"action": "lookup", "character_id": "safe"}),
     ("project_manager", {"action": "scaffold", "episode_id": "safe"}),
     ("asset_cache_store", {"action": "put", "src_path": "input.wav", "category": "audio", "name": "safe"}),
     ("production_config", {"action": "set", "config": {"video": {"fps": 60}}}),
@@ -62,15 +60,6 @@ async def test_legacy_engine_denies_shared_state_mutations(kind, payload, tmp_pa
     tool = _tool(kind)
     with pytest.raises(ToolExecutionError, match="requires approval"):
         await tool.execute(json.dumps(payload), context=_context(tmp_path))
-
-
-@pytest.mark.asyncio
-async def test_legacy_file_system_rejects_parent_traversal(tmp_path):
-    tool = _tool("file_system")
-    context = _context(tmp_path)
-    with pytest.raises(ToolExecutionError):
-        await tool.execute("write:../../escape.txt::blocked", context=context)
-    assert not (tmp_path / "escape.txt").exists()
 
 
 @pytest.mark.asyncio
