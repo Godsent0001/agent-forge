@@ -158,3 +158,11 @@ def test_core_computer_use_tools_are_available_to_agents_without_manual_binding(
     names = {item.name for item in tool_specs}
     assert {"python", "shell", "browser", "web_search", "file"} <= names
     assert {"python", "shell", "browser", "web_search"} <= set(instances)
+
+
+def test_web_search_timeout_allows_primary_and_fallback_backends_to_finish():
+    from app.core.runner import _TOOL_TIMEOUT_SECONDS_BY_KIND
+
+    # Serper (12s), DDGS (12s), DuckDuckGo HTML (15s), and optional Crawl4AI
+    # (20s) can be attempted sequentially before the search tool reports failure.
+    assert _TOOL_TIMEOUT_SECONDS_BY_KIND["web_search"] >= 60
