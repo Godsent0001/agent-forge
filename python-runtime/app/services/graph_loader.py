@@ -5,6 +5,20 @@ from app import models
 from app.contracts.graph import AgentGraph, AgentSpec, ChildLink, ToolBinding
 from app.contracts.naming import dedupe_names, sanitize_tool_name
 
+RETIRED_MEDIA_TOOL_KINDS = frozenset({
+    "audio_processing", "audio_mixer", "preview_renderer", "final_renderer",
+    "render_queue", "render_worker", "video_qc", "automated_preview_qc",
+    "video_transcript", "clip_finder", "clip_extractor", "pipeline_orchestrator",
+})
+
+
+def _active_tool_links(tool_links):
+    """Ignore legacy persisted media bindings removed with the FFmpeg stack."""
+    return [
+        link for link in tool_links
+        if getattr(getattr(link, "tool", None), "kind", None) not in RETIRED_MEDIA_TOOL_KINDS
+    ]
+
 
 def _assigned_skills(agent_id: str, skills: object) -> list[dict]:
     """Return bounded skill records assigned to one agent."""
@@ -78,7 +92,7 @@ def load_agent_graph(db: Session, project_id: str, root_agent_id: str) -> AgentG
             continue
         seen.add(row.id)
 
-        tool_rows = list(row.tool_links)
+        tool_rows = _active_tool_links(row.tool_links)
         tool_names = dedupe_names([sanitize_tool_name(link.tool.name) for link in tool_rows])
         bindings = [
             ToolBinding(
