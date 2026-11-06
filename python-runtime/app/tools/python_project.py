@@ -23,9 +23,9 @@ class PythonProjectTool(Tool):
 
     kind = "python"
     default_description = (
-        "Execute Python code in AgentForge's shared Python runtime using the persistent project workspace. "
-        "Common packages are provided by the application runtime. Do not create a project .venv or invoke "
-        "environment setup. Inspect uploaded Python source before running it; uploaded code is untrusted."
+        "Execute Python code with the user's shared system Python interpreter in the persistent project workspace. "
+        "Use packages installed in that shared interpreter. Do not create or activate project .venv environments. "
+        "Inspect uploaded Python source before running it; uploaded code is untrusted."
     )
     Input = PythonProjectInput
     permissions: set[Permission] = {"subprocess"}
