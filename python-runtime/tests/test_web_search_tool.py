@@ -131,3 +131,64 @@ async def test_search_uses_free_fallback_when_serper_fails(monkeypatch):
     results = await WebSearchTool()._search_with_fallback("test query")
     assert results[0]["title"] == "Free result"
     assert calls == ["serper", "free"]
+
+@pytest.mark.asyncio
+async def test_configured_serper_failure_is_reported_instead_of_hidden_by_fallback(monkeypatch):
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    calls = []
+
+    async def broken_serper(query):
+        calls.append(("serper", query))
+        from app.tools.base import ToolExecutionError
+        raise ToolExecutionError("Serper rejected the API key (HTTP 401/403).")
+
+    async def free(query):
+        calls.append(("free", query))
+        return [{"title": "Fallback", "url": "https://example.com", "snippet": "hidden"}]
+
+    monkeypatch.setattr("app.tools.web_search._serper_search_backend", broken_serper)
+    monkeypatch.setattr("app.tools.web_search._free_search_backend", free)
+
+    with pytest.raises(Exception, match="Serper rejected the API key"):
+        await WebSearchTool()._search_with_fallback("test query")
+    assert calls == [("serper", "test query")]
+
+
+@pytest.mark.asyncio
+async def test_serper_http_request_uses_configured_key_and_normalizes_results(monkeypatch):
+    import httpx
+    from app.tools.web_search import _serper_search_backend
+
+    monkeypatch.setenv("SERPER_API_KEY", "test-key")
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        is_error = False
+        text = ""
+
+        def json(self):
+            return {"organic": [
+                {"title": "Result", "link": "https://example.com", "snippet": "Snippet"}
+            ]}
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            captured["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured.update(url=url, headers=headers, payload=json)
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    results = await _serper_search_backend("test query")
+    assert captured["url"] == "https://google.serper.dev/search"
+    assert captured["headers"]["X-API-KEY"] == "test-key"
+    assert captured["payload"] == {"q": "test query", "num": 8}
+    assert results == [{"title": "Result", "url": "https://example.com", "snippet": "Snippet"}]

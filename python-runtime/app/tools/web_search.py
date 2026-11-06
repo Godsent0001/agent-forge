@@ -23,18 +23,30 @@ async def _serper_search_backend(query: str) -> list[dict[str, str]]:
         raise ToolExecutionError("SERPER_API_KEY is not configured.")
     import httpx
 
-    async with httpx.AsyncClient(timeout=12.0, trust_env=False) as client:
-        response = await client.post(
-            "https://google.serper.dev/search",
-            headers={"X-API-KEY": key, "Content-Type": "application/json"},
-            json={"q": query, "num": 8},
-        )
+    timeout = httpx.Timeout(connect=8.0, read=25.0, write=10.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": key, "Content-Type": "application/json"},
+                json={"q": query, "num": 8},
+            )
+        except httpx.TimeoutException as exc:
+            raise ToolExecutionError(f"Serper request timed out ({type(exc).__name__}).") from exc
+        except httpx.RequestError as exc:
+            raise ToolExecutionError(f"Could not reach Serper ({type(exc).__name__}): {str(exc)[:240]}") from exc
+
         if response.status_code in {401, 403}:
-            raise ToolExecutionError("Serper rejected the API key. Check the key in Search settings.")
+            raise ToolExecutionError("Serper rejected the API key (HTTP 401/403). Check the key in Search settings.")
         if response.status_code == 429:
-            raise ToolExecutionError("Serper rate limit or quota reached.")
-        response.raise_for_status()
-        payload = response.json()
+            raise ToolExecutionError("Serper rate limit or quota reached (HTTP 429).")
+        if response.is_error:
+            detail = " ".join(response.text.split())[:400]
+            raise ToolExecutionError(f"Serper returned HTTP {response.status_code}: {detail or 'empty response body'}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ToolExecutionError("Serper returned a successful HTTP response with invalid JSON.") from exc
 
     organic = payload.get("organic", []) if isinstance(payload, dict) else []
     results = [
@@ -228,20 +240,14 @@ class WebSearchTool(Tool):
 
     @staticmethod
     async def _search_with_fallback(query: str) -> list[dict[str, str]]:
-        failures: list[str] = []
+        # When the user configures Serper, it is the selected provider. Do not
+        # silently substitute another engine: that masks bad credentials, quota
+        # errors, proxy failures, and malformed responses during setup/debugging.
         if os.environ.get("SERPER_API_KEY", "").strip():
-            try:
-                return await _serper_search_backend(query)
-            except Exception as exc:
-                failures.append(f"Serper {type(exc).__name__}: {str(exc)[:220]}")
-                logger.warning("Serper search failed; trying free fallback (%s)", type(exc).__name__)
-        try:
-            return await _free_search_backend(query)
-        except Exception as exc:
-            failures.append(f"free fallback {type(exc).__name__}: {str(exc)[:300]}")
-        raise ToolExecutionError(
-            "Web search failed across configured providers. " + "; ".join(failures)
-        )
+            return await _serper_search_backend(query)
+
+        # Keep keyless search available when no Serper key has been configured.
+        return await _free_search_backend(query)
 
     async def execute(self, input: str, *, context: Any) -> str:
         query = input.strip()
