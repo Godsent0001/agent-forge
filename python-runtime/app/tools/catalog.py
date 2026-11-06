@@ -37,6 +37,9 @@ class CatalogEntry:
 
 SHELVES: dict[str, str] = {
     "general": "General Tools",
+    "audio": "Audio",
+    "qc": "Quality Control",
+    "video": "Video Sources",
     "character": "Character",
     "scene": "Scene",
     "camera": "Camera",
