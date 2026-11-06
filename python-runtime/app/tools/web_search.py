@@ -40,7 +40,7 @@ async def _serper_search_backend(query: str) -> list[dict[str, str]]:
             raise ToolExecutionError("Serper rejected the API key (HTTP 401/403). Check the key in Search settings.")
         if response.status_code == 429:
             raise ToolExecutionError("Serper rate limit or quota reached (HTTP 429).")
-        if response.is_error:
+        if getattr(response, "is_error", response.status_code >= 400):
             detail = " ".join(response.text.split())[:400]
             raise ToolExecutionError(f"Serper returned HTTP {response.status_code}: {detail or 'empty response body'}")
         try:

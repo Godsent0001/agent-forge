@@ -112,7 +112,7 @@ async def test_serper_is_primary_when_key_is_configured(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_search_uses_free_fallback_when_serper_fails(monkeypatch):
+async def test_configured_serper_failure_does_not_silently_switch_providers(monkeypatch):
     from app.tools.web_search import WebSearchTool
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
@@ -128,9 +128,9 @@ async def test_search_uses_free_fallback_when_serper_fails(monkeypatch):
 
     monkeypatch.setattr("app.tools.web_search._serper_search_backend", serper)
     monkeypatch.setattr("app.tools.web_search._free_search_backend", free)
-    results = await WebSearchTool()._search_with_fallback("test query")
-    assert results[0]["title"] == "Free result"
-    assert calls == ["serper", "free"]
+    with pytest.raises(RuntimeError, match="simulated Serper outage"):
+        await WebSearchTool()._search_with_fallback("test query")
+    assert calls == ["serper"]
 
 @pytest.mark.asyncio
 async def test_configured_serper_failure_is_reported_instead_of_hidden_by_fallback(monkeypatch):

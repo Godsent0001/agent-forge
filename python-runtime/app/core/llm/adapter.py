@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -28,12 +29,27 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
+VENICE_API_BASE = "https://api.venice.ai/api/v1"
+
+
+def _provider_request_kwargs(provider: str | None) -> dict[str, Any]:
+    """Build request-scoped configuration for OpenAI-compatible providers."""
+    if (provider or "").casefold() != "venice":
+        return {}
+    api_key = os.environ.get("VENICE_API_KEY", "").strip()
+    if not api_key:
+        raise LLMBadRequest(
+            "Venice API key is not configured. Add your Venice API key in AgentForge Provider settings."
+        )
+    return {"api_base": VENICE_API_BASE, "api_key": api_key}
+
 
 async def complete(
     messages: list[dict[str, Any]],
     tools: list[ToolSpec] | None = None,
     params: LLMParams | None = None,
     model: str = "gpt-4o-mini",
+    provider: str | None = None,
     max_retries: int = 3,
 ) -> LLMTurn:
     """Call LLM backend with retries and error mapping."""
@@ -68,7 +84,7 @@ async def complete(
     cache_key = None
     if cache_enabled() and is_cacheable_messages(messages):
         cache_key = make_cache_key(
-            model=model,
+            model=f"{provider}:{model}" if provider else model,
             messages=messages,
             temperature=params.temperature,
             max_tokens=params.max_tokens,
@@ -78,6 +94,7 @@ async def complete(
         if cached_turn is not None:
             return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
 
+    provider_kwargs = _provider_request_kwargs(provider)
     attempt = 0
     while True:
         try:
@@ -91,6 +108,7 @@ async def complete(
                 "messages": messages,
                 "timeout": params.timeout_s,
             }
+            kwargs.update(provider_kwargs)
             if tools_formatted:
                 kwargs["tools"] = tools_formatted
             if params.temperature is not None:
