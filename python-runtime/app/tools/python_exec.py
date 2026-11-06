@@ -21,6 +21,7 @@ if os.name != "nt":
     import resource
 
 from app.tools.base import Tool, ToolExecutionError
+from app.tools.shell import _terminate_process_tree
 
 CPU_TIME_LIMIT_SECONDS = 30
 WALL_CLOCK_TIMEOUT_SECONDS = 60
@@ -145,21 +146,32 @@ class PythonExecTool(Tool):
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             else:
                 kwargs["preexec_fn"] = _limit_resources
+                kwargs["start_new_session"] = True
 
             proc = await asyncio.create_subprocess_exec(*command, **kwargs)
+            stdout_task = asyncio.create_task(_read_bounded(proc.stdout))
+            stderr_task = asyncio.create_task(_read_bounded(proc.stderr))
             try:
-                stdout_task = asyncio.create_task(_read_bounded(proc.stdout))
-                stderr_task = asyncio.create_task(_read_bounded(proc.stderr))
                 (stdout, stdout_truncated), (stderr, stderr_truncated) = await asyncio.wait_for(
                     asyncio.gather(stdout_task, stderr_task), timeout=WALL_CLOCK_TIMEOUT_SECONDS
                 )
                 await proc.wait()
             except asyncio.TimeoutError as exc:
-                proc.kill()
-                await proc.wait()
+                await _terminate_process_tree(proc)
+                for task in (stdout_task, stderr_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
                 raise ToolExecutionError(
                     f"python tool exceeded {WALL_CLOCK_TIMEOUT_SECONDS}s wall-clock limit"
                 ) from exc
+            except asyncio.CancelledError:
+                await _terminate_process_tree(proc)
+                for task in (stdout_task, stderr_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+                raise
 
             out_text = _decode_bounded(stdout, stdout_truncated)
             err_text = _decode_bounded(stderr, stderr_truncated)
@@ -173,6 +185,5 @@ class PythonExecTool(Tool):
             raise ToolExecutionError(f"python tool could not start: {exc}") from exc
         finally:
             if proc is not None and proc.returncode is None:
-                proc.kill()
-                await proc.wait()
+                await _terminate_process_tree(proc)
             shutil.rmtree(tmp_dir, ignore_errors=True)
