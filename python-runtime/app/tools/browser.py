@@ -15,6 +15,25 @@ MAX_PAGE_TEXT_CHARS = 10_000
 NAVIGATION_TIMEOUT_MS = 20_000
 
 
+async def _navigate_page(page: Any, url: str) -> None:
+    """Retry one transient navigation failure, falling back to response commit."""
+    for attempt in range(2):
+        try:
+            await page.goto(
+                url,
+                wait_until="domcontentloaded" if attempt == 0 else "commit",
+                timeout=NAVIGATION_TIMEOUT_MS if attempt == 0 else 10_000,
+            )
+            return
+        except Exception as exc:
+            message = str(exc).lower()
+            retryable = "timeout" in message or "net::err_" in message or "temporarily" in message
+            if attempt == 0 and retryable:
+                await asyncio.sleep(0.4)
+                continue
+            raise
+
+
 class _PageTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -133,30 +152,7 @@ class BrowserTool(Tool):
         playwright, browser, page = session
         try:
             if action == "navigate":
-                navigation_error = None
-                for attempt in range(2):
-                    try:
-                        await page.goto(
-                            url,
-                            wait_until="domcontentloaded" if attempt == 0 else "commit",
-                            timeout=NAVIGATION_TIMEOUT_MS if attempt == 0 else 10_000,
-                        )
-                        navigation_error = None
-                        break
-                    except Exception as exc:
-                        navigation_error = exc
-                        message = str(exc).lower()
-                        retryable = (
-                            "timeout" in message
-                            or "net::err_" in message
-                            or "temporarily" in message
-                        )
-                        if attempt == 0 and retryable:
-                            await asyncio.sleep(0.4)
-                            continue
-                        raise
-                if navigation_error is not None:
-                    raise navigation_error
+                await _navigate_page(page, url)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=2_000)
                 except Exception:
