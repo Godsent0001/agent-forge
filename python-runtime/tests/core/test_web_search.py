@@ -89,6 +89,7 @@ async def test_web_search_rejects_empty_query():
 @pytest.mark.asyncio
 async def test_serper_backend_uses_configured_runtime_key(monkeypatch):
     import httpx
+
     import app.tools.web_search as module
 
     monkeypatch.setenv("SERPER_API_KEY", "test-serper-key")
@@ -123,6 +124,7 @@ async def test_serper_backend_uses_configured_runtime_key(monkeypatch):
 
 def test_runtime_settings_apply_serper_key_to_search_environment(monkeypatch):
     import os
+
     from app.routers.settings import set_api_keys
 
     monkeypatch.delenv("SERPER_API_KEY", raising=False)

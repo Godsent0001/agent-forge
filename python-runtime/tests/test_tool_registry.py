@@ -77,6 +77,7 @@ def test_browser_and_web_search_have_provider_safe_names_and_string_input_schema
 def test_tool_spec_rejects_identifiers_outside_provider_contract():
     import pytest
     from pydantic import ValidationError
+
     from app.core.llm.types import ToolSpec
 
     with pytest.raises(ValidationError, match="1-64 ASCII letters"):

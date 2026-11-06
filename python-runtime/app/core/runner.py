@@ -1045,7 +1045,6 @@ class RunnerCore:
                         tools=tools,
                         params=spec.params,
                         model=litellm_model(spec.provider, spec.model),
-                        provider=spec.provider,
                     )
                 except LLMContextTooLong:
                     _trim_messages(messages)
@@ -1054,7 +1053,6 @@ class RunnerCore:
                         tools=tools,
                         params=spec.params,
                         model=litellm_model(spec.provider, spec.model),
-                        provider=spec.provider,
                     )
 
             budget.record_llm_call(
@@ -1542,7 +1540,6 @@ class RunnerCore:
                         messages=messages,
                         params=params,
                         model=litellm_model(root_spec.provider, root_spec.model),
-                        provider=root_spec.provider,
                     )
                     budget.record_llm_call(
                         input_tokens=turn.usage.input_tokens,

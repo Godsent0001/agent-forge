@@ -43,6 +43,7 @@ async def test_browser_retries_transient_navigation_failure():
 
 async def test_browser_does_not_retry_non_transient_navigation_failure():
     import pytest
+
     from app.tools.browser import _navigate_page
 
     class FakePage:

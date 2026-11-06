@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.tools.rendering import RenderQueueTool
+
 from app.infra.paths import DATA_SUBDIRECTORIES, data_dir
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
@@ -10,7 +12,6 @@ from app.tools.asset_cache import (
 from app.tools.audio import VoiceGeneratorTool
 from app.tools.character import CharacterAssetManagerTool
 from app.tools.graphics import VisualAssetManagerTool
-from app.tools.rendering import RenderQueueTool
 from app.tools.scene import SceneTemplateManagerTool
 
 

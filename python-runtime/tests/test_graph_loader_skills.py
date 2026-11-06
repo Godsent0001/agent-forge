@@ -49,6 +49,7 @@ def test_skill_catalogue_is_bounded_and_limited_to_ten_skills():
     
 def test_graph_loader_ignores_retired_ffmpeg_media_tool_bindings():
     from types import SimpleNamespace
+
     from app.services.graph_loader import _active_tool_links
 
     active = SimpleNamespace(tool=SimpleNamespace(kind="shell"))

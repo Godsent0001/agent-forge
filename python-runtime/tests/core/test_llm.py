@@ -143,8 +143,8 @@ async def test_venice_completion_uses_request_scoped_endpoint_and_key(monkeypatc
 @pytest.mark.asyncio
 async def test_venice_completion_fails_clearly_when_key_is_missing(monkeypatch):
     from app.core.llm.adapter import complete
-    from app.core.llm.types import LLMBadRequest
     from app.core.llm.model_names import litellm_model
+    from app.core.llm.types import LLMBadRequest
 
     monkeypatch.delenv("VENICE_API_KEY", raising=False)
     with pytest.raises(LLMBadRequest, match="Venice API key is not configured"):
