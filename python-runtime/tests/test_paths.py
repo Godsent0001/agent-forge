@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from app.infra.paths import DATA_SUBDIRECTORIES, data_dir
 from app.tools.asset_cache import (
     AssetCacheStoreTool,
