@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 # enforce tighter process/network deadlines where needed; this is the final guard
 # against a tool implementation accidentally awaiting forever.
 _TOOL_TIMEOUT_SECONDS_BY_KIND = {
-    "web_search": 35,
+    "web_search": 70,
     "browser": 45,
     "knowledge_search": 45,
     "knowledge_ingest": 120,
