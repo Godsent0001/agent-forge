@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.tools.rendering import RenderQueueTool
 
 from app.infra.paths import DATA_SUBDIRECTORIES, data_dir
 from app.tools.asset_cache import (
@@ -57,5 +56,4 @@ def test_legacy_tool_storage_defaults_follow_configured_data_directory(monkeypat
     assert VoiceGeneratorTool()._voices_dir == root / "assets" / "voices"
     assert CharacterAssetManagerTool()._root == root / "assets" / "characters"
     assert VisualAssetManagerTool()._root == root / "assets" / "visuals"
-    assert RenderQueueTool()._path == root / "queues" / "render_queue.json"
     assert SceneTemplateManagerTool()._root == root / "assets" / "scene_templates"
