@@ -12,7 +12,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.contracts.events import EventDraft
-from app.contracts.graph import AgentGraph, AgentSpec
+from app.contracts.graph import AgentGraph, AgentSpec, ToolBinding
 from app.contracts.memory import IntentStore, LessonStore, MemoryStore, RunHistory
 from app.contracts.naming import canonical_tool_names, sanitize_tool_name
 from app.contracts.run import RunRequest, RunResult
@@ -1316,12 +1316,32 @@ class RunnerCore:
             tb for tb in spec.tools
             if tb.kind.casefold() in {"python", "python_environment"}
         ]
+        existing_kinds = {tb.kind.casefold() for tb in spec.tools}
+        if not python_bindings:
+            python_bindings = [
+                ToolBinding(id="builtin:python", kind="python", name="python")
+            ]
+
         effective_tools = [
             tb for tb in spec.tools
             if tb.kind.casefold() not in {
                 "python", "python_environment", "workspace_files", "file_system",
             }
         ]
+        # Core computer-use capabilities are available to every agent by default.
+        # Users should not have to remember to attach shell/search/browser tools to
+        # each agent before it can carry out ordinary computer work.
+        builtin_general = [
+            ("web_search", "Search the public web using configured providers and free fallbacks."),
+            ("browser", "Browse public websites with the Playwright browser."),
+            ("shell", "Run commands in the user's local terminal and working directories."),
+        ]
+        for kind, description in builtin_general:
+            if kind not in existing_kinds:
+                effective_tools.append(
+                    ToolBinding(id=f"builtin:{kind}", kind=kind, name=kind, description=description)
+                )
+
         raw_names = [tb.name or tb.kind for tb in effective_tools]
         if python_bindings:
             raw_names.append("python")
@@ -1331,7 +1351,6 @@ class RunnerCore:
         # A built-in conversational control lets the agent send interim replies
         # without ending the shared execution loop.
         raw_names.append("agentforge_reply_user")
-        existing_kinds = {tb.kind.casefold() for tb in spec.tools}
         builtin_knowledge = [
             ("knowledge_search", KnowledgeSearchTool),
             ("knowledge_ingest", KnowledgeIngestTool),
