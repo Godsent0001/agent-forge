@@ -6,8 +6,6 @@ import re
 from typing import Any
 
 from .pricing import calculate_cost
-
-logger = logging.getLogger(__name__)
 from .response_cache import (
     cache_enabled,
     get_cached,
@@ -27,6 +25,8 @@ from .types import (
     ToolSpec,
     Usage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def complete(
