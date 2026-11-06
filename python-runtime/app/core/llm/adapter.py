@@ -1,9 +1,13 @@
 """LLM adapter v2 integrating LiteLLM / provider models with retries and typed errors."""
 import asyncio
 import json
+import logging
+import re
 from typing import Any
 
 from .pricing import calculate_cost
+
+logger = logging.getLogger(__name__)
 from .response_cache import (
     cache_enabled,
     get_cached,
@@ -38,6 +42,13 @@ async def complete(
 
     params = params or LLMParams()
     tools_formatted = None
+    tool_names = [tool.name for tool in (tools or [])]
+    invalid_names = [name for name in tool_names if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name)]
+    if invalid_names:
+        raise LLMBadRequest(
+            "Refusing to send invalid tool identifier(s) to the model provider: "
+            + ", ".join(repr(name) for name in invalid_names)
+        )
     if tools:
         tools_formatted = [
             {
@@ -105,6 +116,16 @@ async def complete(
                     f"Provider settings, then retry. ({type(err).__name__})"
                 ) from err
             if category == "bad_request":
+                if "invalid identifier" in str(err).lower() or "tool name" in str(err).lower():
+                    logger.error(
+                        "Provider rejected tool identifiers model=%s tool_names=%s error_type=%s",
+                        model, tool_names, type(err).__name__,
+                    )
+                    raise LLMBadRequest(
+                        f"Provider rejected a tool identifier for model {model}. "
+                        f"AgentForge sent these validated identifiers: {tool_names}. "
+                        f"Provider detail: {err}"
+                    ) from err
                 raise LLMBadRequest(f"Bad request to LLM provider: {err}") from err
             if category == "rate_limit":
                 if attempt >= max_retries:
