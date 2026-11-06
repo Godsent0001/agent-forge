@@ -157,6 +157,7 @@ async def test_configured_serper_failure_is_reported_instead_of_hidden_by_fallba
 @pytest.mark.asyncio
 async def test_serper_http_request_uses_configured_key_and_normalizes_results(monkeypatch):
     import httpx
+
     from app.tools.web_search import _serper_search_backend
 
     monkeypatch.setenv("SERPER_API_KEY", "test-key")

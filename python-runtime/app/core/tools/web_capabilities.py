@@ -37,7 +37,7 @@ class BrowserInput(BaseModel):
 class WebSearchCapability(Tool):
     kind: ClassVar[str] = "web_search"
     default_description: ClassVar[str] = (
-        "Search the public web using Serper when configured, with a free DuckDuckGo fallback. "
+        "Search the public web using Serper when configured; use keyless DuckDuckGo only when Serper is not configured. "
         "Returns result titles, URLs, and snippets."
     )
     Input = WebSearchInput

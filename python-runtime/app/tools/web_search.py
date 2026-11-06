@@ -232,7 +232,7 @@ async def _crawl4ai_search_backend(query: str) -> list[dict[str, str]]:
 class WebSearchTool(Tool):
     name = "web_search"
     description = (
-        "Search the web using Serper when configured, with a free keyless DuckDuckGo fallback."
+        "Search the web using configured Serper; use keyless DuckDuckGo only when Serper is not configured."
     )
 
     def __init__(self, search_fn: SearchFn | None = None):
