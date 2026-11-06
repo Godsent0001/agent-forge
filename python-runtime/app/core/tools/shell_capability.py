@@ -22,7 +22,7 @@ class ShellInput(BaseModel):
     command: str = Field(
         default="",
         max_length=20_000,
-        description="Command for run or start. Windows uses CMD; Unix uses the system shell.",
+        description="Command for run or start. Windows defaults to CMD; invoke powershell.exe -NoProfile -Command or pwsh for PowerShell. Unix uses the system shell.",
     )
     session_id: str = Field(default="", max_length=128, description="Session ID returned by start, required for write/read/stop.")
     input: str = Field(default="", max_length=20_000, description="Text or command to send to a persistent session for the write action.")
@@ -52,6 +52,7 @@ class ShellCapability(Tool):
         "and inspect local project state. Set working_directory to an absolute local path to work elsewhere "
         "on this computer; ordinary work there is autonomous. Use action=start for long-running servers or "
         "processes, then action=read/write/stop with the returned session_id to manage that same terminal. "
+        "On Windows CMD is the default; use powershell.exe or pwsh for PowerShell commands. "
         "Use action=run for commands that should finish and return output. This is terminal access, not "
         "graphical desktop control. Commands run with the "
         "current user's OS permissions and are not a full security sandbox."
