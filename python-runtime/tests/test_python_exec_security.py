@@ -54,3 +54,11 @@ async def test_python_snippet_can_import_project_files_from_persistent_workspace
         context=ctx,
     )
     assert result.strip() == "workspace-import-ok"
+
+
+def test_python_execution_has_startup_headroom_for_desktop_runtime():
+    from app.tools import python_exec
+
+    assert python_exec.WALL_CLOCK_TIMEOUT_SECONDS >= 60
+    assert python_exec.CPU_TIME_LIMIT_SECONDS >= 30
+    assert python_exec.MEMORY_LIMIT_BYTES >= 1024 * 1024 * 1024
