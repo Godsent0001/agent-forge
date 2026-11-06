@@ -23,11 +23,6 @@ dependencies = [
     { name = "yt-dlp" },
 ]
 
-[package.optional-dependencies]
-transcribe = [
-    { name = "faster-whisper" },
-]
-
 [package.dev-dependencies]
 build = [
     { name = "pyinstaller" },
@@ -42,7 +37,6 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.13.1" },
     { name = "fastapi", specifier = ">=0.111.0" },
-    { name = "faster-whisper", marker = "extra == 'transcribe'", specifier = ">=1.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "litellm", specifier = ">=1.100.0" },
     { name = "pillow", specifier = ">=12.3.0" },
@@ -52,7 +46,6 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
     { name = "yt-dlp", specifier = ">=2026.8.19" },
 ]
-provides-extras = ["transcribe"]
 
 [package.metadata.requires-dev]
 build = [{ name = "pyinstaller", specifier = ">=6.10" }]
