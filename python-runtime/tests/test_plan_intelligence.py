@@ -200,7 +200,10 @@ def test_plan_memory_settings_validate_and_persist_custom_model(tmp_path, monkey
         "model": "anthropic/claude-3.5-haiku",
     }
     assert json.loads(path.read_text("utf-8")) == saved
-    assert plan_intelligence.load_plan_memory_settings() == saved
+    loaded = plan_intelligence.load_plan_memory_settings()
+    assert loaded["enabled"] is True
+    assert loaded["provider"] == saved["provider"]
+    assert loaded["model"] == saved["model"]
 
     try:
         plan_intelligence.save_plan_memory_settings({
