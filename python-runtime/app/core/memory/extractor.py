@@ -40,13 +40,14 @@ async def extract_and_store_memories(
     store: MemoryStore,
     llm_complete_fn: Any = None,
     conversation_id: str | None = None,
+    include_other_conversations: bool = False,
 ) -> list[str]:
     """Extract durable memories from user messages and store them after safety validation."""
     if not should_trigger_extraction(spec, user_messages):
         return []
 
     # Get existing active items for deduplication
-    existing_items = await store.related(spec.id, " ".join(user_messages)[:500], limit=20, conversation_id=conversation_id)
+    existing_items = await store.related(spec.id, " ".join(user_messages)[:500], limit=20, conversation_id=conversation_id, include_other_conversations=include_other_conversations)
 
     # If LLM complete function is supplied, invoke extraction call
     candidates: list[MemoryCandidate] = []
