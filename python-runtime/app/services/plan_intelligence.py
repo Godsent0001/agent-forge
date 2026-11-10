@@ -125,6 +125,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
         constraints = list(plan.get("constraints") or [])
         existing = {str(item.get("id")): item for item in nodes if isinstance(item, dict)}
         changed = 0
+        applied_changes: list[dict[str, Any]] = []
         additions = proposal.get("nodes") if isinstance(proposal.get("nodes"), list) else []
         for item in additions[:12]:
             if not isinstance(item, dict) or len(nodes) >= _MAX_NODES:
@@ -156,7 +157,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 "type": node_type,
                 "title": title,
                 "objective": objective,
-                "status": "active" if source == "agent" else "proposed",
+                "status": "active",
                 "source": source,
                 "created_at": now.isoformat(),
                 "updated_at": now.isoformat(),
@@ -164,6 +165,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             }
             nodes.append(node)
             existing[node["id"]] = node
+            applied_changes.append({"kind": "node_added", "node": node})
             changed += 1
 
         for item in (proposal.get("decisions") if isinstance(proposal.get("decisions"), list) else [])[:8]:
@@ -175,17 +177,26 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 continue
             user_confirmed = item.get("authority") == "user" and _user_evidence_is_exact(evidence, user_text)
             status = "accepted" if user_confirmed else "proposed"
+            supersedes = _normal_text(item.get("supersedes"), 80)
+            if user_confirmed and supersedes in {d.get("id") for d in decisions if isinstance(d, dict) and d.get("status") == "accepted"}:
+                for prior in decisions:
+                    if isinstance(prior, dict) and prior.get("id") == supersedes and prior.get("status") == "accepted":
+                        prior["status"] = "superseded"
+                        prior["superseded_by"] = statement
+                        applied_changes.append({"kind": "decision_superseded", "decision_id": supersedes, "replacement": statement})
             if any(d.get("text", "").casefold() == statement.casefold() and d.get("status") == status
                    for d in decisions if isinstance(d, dict)):
                 continue
-            decisions.append({
+            decision = {
                 "id": str(uuid.uuid4()),
                 "text": statement,
                 "status": status,
                 "authority": "user" if user_confirmed else "agent",
                 "evidence": evidence if user_confirmed else "",
                 "created_at": now.isoformat(),
-            })
+            }
+            decisions.append(decision)
+            applied_changes.append({"kind": "decision_added", "decision": decision})
             changed += 1
 
         for item in (proposal.get("constraints") if isinstance(proposal.get("constraints"), list) else [])[:8]:
@@ -197,10 +208,12 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 c.get("text", "").casefold() == statement.casefold()
                 for c in constraints if isinstance(c, dict)
             ):
-                constraints.append({
+                constraint = {
                     "id": str(uuid.uuid4()), "text": statement,
                     "evidence": evidence, "created_at": now.isoformat(),
-                })
+                }
+                constraints.append(constraint)
+                applied_changes.append({"kind": "constraint_added", "constraint": constraint})
                 changed += 1
 
         if changed == 0:
@@ -228,6 +241,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 "decision_count": len(decisions),
                 "constraint_count": len(constraints),
                 "model": proposal.get("_model", ""),
+                "changes": applied_changes,
             },
             created_at=now,
         ))
@@ -298,7 +312,7 @@ async def update_plan_memory(
         "avoid duplicating existing nodes. Node parent_ref must be 'root' or an existing node id. "
         "Allowed node types: goal, phase, subgoal, task, milestone. Keep each item concise.\n"
         "JSON schema: {summary:string,nodes:[{type,title,objective,parent_ref,source,evidence}],"
-        "decisions:[{text,authority,evidence}],constraints:[{text,evidence}]}\n\n"
+        "decisions:[{text,authority,evidence,supersedes}],constraints:[{text,evidence}],node_updates:[{id,status,evidence}]}\n\n"
         f"ROOT OBJECTIVE (immutable): {objective[:3000]}\n"
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
