@@ -714,7 +714,9 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
               item.id === updated.id ? updated : item,
             ));
           })
-          .catch(() => undefined);
+          .catch(() => api.conversations.list(project.id, agent.id).then((items) => {
+            if (activeScopeRef.current === runScope) setConversations(items);
+          }).catch(() => undefined));
       }
 
       const execution = await api.executions.run(
