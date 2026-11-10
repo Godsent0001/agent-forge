@@ -6,12 +6,12 @@ root objective, silently accept design decisions, or mark work complete.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from app.core.llm.adapter import complete
@@ -35,7 +35,6 @@ _ALLOWED_PROVIDERS = {
     "groq", "xai", "openrouter", "venice", "ollama",
 }
 _ALLOWED_NODE_TYPES = {"goal", "phase", "subgoal", "task", "milestone"}
-_ALLOWED_NODE_STATUSES = {"proposed", "active", "blocked", "paused", "superseded"}
 _MAX_NODES = 100
 _MAX_CONTEXT_CHARS = 4200
 
@@ -287,6 +286,7 @@ async def update_plan_memory(
         content = getattr(msg, "content", None) or (msg.get("content", "") if isinstance(msg, dict) else "")
         if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
             history_lines.append(f"{role}: {content[:900]}")
+    recent_history = "\n".join(history_lines)[-4500:]
     prompt = (
         "You are AgentForge's low-cost project-plan memory interpreter. Return JSON only. "
         "Maintain a hierarchical plan for a long-running project. The immutable root objective is "
@@ -326,7 +326,7 @@ async def update_plan_memory(
             )
         proposal = _json_object(turn.text or "")
         proposal["_model"] = model_name
-        return await __import__("asyncio").to_thread(
+        return await asyncio.to_thread(
             _apply_interpretation, task_state_id, proposal, user_message
         )
     except Exception as exc:
