@@ -184,6 +184,7 @@ def test_plan_context_preserves_nested_parent_child_relationships(db_session, mo
         db.commit()
 
     context = plan_intelligence.compile_plan_context(task.id)
+    assert "Root objective excerpt: Build a reliable payment platform." in context
     assert "- [active] phase: Persistence" in context
     assert "  - [blocked] task: Create schema" in context
 
