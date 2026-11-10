@@ -12,7 +12,7 @@
 
 SQLite is authoritative:
 
-- `task_states` stores one durable task record per conversation workstream, including the immutable original objective, latest instruction, status, structured state, and version.
+- `task_states` stores one durable task record per project workstream, including the immutable original objective, latest instruction, status, structured state, and version. A workstream can be rebound to a later conversation without discarding its event history.
 - `task_state_events` is an append-only record of task creation, user instructions, execution-to-task bindings, agent-authored state changes, and execution outcomes.
 - Existing conversation messages and execution events remain the canonical full transcript and detailed execution trace.
 
@@ -35,7 +35,7 @@ The projections are written atomically. If a projection write fails, SQLite rema
 2. Before starting the run, it creates or updates the active task state in a short SQLite transaction.
 3. A normal follow-up updates `current_instruction`; it never overwrites `original_objective`.
 4. A clearly explicit task-switch phrase pauses the previous task and creates a new task record.
-5. A user can resume a paused task with `Resume task: <8-character-task-id>`; AgentForge reactivates that task and pauses the currently active one without discarding either state.
+5. A user can resume a paused task from another conversation with `Resume task: <8-character-task-id>`; AgentForge reactivates that project workstream, records the previous/new conversation IDs, and pauses the currently active task without discarding either state.
 6. The API places a compact task header and task ID on `RunRequest`.
 7. The shared RunnerCore injects the header into the root agent's system context as explicitly untrusted context. Subagents do not receive unrelated root task state.
 8. Live instructions delivered to a running execution are appended to the task bound to that execution, even if another task has since become active; failed delivery is not recorded.
