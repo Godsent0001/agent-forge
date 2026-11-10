@@ -28,28 +28,28 @@ def upgrade() -> None:
         return
 
     bind.exec_driver_sql("""
-            CREATE TRIGGER memory_entries_fts_ai AFTER INSERT ON memory_entries BEGIN
-                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
-                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
-            END
-        """)
-        bind.exec_driver_sql("""
-            CREATE TRIGGER memory_entries_fts_ad AFTER DELETE ON memory_entries BEGIN
-                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
-            END
-        """)
-        bind.exec_driver_sql("""
-            CREATE TRIGGER memory_entries_fts_au
-            AFTER UPDATE OF content, agent_id, conversation_id ON memory_entries BEGIN
-                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
-                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
-                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
-            END
-        """)
-        bind.exec_driver_sql(
-            "INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content) "
-            "SELECT id, agent_id, conversation_id, content FROM memory_entries"
-        )
+        CREATE TRIGGER memory_entries_fts_ai AFTER INSERT ON memory_entries BEGIN
+            INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+            VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+        END
+    """)
+    bind.exec_driver_sql("""
+        CREATE TRIGGER memory_entries_fts_ad AFTER DELETE ON memory_entries BEGIN
+            DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+        END
+    """)
+    bind.exec_driver_sql("""
+        CREATE TRIGGER memory_entries_fts_au
+        AFTER UPDATE OF content, agent_id, conversation_id ON memory_entries BEGIN
+            DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+            INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+            VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+        END
+    """)
+    bind.exec_driver_sql(
+        "INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content) "
+        "SELECT id, agent_id, conversation_id, content FROM memory_entries"
+    )
 
 
 def downgrade() -> None:
