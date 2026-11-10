@@ -311,7 +311,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       onChange={(event) => {
                         const provider = PROVIDERS.find((item) => item.id === event.target.value);
                         setPlanMemoryProvider(event.target.value);
-                        if (provider) setPlanMemoryModel(provider.defaultModel);
+                        if (provider) setPlanMemoryModel(provider.id === "gemini" ? "gemini-2.5-flash-lite" : provider.defaultModel);
                       }}
                       className="w-full rounded-md border border-line-strong bg-studio-800 px-2 py-2 text-xs text-studio-100 focus:border-accent-500 focus:outline-none"
                     >
