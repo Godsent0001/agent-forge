@@ -443,6 +443,11 @@ async def update_plan_memory(
         if role in {"user", "assistant", "tool"} and isinstance(content, str) and content.strip():
             history_lines.append(f"{role}: {content[:700]}")
     recent_history = "\n".join(history_lines)[-3000:]
+    current_message_section = (
+        "(same as the immutable root objective above)"
+        if user_message.strip() == (objective or "").strip()
+        else user_message[:8000]
+    )
     prompt = (
         "You are AgentForge's low-cost project-plan memory interpreter. Return JSON only. "
         "Maintain a hierarchical plan for a long-running project. The immutable root objective is "
