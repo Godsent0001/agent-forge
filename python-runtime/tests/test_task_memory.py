@@ -225,6 +225,8 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert len(event.payload["plan_dependencies_added"]) == 1
     assert event.payload["accepted_decisions"] == ["Use idempotency keys"]
     assert event.payload["accepted_constraints"] == ["Use PostgreSQL", "Maintain an auditable ledger"]
+    assert len(event.payload["plan_decisions_added"]) == 1
+    assert len(event.payload["plan_constraints_added"]) == 2
     assert event.payload["ignored_unverified_decisions"] == ["Use Redis caching"]
     assert event.payload["ignored_unverified_constraints"] == ["Avoid MongoDB"]
     rebuilt = plan_intelligence.rebuild_plan_from_history(task_id)
@@ -233,6 +235,8 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert rebuilt["rebuilt"] is True
     assert len(rebuilt_plan["nodes"]) == 2
     assert len(rebuilt_plan["dependencies"]) == 1
+    assert rebuilt_plan["decisions"][0]["status"] == "accepted"
+    assert len(rebuilt_plan["constraints"]) == 2
     task_header = task_memory._render_context(db_session, state)
     assert "Use PostgreSQL" in task_header
     assert "Implement transaction matching" in task_header
