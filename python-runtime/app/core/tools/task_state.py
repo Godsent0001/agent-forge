@@ -5,12 +5,35 @@ import asyncio
 import json
 
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.services.task_memory import apply_task_state_update
 
 
+class PlanNodeDraft(BaseModel):
+    ref: str = Field(min_length=1, max_length=64, description="Temporary reference for child nodes in this same update.")
+    parent_ref: str = Field(default="root", max_length=64, description="root, an existing plan-node ID, or an earlier node ref in this update.")
+    type: Literal["goal", "phase", "subgoal", "task", "milestone"] = "task"
+    title: str = Field(min_length=1, max_length=120)
+    objective: str = Field(default="", max_length=500)
+
+
+class PlanDependencyDraft(BaseModel):
+    node_ref: str = Field(min_length=1, max_length=64, description="The dependent node ID or ref.")
+    depends_on_ref: str = Field(min_length=1, max_length=64, description="The prerequisite node ID or ref.")
+    reason: str = Field(default="", max_length=240)
+
+
 class TaskStateUpdateInput(BaseModel):
+    plan_nodes_add: list[PlanNodeDraft] = Field(
+        default_factory=list, max_length=8,
+        description="Add agent-owned phases/subgoals/tasks to the shared hierarchy. Add parents before children and use temporary refs to nest nodes in one call.",
+    )
+    plan_dependencies_add: list[PlanDependencyDraft] = Field(
+        default_factory=list, max_length=8,
+        description="Add prerequisite relationships between existing or newly-added plan nodes. Do not create cycles.",
+    )
     decisions_add: list[str] = Field(
         default_factory=list, max_length=5,
         description="New durable decisions, each a short standalone statement.",
@@ -44,8 +67,8 @@ class TaskStateUpdateInput(BaseModel):
 class TaskStateUpdateTool(Tool):
     kind = "task_state_update"
     default_description = (
-        "Persist meaningful task memory: decisions, constraints, verified completed milestones, "
-        "remaining work, blockers, and the next action. Batch several changes into one call. "
+        "Persist meaningful task memory: agent execution-plan nodes/dependencies, decisions, constraints, "
+        "verified completed milestones, remaining work, blockers, and the next action. Batch several changes into one call. "
         "Use this only at meaningful milestones or when a durable decision/constraint changes; "
         "do not call after every trivial tool result. Never mark work completed without evidence. "
         "The original objective is immutable."
