@@ -126,6 +126,22 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     project, agent, conversation = _conversation(db_session)
     monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: tmp_path)
     task_id, _ = task_memory.prepare_task_state(db_session, conversation, "Build the reconciliation engine.")
+    task_row = db_session.get(models.TaskState, task_id)
+    task_row.state_json = {
+        **task_row.state_json,
+        "plan": {
+            "nodes": [{
+                "id": "schema-node",
+                "parent_id": task_id,
+                "type": "task",
+                "title": "Database schema created",
+                "status": "active",
+                "source": "agent",
+                "version": 1,
+            }]
+        },
+    }
+    db_session.commit()
     execution = models.Execution(
         id="task-memory-update-execution",
         project_id=project.id,
@@ -162,6 +178,8 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert state.state_json["constraints"] == ["Use PostgreSQL", "Maintain an auditable ledger"]
     assert state.state_json["decisions"] == ["Use idempotency keys"]
     assert state.state_json["completed"] == ["Database schema created"]
+    assert state.state_json["plan"]["nodes"][0]["status"] == "completed"
+    assert state.state_json["plan"]["nodes"][0]["verified_by_execution_id"] == execution.id
     assert state.state_json["remaining"] == ["Implement transaction matching"]
     assert state.state_json["blockers"] == []
     assert state.state_json["next_action"] == "Implement transaction matching"
