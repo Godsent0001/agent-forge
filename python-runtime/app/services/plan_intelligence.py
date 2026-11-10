@@ -168,6 +168,31 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             applied_changes.append({"kind": "node_added", "node": node})
             changed += 1
 
+        for item in (proposal.get("node_updates") if isinstance(proposal.get("node_updates"), list) else [])[:12]:
+            if not isinstance(item, dict):
+                continue
+            node_id = _normal_text(item.get("id"), 80)
+            status = item.get("status")
+            evidence = _normal_text(item.get("evidence"), 500)
+            node = existing.get(node_id)
+            if not node or status not in {"active", "blocked", "paused", "superseded"}:
+                continue
+            if not _user_evidence_is_exact(evidence, user_text):
+                continue
+            if node.get("status") != status:
+                previous_status = node.get("status")
+                node["status"] = status
+                node["updated_at"] = now.isoformat()
+                node["version"] = int(node.get("version", 1)) + 1
+                applied_changes.append({
+                    "kind": "node_status_changed",
+                    "node_id": node_id,
+                    "from": previous_status,
+                    "to": status,
+                    "evidence": evidence,
+                })
+                changed += 1
+
         for item in (proposal.get("decisions") if isinstance(proposal.get("decisions"), list) else [])[:8]:
             if not isinstance(item, dict):
                 continue
