@@ -286,6 +286,39 @@ class RunnerCore:
     def __init__(self, fake_llm: FakeLLM | None = None):
         self.fake_llm = fake_llm
 
+    async def _refresh_plan_after_live_messages(
+        self,
+        req: RunRequest,
+        messages: list[dict[str, Any]],
+        live_messages: list[str],
+        depth: int,
+        budget: BudgetTracker,
+    ) -> None:
+        """Reconcile live user changes before the agent resumes its existing run."""
+        if depth != 0 or not req.task_state_id or not live_messages:
+            return
+        try:
+            combined = "\n\n".join(live_messages)
+            await update_plan_memory(
+                req.task_state_id,
+                combined,
+                messages[1:] + [{"role": "user", "content": combined}],
+                budget=budget,
+            )
+            plan_context = await asyncio.to_thread(
+                compile_plan_context, req.task_state_id
+            )
+            if plan_context and messages:
+                current = str(messages[0].get("content") or "")
+                marker = "[AgentForge evolving project plan]"
+                if marker not in current:
+                    messages[0]["content"] = current + "\n\n" + plan_context
+                else:
+                    messages[0]["content"] = current.split(marker, 1)[0].rstrip() + "\n\n" + plan_context
+        except Exception:
+            # The active task must continue even if the optional memory model fails.
+            logger.exception("Could not reconcile live instruction into hierarchical plan memory")
+
     async def run(
         self,
         req: RunRequest,
@@ -611,6 +644,9 @@ class RunnerCore:
                     # ask the model again with the latest instruction in context.
                     live_messages = _drain_live_instructions(cancel)
                     if live_messages:
+                        await self._refresh_plan_after_live_messages(
+                            req, messages, live_messages, depth, budget
+                        )
                         for live_message in live_messages:
                             messages.append({
                                 "role": "user",
@@ -625,6 +661,9 @@ class RunnerCore:
                         # response completed; never finish on a stale answer.
                         live_messages = _drain_live_instructions(cancel)
                         if live_messages:
+                            await self._refresh_plan_after_live_messages(
+                                req, messages, live_messages, depth, budget
+                            )
                             for live_message in live_messages:
                                 messages.append({
                                     "role": "user",
@@ -824,6 +863,10 @@ class RunnerCore:
                     # Deliver messages received while tools were running. Explicit stop
                     # instructions cancel the in-flight process; other updates are applied here.
                     live_instructions = _drain_live_instructions(cancel)
+                    if live_instructions:
+                        await self._refresh_plan_after_live_messages(
+                            req, messages, live_instructions, depth, budget
+                        )
                     for live_message in live_instructions:
                         messages.append({
                             "role": "user",
