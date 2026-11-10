@@ -33,6 +33,9 @@ def test_conversation_persists_messages_feedback_and_title(client, db_session, m
     assert user.status_code == 200
     assert user.json()["role"] == "user"
     assert user.json()["content"] == "  Help me ship the feature  "
+    titled = client.post(f"/v2/conversations/{conversation['id']}/title")
+    assert titled.status_code == 200
+    assert titled.json()["title"] == "Ship Feature Release"
 
     execution = models.Execution(
         id=str(uuid4()),
@@ -153,6 +156,9 @@ def test_editing_user_message_truncates_later_turns_and_updates_title(client, db
     )
     assert edited.status_code == 200
     assert edited.json()["content"] == "Revised question"
+    titled = client.post(f"/v2/conversations/{conversation['id']}/title")
+    assert titled.status_code == 200
+    assert titled.json()["title"] == "Revised Question"
 
     messages = client.get(f"/v2/conversations/{conversation['id']}/messages").json()
     assert [(message["role"], message["content"]) for message in messages] == [
