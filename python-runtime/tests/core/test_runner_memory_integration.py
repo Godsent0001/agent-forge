@@ -52,10 +52,11 @@ async def test_production_memory_extraction_uses_configured_llm_adapter(monkeypa
         execution_id="run-memory-1",
     )
 
-    async def fake_adapter_complete(*, messages, params, model):
+    async def fake_adapter_complete(*, messages, params, model, provider=None):
         calls["messages"] = messages
         calls["max_tokens"] = params.max_tokens
         calls["model"] = model
+        calls["provider"] = provider
         return LLMTurn(
             text=json.dumps({
                 "memories": [{
@@ -85,6 +86,7 @@ async def test_production_memory_extraction_uses_configured_llm_adapter(monkeypa
     )
 
     assert calls["model"] == "venice/deepseek-v4-1-flash"
+    assert calls["provider"] == "venice"
     assert calls["max_tokens"] == 512
     assert len(memory.added) == 1
     assert memory.added[0].text == "User prefers concise answers"
