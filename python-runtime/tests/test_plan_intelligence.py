@@ -408,6 +408,11 @@ def test_integrity_audit_is_append_only_and_rejects_unknown_node_references(db_s
         task_state_id=task.id, event_type="plan_integrity_audited"
     ).one()
     assert event.payload["audit"]["findings"][0]["category"] == "prerequisite_regression"
+    rebuilt = plan_intelligence.rebuild_plan_from_history(task.id)
+    db_session.expire_all()
+    replayed = db_session.get(models.TaskState, task.id).state_json["plan"]["integrity_audit"]
+    assert rebuilt["rebuilt"] is True
+    assert replayed["findings"][0]["category"] == "prerequisite_regression"
 
 
 def test_integrity_audit_is_due_initially_and_after_five_plan_updates(db_session, monkeypatch):
