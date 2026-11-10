@@ -366,6 +366,27 @@ def _apply_interpretation(
         return {"applied": True, "changes": changed, "nodes": len(nodes)}
 
 
+def _budget_allows_memory_call(budget: Any, prompt: str, max_output_tokens: int) -> bool:
+    """Reserve execution budget so optional memory work cannot starve the main agent."""
+    if budget is None:
+        return True
+    spec = budget.spec
+    totals = budget.totals
+    if spec.max_llm_calls is not None and totals.llm_calls + 1 >= spec.max_llm_calls:
+        return False
+    if spec.max_total_tokens is not None:
+        used = totals.input_tokens + totals.output_tokens
+        estimated = max(1, len(prompt) // 4) + max_output_tokens + 1000
+        if used + estimated >= spec.max_total_tokens:
+            return False
+    if spec.max_cost_usd is not None:
+        if (totals.cost_usd or 0.0) + 0.01 >= spec.max_cost_usd:
+            return False
+    if spec.max_seconds is not None and budget.elapsed_seconds + 12 >= spec.max_seconds:
+        return False
+    return True
+
+
 def _should_interpret(message: str) -> bool:
     text = message.strip()
     if len(text) < 8:
@@ -441,9 +462,9 @@ async def update_plan_memory(
         f"RECENT CONVERSATION: {recent_history}\\n"
         f"CURRENT USER MESSAGE: {user_message[:8000]}"
     )
+    if not _budget_allows_memory_call(budget, prompt, config["max_tokens"]):
+        return {"applied": False, "reason": "run_budget_reserved_for_execution"}
     try:
-        if budget is not None:
-            budget.check_limits()
         model_name = litellm_model(config["provider"], config["model"])
         turn = await complete(
             messages=[
