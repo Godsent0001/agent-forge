@@ -86,6 +86,10 @@ def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_sessi
                 "node_ref": "phase_implement",
                 "depends_on_ref": "phase_design",
                 "reason": "Implementation follows architecture approval.",
+            }, {
+                "node_ref": "phase_design",
+                "depends_on_ref": "phase_implement",
+                "reason": "This reverse edge would create a cycle.",
             }],
         },
         "Please create a plan for the platform.",
@@ -98,6 +102,7 @@ def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_sessi
     assert by_title["Design the platform"]["parent_id"] == task.id
     assert by_title["Design the database schema"]["parent_id"] == by_title["Design the platform"]["id"]
     assert by_title["Define indexes"]["parent_id"] == by_title["Design the database schema"]["id"]
+    assert len(plan["dependencies"]) == 1
     assert plan["dependencies"][0]["node_id"] == by_title["Implement the platform"]["id"]
     assert plan["dependencies"][0]["depends_on_id"] == by_title["Design the platform"]["id"]
     context = plan_intelligence.compile_plan_context(task.id)
