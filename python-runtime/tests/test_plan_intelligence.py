@@ -286,3 +286,11 @@ def test_agent_plan_status_can_follow_exact_execution_evidence(db_session, monke
     db_session.expire_all()
     node = db_session.get(models.TaskState, task.id).state_json["plan"]["nodes"][0]
     assert node["status"] == "blocked"
+
+
+
+def test_meaningful_short_design_choices_trigger_interpretation():
+    assert plan_intelligence._should_interpret("Use PostgreSQL")
+    assert plan_intelligence._should_interpret("Avoid Redis")
+    assert not plan_intelligence._should_interpret("Hello there")
+    assert not plan_intelligence._should_interpret("Thanks")
