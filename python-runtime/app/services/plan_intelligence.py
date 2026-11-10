@@ -493,7 +493,7 @@ async def update_plan_memory(
             )
         proposal = _json_object(turn.text or "")
         proposal["_model"] = model_name
-        evidence_text = user_message + "\\n" + recent_history
+        evidence_text = user_message + "\n" + recent_history
         return await asyncio.to_thread(
             _apply_interpretation, task_state_id, proposal, user_message, evidence_text
         )
