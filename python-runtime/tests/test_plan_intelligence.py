@@ -95,8 +95,8 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
     event = db_session.query(models.TaskStateEvent).filter_by(
         task_state_id=task.id, event_type="plan_memory_updated"
     ).one()
-    assert event.payload["change_count"] == 3
-    assert len(event.payload["changes"]) == 3
+    assert event.payload["change_count"] == 4
+    assert len(event.payload["changes"]) == 4
 
     updated.state_json = {**updated.state_json, "plan": {}}
     db_session.commit()
