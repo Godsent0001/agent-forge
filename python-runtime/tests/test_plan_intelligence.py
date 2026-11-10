@@ -46,6 +46,7 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
         task.id,
         {
             "summary": "Captured the user's initial design.",
+            "root_summary": "Build a reliable payment platform with PostgreSQL.",
             "nodes": [
                 {
                     "type": "phase",
@@ -89,6 +90,7 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
     assert plan["nodes"][0]["status"] == "active"
     assert plan["decisions"][0]["status"] == "accepted"
     assert len(plan["constraints"]) == 1
+    assert plan["root_summary"] == "Build a reliable payment platform with PostgreSQL."
 
     event = db_session.query(models.TaskStateEvent).filter_by(
         task_state_id=task.id, event_type="plan_memory_updated"
@@ -106,6 +108,7 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
     assert len(restored["nodes"]) == 1
     assert restored["decisions"][0]["status"] == "accepted"
     assert len(restored["constraints"]) == 1
+    assert restored["root_summary"] == "Build a reliable payment platform with PostgreSQL."
 
 
 def test_agent_plan_is_kept_separate_from_accepted_user_decisions(db_session, monkeypatch):
