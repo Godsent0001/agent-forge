@@ -49,7 +49,7 @@ describe("RichMarkdown", () => {
     const source = markdown(fence + "mermaid", "flowchart TD", "A[Start] --> B[Finish]", fence);
     render(<RichMarkdown content={source} />);
     fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("flowchart TD\\nA[Start] --> B[Finish]"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("flowchart TD" + String.fromCharCode(10) + "A[Start] --> B[Finish]"));
   });
 
   it("renders structured chart JSON from a chart code fence", () => {
