@@ -113,7 +113,7 @@ function SequenceDiagram({ source }: { source: string }) {
   const height = 72 + messages.length * 58;
   const xFor = (id: string) => 90 + participants.indexOf(id) * 180;
   return (
-    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="img" aria-label="Rendered Mermaid sequence diagram"><CopyBlockButton text={source} />
+    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label="Rendered Mermaid sequence diagram"><CopyBlockButton text={source} />
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
         <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {participants.map((id) => <g key={id}><rect x={xFor(id) - 66} y="8" width="132" height="34" rx="7" fill="#202734" stroke="#64748b" /><text x={xFor(id)} y="29" textAnchor="middle" fontSize="11" fill="#f1f5f9">{names.get(id)}</text><line x1={xFor(id)} y1="42" x2={xFor(id)} y2={height - 10} stroke="currentColor" strokeOpacity=".35" strokeDasharray="4 4" /></g>)}
@@ -158,7 +158,7 @@ function MermaidDiagram({ source }: { source: string }) {
     ? { x: 24 + index * (nodeW + gap), y: (height - nodeH) / 2 }
     : { x: (width - nodeW) / 2, y: 20 + index * (nodeH + gap) }] as const));
   return (
-    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="img" aria-label="Rendered Mermaid flowchart"><CopyBlockButton text={source} />
+    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label="Rendered Mermaid flowchart"><CopyBlockButton text={source} />
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height} role="presentation" className="max-w-none">
         <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {edges.map((edge, index) => {
@@ -199,7 +199,7 @@ function DataChart({ source }: { source: string }) {
     const bar = String(parsed.type ?? parsed.chartType ?? "bar").toLowerCase() !== "line";
     const points = values.map((value, index) => ({ x: left + (index + 0.5) * plotW / values.length, y: top + plotH - (value / max) * plotH }));
     return (
-      <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="img" aria-label={String(parsed.title ?? "Data chart")}><CopyBlockButton text={source} />
+      <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label={String(parsed.title ?? "Data chart")}><CopyBlockButton text={source} />
         {typeof parsed.title === "string" && <p className="mb-2 text-xs font-semibold text-studio-100">{parsed.title}</p>}
         <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
           <line x1={left} y1={top + plotH} x2={width - 12} y2={top + plotH} stroke="currentColor" strokeOpacity=".5" />
