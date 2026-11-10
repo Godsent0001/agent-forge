@@ -52,6 +52,19 @@ describe("RichMarkdown", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("flowchart TD" + String.fromCharCode(10) + "A[Start] --> B[Finish]"));
   });
 
+
+
+  it("copies rendered markdown tables as tab-separated text", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<RichMarkdown content={markdown("| Name | Status |", "| --- | --- |", "| Build | Done |")} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Name\\tStatus\\nBuild\\tDone"));
+  });
+
   it("renders structured chart JSON from a chart code fence", () => {
     render(<RichMarkdown content={markdown(fence + "chart", '{"type":"line","title":"Revenue","labels":["Q1","Q2"],"values":[10,15]}', fence)} />);
     expect(screen.getByRole("group", { name: "Revenue" })).toBeTruthy();
