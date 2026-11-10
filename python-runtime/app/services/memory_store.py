@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Callable
 
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
@@ -66,6 +69,42 @@ def _keyword_score(text: str, query: str) -> float:
     return min(1.0, len(query_terms & item_terms) / len(query_terms))
 
 
+def _fts_memory_candidate_ids(
+    db: Session,
+    agent_id: str,
+    query: str,
+    *,
+    conversation_id: str | None,
+    include_other_conversations: bool,
+    limit: int,
+) -> list[str] | None:
+    """Return bounded FTS5 candidates, or None when the optional index is unavailable."""
+    terms = sorted(set(re.findall(r"[\\w'-]{2,}", query.casefold())))
+    if not terms:
+        return None
+    match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
+    sql = (
+        "SELECT memory_id FROM memory_entries_fts "
+        "WHERE memory_entries_fts MATCH :match_query AND agent_id = :agent_id"
+    )
+    params: dict[str, object] = {
+        "match_query": match_query,
+        "agent_id": agent_id,
+        "limit": max(50, min(limit * 10, 200)),
+    }
+    if not include_other_conversations:
+        sql += " AND conversation_id IS :conversation_id"
+        params["conversation_id"] = conversation_id
+    sql += " ORDER BY bm25(memory_entries_fts) LIMIT :limit"
+    try:
+        rows = db.execute(text(sql), params).fetchall()
+    except OperationalError:
+        return None
+    # Empty FTS results fall back to the existing lexical scorer to tolerate tokenizer
+    # differences and databases created before the FTS migration was applied.
+    return [row[0] for row in rows] or None
+
+
 class SqlMemoryStore:
     """Persist semantic memory using the same contract as the in-memory test store."""
 
@@ -99,12 +138,20 @@ class SqlMemoryStore:
             return []
         now = datetime.now(timezone.utc)
         with self._session_factory() as db:
+            candidate_ids = None if query_embedding else _fts_memory_candidate_ids(
+                db, agent_id, query,
+                conversation_id=conversation_id,
+                include_other_conversations=include_other_conversations,
+                limit=limit,
+            )
             query_rows = db.query(models.MemoryEntry).filter(
                 models.MemoryEntry.agent_id == agent_id,
                 models.MemoryEntry.status == "active",
             )
             if not include_other_conversations:
                 query_rows = query_rows.filter(models.MemoryEntry.conversation_id == conversation_id)
+            if candidate_ids:
+                query_rows = query_rows.filter(models.MemoryEntry.id.in_(candidate_ids))
             rows = query_rows.order_by(models.MemoryEntry.created_at.desc()).all()
             hits = []
             for row in rows:
@@ -127,12 +174,20 @@ class SqlMemoryStore:
 
     async def related(self, agent_id: str, text: str, limit: int, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         with self._session_factory() as db:
+            candidate_ids = _fts_memory_candidate_ids(
+                db, agent_id, text,
+                conversation_id=conversation_id,
+                include_other_conversations=include_other_conversations,
+                limit=max(1, limit),
+            )
             query = db.query(models.MemoryEntry).filter(
                 models.MemoryEntry.agent_id == agent_id,
                 models.MemoryEntry.status == "active",
             )
             if not include_other_conversations:
                 query = query.filter(models.MemoryEntry.conversation_id == conversation_id)
+            if candidate_ids:
+                query = query.filter(models.MemoryEntry.id.in_(candidate_ids))
             rows = query.order_by(models.MemoryEntry.created_at.desc()).all()
             matched = [row for row in rows if _keyword_score(row.content, text) > 0]
             return [_memory_item(row) for row in matched[:max(0, limit)]]
