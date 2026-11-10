@@ -11,7 +11,10 @@ from app.services.memory_settings import (
     cross_conversation_memory_enabled,
     save_cross_conversation_memory,
 )
-from app.services.plan_intelligence import load_plan_memory_settings, save_plan_memory_settings
+from app.services.plan_intelligence import (
+    load_plan_memory_settings,
+    save_plan_memory_settings,
+)
 
 logger = logging.getLogger("agentforge.settings")
 
