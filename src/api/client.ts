@@ -489,6 +489,12 @@ export const api = {
     testSearchConnection: () => request<{ status: string; provider: string; results: number }>("/settings/search/test", { method: "POST" }),
     getEmbeddingModel: () => request<{ model: string }>("/settings/embedding-model"),
     getMemorySettings: () => request<{ cross_conversation_enabled: boolean }>("/settings/memory"),
+    getPlanMemorySettings: () => request<{ enabled: boolean; provider: string; model: string }>("/settings/plan-memory"),
+    setPlanMemorySettings: (settings: { enabled: boolean; provider: string; model: string }) =>
+      request<{ status: string; enabled: boolean; provider: string; model: string }>("/settings/plan-memory", {
+        method: "POST",
+        body: JSON.stringify(settings),
+      }),
     setMemorySettings: (cross_conversation_enabled: boolean) =>
       request<{ status: string; cross_conversation_enabled: boolean }>("/settings/memory", {
         method: "POST",
