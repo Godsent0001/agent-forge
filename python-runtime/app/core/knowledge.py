@@ -367,7 +367,10 @@ class KnowledgeIndex:
                         ).fetchall()
                 except sqlite3.OperationalError:
                     # Malformed/unsupported FTS state should never make knowledge unavailable.
-                    rows = []
+                    rows = db.execute(
+                        "SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                        "JOIN knowledge_sources s USING(source_id)"
+                    ).fetchall()
             # Embedding and callback retrieval retain the broad candidate set so semantic-only
             # matches remain discoverable. Without FTS5, use the original lexical fallback.
             if query_embedding or semantic_score or not self._fts5_available:
