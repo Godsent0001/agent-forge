@@ -23,7 +23,11 @@ def upgrade() -> None:
             "memory_id UNINDEXED, agent_id UNINDEXED, conversation_id UNINDEXED, content, "
             "tokenize='unicode61 remove_diacritics 2')"
         )
-        bind.exec_driver_sql("""
+    except sa.exc.OperationalError:
+        # FTS5 is optional in some SQLite builds; the store keeps its lexical fallback.
+        return
+
+    bind.exec_driver_sql("""
             CREATE TRIGGER memory_entries_fts_ai AFTER INSERT ON memory_entries BEGIN
                 INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
                 VALUES (new.id, new.agent_id, new.conversation_id, new.content);
@@ -46,9 +50,6 @@ def upgrade() -> None:
             "INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content) "
             "SELECT id, agent_id, conversation_id, content FROM memory_entries"
         )
-    except sa.exc.OperationalError:
-        # FTS5 is optional in some SQLite builds; the store keeps its lexical fallback.
-        return
 
 
 def downgrade() -> None:
