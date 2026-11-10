@@ -217,7 +217,7 @@ def _write_projection(db: Session, row: models.TaskState) -> None:
                 by_parent.setdefault(str(node.get("parent_id") or row.id), []).append(node)
 
         def append_plan(parent_id: str, depth: int, seen: set[str]) -> None:
-            if depth > 8:
+            if depth > 500:
                 return
             for node in by_parent.get(parent_id, []):
                 node_id = str(node.get("id") or "")
@@ -745,6 +745,34 @@ def apply_task_state_update(
             state["next_action"] = _short(patch.get("next_action") or "", 300)
             changed.append("next_action")
 
+        # Only this execution-bound tool path may mark plan nodes complete.
+        # The cheap interpreter is explicitly forbidden from asserting completion.
+        completed_plan_nodes: list[dict[str, str]] = []
+        completed_items = _normalized_items(patch.get("completed_add"), limit=5)
+        plan = state.get("plan") if isinstance(state.get("plan"), dict) else {}
+        plan_nodes = plan.get("nodes") if isinstance(plan.get("nodes"), list) else []
+        for node in plan_nodes:
+            if not isinstance(node, dict) or node.get("status") == "completed":
+                continue
+            title = _short(node.get("title"), 120).casefold()
+            matched = next(
+                (item for item in completed_items if title and (
+                    title == item.casefold() or title in item.casefold()
+                )),
+                None,
+            )
+            if matched:
+                node["status"] = "completed"
+                node["completed_at"] = now.isoformat()
+                node["verified_by_execution_id"] = execution_id
+                node["updated_at"] = now.isoformat()
+                node["version"] = int(node.get("version", 1)) + 1
+                completed_plan_nodes.append({"node_id": str(node.get("id", "")), "title": _short(node.get("title"), 120)})
+        if completed_plan_nodes:
+            plan["nodes"] = plan_nodes
+            plan["updated_at"] = now.isoformat()
+            state["plan"] = plan
+
         if not changed:
             return {"updated": False, "reason": "No task-state fields were supplied.", "version": row.version}
 
@@ -759,6 +787,8 @@ def apply_task_state_update(
             for key in ("constraints", "decisions", "completed", "remaining", "blockers", "next_action")
             if key in patch or f"{key}_add" in patch
         }
+        if completed_plan_nodes:
+            event_payload["plan_nodes_completed"] = completed_plan_nodes
         db.add(models.TaskStateEvent(
             id=models._uuid(),
             task_state_id=row.id,
