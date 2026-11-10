@@ -133,6 +133,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
         nodes = list(plan.get("nodes") or [])
         decisions = list(plan.get("decisions") or [])
         constraints = list(plan.get("constraints") or [])
+        dependencies = list(plan.get("dependencies") or [])
         existing = {str(item.get("id")): item for item in nodes if isinstance(item, dict)}
         ref_to_id = {"root": task_state_id, **{node_id: node_id for node_id in existing}}
         changed = 0
@@ -183,6 +184,32 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             if node_ref:
                 ref_to_id[node_ref] = node["id"]
             applied_changes.append({"kind": "node_added", "node": node})
+            changed += 1
+
+        for item in (proposal.get("dependencies") if isinstance(proposal.get("dependencies"), list) else [])[:12]:
+            if not isinstance(item, dict):
+                continue
+            node_ref = _normal_text(item.get("node_ref"), 80)
+            depends_on_ref = _normal_text(item.get("depends_on_ref"), 80)
+            node_id = ref_to_id.get(node_ref)
+            depends_on_id = ref_to_id.get(depends_on_ref)
+            if not node_id or not depends_on_id or node_id == depends_on_id:
+                continue
+            if any(
+                edge.get("node_id") == node_id and edge.get("depends_on_id") == depends_on_id
+                for edge in dependencies if isinstance(edge, dict)
+            ):
+                continue
+            edge = {
+                "id": str(uuid.uuid4()),
+                "node_id": node_id,
+                "depends_on_id": depends_on_id,
+                "reason": _normal_text(item.get("reason"), 240),
+                "source": "agent",
+                "created_at": now.isoformat(),
+            }
+            dependencies.append(edge)
+            applied_changes.append({"kind": "dependency_added", "dependency": edge})
             changed += 1
 
         for item in (proposal.get("node_updates") if isinstance(proposal.get("node_updates"), list) else [])[:12]:
@@ -269,6 +296,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             "nodes": nodes[-_MAX_NODES:],
             "decisions": decisions[-80:],
             "constraints": constraints[-80:],
+            "dependencies": dependencies[-300:],
             "updated_at": now.isoformat(),
         })
         state["plan"] = plan
@@ -286,6 +314,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 "node_count": len(nodes),
                 "decision_count": len(decisions),
                 "constraint_count": len(constraints),
+                "dependency_count": len(dependencies),
                 "model": proposal.get("_model", ""),
                 "changes": applied_changes,
             },
@@ -339,6 +368,10 @@ async def update_plan_memory(
             {key: node.get(key) for key in ("id", "parent_id", "type", "title", "objective", "status", "source")}
             for node in (current_plan.get("nodes") or [])[-50:] if isinstance(node, dict)
         ]
+        compact_dependencies = [
+            {key: edge.get(key) for key in ("node_id", "depends_on_id", "reason")}
+            for edge in (current_plan.get("dependencies") or [])[-40:] if isinstance(edge, dict)
+        ]
         compact_decisions = [
             {key: item.get(key) for key in ("id", "text", "status", "authority")}
             for item in (current_plan.get("decisions") or [])[-30:] if isinstance(item, dict)
@@ -363,10 +396,11 @@ async def update_plan_memory(
         "avoid duplicating existing nodes. Node parent_ref must be 'root', an existing node id, or an earlier node ref from this same response. Include a unique ref on new parent nodes before their children. "
         "Allowed node types: goal, phase, subgoal, task, milestone. Keep each item concise.\n"
         "JSON schema: {summary:string,nodes:[{ref,type,title,objective,parent_ref,source,evidence}],"
-        "decisions:[{text,authority,evidence,supersedes}],constraints:[{text,evidence}],node_updates:[{id,status,evidence}]}\n\n"
+        "decisions:[{text,authority,evidence,supersedes}],constraints:[{text,evidence}],dependencies:[{node_ref,depends_on_ref,reason}],node_updates:[{id,status,evidence}]}\n\n"
         f"ROOT OBJECTIVE (immutable): {objective[:10000]}\n"
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
+        f"CURRENT DEPENDENCIES: {json.dumps(compact_dependencies, ensure_ascii=False)[:2500]}\n"
         f"RECENT CONVERSATION: {recent_history}\\n"
         f"CURRENT USER MESSAGE: {user_message[:10000]}"
     )
