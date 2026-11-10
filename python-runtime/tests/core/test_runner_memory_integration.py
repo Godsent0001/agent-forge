@@ -14,10 +14,10 @@ class _MemoryStore:
     def __init__(self):
         self.added = []
 
-    async def related(self, agent_id, query, limit=20):
+    async def related(self, agent_id, query, limit=20, **kwargs):
         return []
 
-    async def add(self, agent_id, candidates):
+    async def add(self, agent_id, candidates, **kwargs):
         self.added.extend(candidates)
         return [SimpleNamespace(id=f"memory-{index}") for index, _ in enumerate(candidates, start=1)]
 
