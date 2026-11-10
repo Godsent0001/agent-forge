@@ -40,6 +40,23 @@ def _is_explicit_task_switch(message: str) -> bool:
     return any(pattern.search(message) for pattern in _NEW_TASK_PATTERNS)
 
 
+def _is_resume_latest_task(message: str) -> bool:
+    normalized = re.sub(r"[.!?]+$", "", message.casefold().strip())
+    return normalized in {
+        "continue",
+        "resume",
+        "pick up",
+        "continue our work",
+        "continue the task",
+        "continue the previous task",
+        "resume the previous task",
+        "resume previous task",
+        "pick up where we left off",
+        "continue where we left off",
+        "continue from where we left off",
+    }
+
+
 def _resume_task_prefix(message: str) -> str | None:
     match = _RESUME_TASK_PATTERN.match(message)
     return match.group(1).lower() if match else None
@@ -341,6 +358,21 @@ def prepare_task_state(
         .first()
     )
     resume_prefix = _resume_task_prefix(message)
+    if not resume_prefix and row is None and _is_resume_latest_task(message):
+        candidates = (
+            db.query(models.TaskState)
+            .filter(
+                models.TaskState.project_id == conversation.project_id,
+                models.TaskState.agent_id == conversation.agent_id,
+                models.TaskState.status.in_(["active", "paused"]),
+            )
+            .order_by(models.TaskState.updated_at.desc())
+            .limit(2)
+            .all()
+        )
+        # Only auto-resume when there is exactly one possible workstream.
+        if len(candidates) == 1:
+            resume_prefix = candidates[0].id[:8]
     if resume_prefix:
         matches = (
             db.query(models.TaskState)
