@@ -167,6 +167,27 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
             "remaining": ["Implement transaction matching"],
             "blockers": [],
             "next_action": "Implement transaction matching",
+            "plan_nodes_add": [
+                {
+                    "ref": "matching_phase",
+                    "parent_ref": "root",
+                    "type": "phase",
+                    "title": "Transaction matching",
+                    "objective": "Implement deterministic transaction matching.",
+                },
+                {
+                    "ref": "retry_phase",
+                    "parent_ref": "root",
+                    "type": "phase",
+                    "title": "Retry orchestration",
+                    "objective": "Implement bounded retry orchestration.",
+                },
+            ],
+            "plan_dependencies_add": [{
+                "node_ref": "retry_phase",
+                "depends_on_ref": "matching_phase",
+                "reason": "Retries depend on stable transaction matching.",
+            }],
             "note": "Database design milestone verified.",
         },
     )
@@ -180,6 +201,10 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert state.state_json["completed"] == ["Database schema created"]
     assert state.state_json["plan"]["nodes"][0]["status"] == "completed"
     assert state.state_json["plan"]["nodes"][0]["verified_by_execution_id"] == execution.id
+    plan_nodes = state.state_json["plan"]["nodes"]
+    assert any(node["title"] == "Transaction matching" for node in plan_nodes)
+    assert any(node["title"] == "Retry orchestration" for node in plan_nodes)
+    assert state.state_json["plan"]["dependencies"][0]["reason"] == "Retries depend on stable transaction matching."
     assert state.state_json["remaining"] == ["Implement transaction matching"]
     assert state.state_json["blockers"] == []
     assert state.state_json["next_action"] == "Implement transaction matching"
@@ -189,6 +214,8 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
         .one()
     )
     assert event.source_execution_id == execution.id
+    assert len(event.payload["plan_nodes_added"]) == 2
+    assert len(event.payload["plan_dependencies_added"]) == 1
     task_header = task_memory._render_context(db_session, state)
     assert "Use PostgreSQL" in task_header
     assert "Implement transaction matching" in task_header
