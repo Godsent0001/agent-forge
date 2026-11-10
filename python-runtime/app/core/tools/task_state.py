@@ -37,11 +37,11 @@ class TaskStateUpdateInput(BaseModel):
     )
     decisions_add: list[str] = Field(
         default_factory=list, max_length=5,
-        description="New durable decisions, each a short standalone statement.",
+        description="New decisions explicitly stated or approved by the user. Do not store your own suggestions as accepted decisions; put agent proposals in the execution-plan nodes.",
     )
     constraints_add: list[str] = Field(
         default_factory=list, max_length=5,
-        description="New requirements or constraints that must remain true.",
+        description="Requirements or constraints explicitly stated by the user. Do not promote agent assumptions into user constraints.",
     )
     completed_add: list[str] = Field(
         default_factory=list, max_length=5,
@@ -69,7 +69,7 @@ class TaskStateUpdateTool(Tool):
     kind = "task_state_update"
     default_description = (
         "Persist meaningful task memory: agent execution-plan nodes/dependencies, decisions, constraints, "
-        "verified completed milestones, remaining work, blockers, and the next action. Batch several changes into one call. "
+        "verified completed milestones, remaining work, blockers, and the next action. Only record user-approved decisions/constraints as binding; keep agent assumptions separate. Batch several changes into one call. "
         "Use this only at meaningful milestones or when a durable decision/constraint changes; "
         "do not call after every trivial tool result. Never mark work completed without evidence. "
         "The original objective is immutable."
