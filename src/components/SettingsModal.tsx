@@ -226,16 +226,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           })}
           <div className="flex items-center justify-between gap-3"><p className="text-2xs text-studio-500">Local models (Ollama) need no key. When a Serper key is configured, search uses Serper directly. Without a key, AgentForge uses keyless DuckDuckGo search.</p><Button size="xs" variant="outline" onClick={() => void handleTestSearchConnection()} disabled={isBusy || !saved.serper?.saved}>{isBusy ? "Testing…" : "Test Serper"}</Button></div>
           </div>
-          ) : activeSection === "memory" ? (
-          <div className="space-y-3 border-t border-line p-5 pt-3">
-            <div className="flex items-center justify-between">
-              <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
-              <Button size="xs" variant="primary" onClick={() => void handleSaveMemorySettings()} disabled={isBusy}>
-                {isBusy ? "Saving…" : "Save memory settings"}
-              </Button>
-            </div>
-          </div>
-        ) : activeSection === "embeddings" ? (
+          ) : activeSection === "embeddings" ? (
             <div className="space-y-3">
               <div>
                 <label htmlFor="embedding-model" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Embedding model identifier</label>
@@ -309,6 +300,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
               <Button size="xs" variant="primary" onClick={() => void handleSaveEmbeddingModel()} disabled={!embeddingModel.trim() || isBusy}>
                 {isBusy ? "Saving…" : "Save embedding model"}
+              </Button>
+            </div>
+          </div>
+        ) : activeSection === "memory" ? (
+          <div className="space-y-3 border-t border-line p-5 pt-3">
+            <div className="flex items-center justify-between">
+              <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
+              <Button size="xs" variant="primary" onClick={() => void handleSaveMemorySettings()} disabled={isBusy}>
+                {isBusy ? "Saving…" : "Save memory settings"}
               </Button>
             </div>
           </div>
