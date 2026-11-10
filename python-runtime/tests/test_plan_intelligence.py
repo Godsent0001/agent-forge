@@ -294,3 +294,25 @@ def test_meaningful_short_design_choices_trigger_interpretation():
     assert plan_intelligence._should_interpret("Avoid Redis")
     assert not plan_intelligence._should_interpret("Hello there")
     assert not plan_intelligence._should_interpret("Thanks")
+
+
+
+def test_optional_memory_call_reserves_primary_execution_budget():
+    class Spec:
+        max_llm_calls = 1
+        max_total_tokens = None
+        max_cost_usd = None
+        max_seconds = None
+
+    class Totals:
+        llm_calls = 0
+        input_tokens = 0
+        output_tokens = 0
+        cost_usd = 0.0
+
+    class Budget:
+        spec = Spec()
+        totals = Totals()
+        elapsed_seconds = 0.0
+
+    assert not plan_intelligence._budget_allows_memory_call(Budget(), "Plan update", 1800)
