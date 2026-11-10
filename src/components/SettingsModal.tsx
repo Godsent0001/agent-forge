@@ -21,8 +21,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [showKeys, setShowKeys] = useState(false);
   const [status, setStatus] = useState<{ tone: "info" | "ok" | "error"; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "system" | "usage">("keys");
+  const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "memory" | "system" | "usage">("keys");
   const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
+  const [crossConversationMemory, setCrossConversationMemory] = useState(false);
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -38,6 +39,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     void api.settings.getEmbeddingModel()
       .then((value) => setEmbeddingModel(value.model))
       .catch(() => setStatus({ tone: "error", text: "Could not load embedding model settings." }));
+    void api.settings.getMemorySettings()
+      .then((value) => setCrossConversationMemory(value.cross_conversation_enabled))
+      .catch(() => setStatus({ tone: "error", text: "Could not load memory settings." }));
   }, [refresh]);
 
   const pending = Object.entries(drafts).filter(([, value]) => value.trim().length > 0);
@@ -96,6 +100,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleSaveMemorySettings = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Saving memory settings…" });
+    try {
+      const result = await api.settings.setMemorySettings(crossConversationMemory);
+      setCrossConversationMemory(result.cross_conversation_enabled);
+      setStatus({ tone: "ok", text: result.cross_conversation_enabled
+        ? "Cross-conversation memory is enabled for this installation."
+        : "Cross-conversation memory is disabled. Memories remain scoped to their source conversation." });
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save memory settings." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const handleRemove = async (slot: string, label: string) => {
     if (isBusy) return;
     setIsBusy(true);
@@ -148,6 +169,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-line bg-studio-950 px-4">
           <button type="button" role="tab" aria-selected={activeSection === "keys"} onClick={() => setActiveSection("keys")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "keys" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Provider keys</button>
           <button type="button" role="tab" aria-selected={activeSection === "embeddings"} onClick={() => setActiveSection("embeddings")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "embeddings" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Embeddings</button>
+          <button type="button" role="tab" aria-selected={activeSection === "memory"} onClick={() => setActiveSection("memory")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "memory" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Memory</button>
           <button type="button" role="tab" aria-selected={activeSection === "system"} onClick={() => setActiveSection("system")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "system" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>System check</button>
           <button type="button" role="tab" aria-selected={activeSection === "usage"} onClick={() => setActiveSection("usage")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "usage" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Usage</button>
         </div>
@@ -204,7 +226,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           })}
           <div className="flex items-center justify-between gap-3"><p className="text-2xs text-studio-500">Local models (Ollama) need no key. When a Serper key is configured, search uses Serper directly. Without a key, AgentForge uses keyless DuckDuckGo search.</p><Button size="xs" variant="outline" onClick={() => void handleTestSearchConnection()} disabled={isBusy || !saved.serper?.saved}>{isBusy ? "Testing…" : "Test Serper"}</Button></div>
           </div>
-          ) : activeSection === "embeddings" ? (
+          ) : activeSection === "memory" ? (
+          <div className="space-y-3 border-t border-line p-5 pt-3">
+            <div className="flex items-center justify-between">
+              <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
+              <Button size="xs" variant="primary" onClick={() => void handleSaveMemorySettings()} disabled={isBusy}>
+                {isBusy ? "Saving…" : "Save memory settings"}
+              </Button>
+            </div>
+          </div>
+        ) : activeSection === "embeddings" ? (
             <div className="space-y-3">
               <div>
                 <label htmlFor="embedding-model" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Embedding model identifier</label>
@@ -219,6 +250,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
               <p className="text-2xs leading-relaxed text-studio-400">Default: <span className="font-mono">local:BAAI/bge-small-en-v1.5</span>. To use a provider, enter a LiteLLM model identifier such as <span className="font-mono">venice/text-embedding-bge-m3</span> or <span className="font-mono">openai/text-embedding-3-small</span> and configure that provider's API key in Provider keys.</p>
               <p className="text-2xs leading-relaxed text-studio-500">Changing embedding models does not automatically convert existing vectors. AgentForge keeps vectors tagged by model and only compares compatible embeddings.</p>
+              {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
+            </div>
+          ) : activeSection === "memory" ? (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4 rounded-md border border-line bg-studio-800/60 p-3">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-medium text-studio-100">Allow memory across conversations</h3>
+                  <p className="text-2xs leading-relaxed text-studio-400">When enabled, this agent can recall its saved memories in other conversations. When disabled, memory is limited to the conversation where it was created. This setting applies to this installation.</p>
+                </div>
+                <input
+                  aria-label="Allow memory across conversations"
+                  type="checkbox"
+                  checked={crossConversationMemory}
+                  onChange={(event) => setCrossConversationMemory(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded accent-accent-500"
+                />
+              </div>
+              <p className="text-2xs text-studio-500">Default: off. Disabling this does not delete saved memories; it only stops retrieving them from other conversations.</p>
               {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
             </div>
           ) : activeSection === "system" ? <SystemCheckPanel /> : <UsagePanel projectId={project?.id} />}
