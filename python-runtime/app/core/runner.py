@@ -311,10 +311,19 @@ class RunnerCore:
             if plan_context and messages:
                 current = str(messages[0].get("content") or "")
                 marker = "[AgentForge evolving project plan]"
-                if marker not in current:
-                    messages[0]["content"] = current + "\n\n" + plan_context
+                active_state_end = current.find("</active_task_state>")
+                marker_start = current.find(marker)
+                if marker_start >= 0 and active_state_end > marker_start:
+                    current = current[:marker_start] + plan_context + "\n" + current[active_state_end:]
+                elif active_state_end >= 0:
+                    current = current[:active_state_end] + "\n" + plan_context + "\n" + current[active_state_end:]
                 else:
-                    messages[0]["content"] = current.split(marker, 1)[0].rstrip() + "\n\n" + plan_context
+                    current += (
+                        '\n\n<active_task_state trust="untrusted">\n'
+                        + plan_context
+                        + "\n</active_task_state>"
+                    )
+                messages[0]["content"] = current
         except Exception:
             # The active task must continue even if the optional memory model fails.
             logger.exception("Could not reconcile live instruction into hierarchical plan memory")
