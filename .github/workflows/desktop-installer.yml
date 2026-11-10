@@ -86,14 +86,14 @@ jobs:
             $second = Start-Process -FilePath $appExe -PassThru
             if (-not $second.WaitForExit(15000)) { throw "Second launch did not exit after handing off to the first instance." }
             Start-Sleep -Seconds 2
-            $sidecars = @(Get-CimInstance Win32_Process -Filter "Name = 'python-runtime.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
+            $sidecars = @(Get-Process -Name "python-runtime" -ErrorAction SilentlyContinue | Where-Object { -not $_.Path -or $_.Path.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
             if ($sidecars.Count -ne 1) { throw "Expected one sidecar after a second launch; found $($sidecars.Count)." }
 
             Stop-Process -Id $first.Id -Force
             $stopDeadline = (Get-Date).AddSeconds(3)
             do {
               Start-Sleep -Milliseconds 250
-              $sidecars = @(Get-CimInstance Win32_Process -Filter "Name = 'python-runtime.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
+              $sidecars = @(Get-Process -Name "python-runtime" -ErrorAction SilentlyContinue | Where-Object { -not $_.Path -or $_.Path.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase) })
             } while ($sidecars.Count -gt 0 -and (Get-Date) -lt $stopDeadline)
             if ($sidecars.Count -gt 0) { throw "Packaged sidecar did not exit within 3 seconds after force-quitting Electron." }
           } finally {
