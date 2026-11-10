@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import { providersNeedingKeys } from "../config/providers";
+import { providersNeedingKeys, PROVIDERS } from "../config/providers";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
@@ -23,7 +23,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [isBusy, setIsBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "memory" | "system" | "usage">("keys");
   const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
-  const [crossConversationMemory, setCrossConversationMemory] = useState(false);
+  const [crossConversationMemory, setCrossConversationMemory] = useState(false);\n  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(false);\n  const [planMemoryProvider, setPlanMemoryProvider] = useState("gemini");\n  const [planMemoryModel, setPlanMemoryModel] = useState("gemini-2.5-flash-lite");
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -112,6 +112,29 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         : "Cross-conversation memory is disabled. Memories remain scoped to their source conversation." });
     } catch (cause) {
       setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save memory settings." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSavePlanMemorySettings = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Saving hierarchical memory model settings…" });
+    try {
+      const result = await api.settings.setPlanMemorySettings({
+        enabled: planMemoryEnabled,
+        provider: planMemoryProvider,
+        model: planMemoryModel.trim(),
+      });
+      setPlanMemoryEnabled(result.enabled);
+      setPlanMemoryProvider(result.provider);
+      setPlanMemoryModel(result.model);
+      setStatus({ tone: "ok", text: result.enabled
+        ? `Hierarchical plan memory is enabled with ${result.provider}/${result.model}. Ensure that provider's API key is configured.`
+        : "Hierarchical plan memory is disabled. Existing task history is preserved." });
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save plan-memory settings." });
     } finally {
       setIsBusy(false);
     }
@@ -259,6 +282,55 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 />
               </div>
               <p className="text-2xs text-studio-500">Default: off. Disabling this does not delete saved memories; it only stops retrieving them from other conversations.</p>
+              <div className="space-y-3 rounded-md border border-line bg-studio-800/60 p-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-xs font-medium text-studio-100">Evolving hierarchical plan memory</h3>
+                    <p className="text-2xs leading-relaxed text-studio-400">A low-cost model interprets meaningful updates and proposes changes to the project's goals, nested phases, tasks, constraints, and decisions. AgentForge validates each update and keeps an append-only history. The root objective and accepted user decisions cannot be silently overwritten.</p>
+                  </div>
+                  <input
+                    aria-label="Enable evolving hierarchical plan memory"
+                    type="checkbox"
+                    checked={planMemoryEnabled}
+                    onChange={(event) => setPlanMemoryEnabled(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded accent-accent-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="plan-memory-provider" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Provider</label>
+                    <select
+                      id="plan-memory-provider"
+                      value={planMemoryProvider}
+                      onChange={(event) => {
+                        const provider = PROVIDERS.find((item) => item.id === event.target.value);
+                        setPlanMemoryProvider(event.target.value);
+                        if (provider) setPlanMemoryModel(provider.defaultModel);
+                      }}
+                      className="w-full rounded-md border border-line-strong bg-studio-800 px-2 py-2 text-xs text-studio-100 focus:border-accent-500 focus:outline-none"
+                    >
+                      {PROVIDERS.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="plan-memory-model" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Model ID</label>
+                    <input
+                      id="plan-memory-model"
+                      value={planMemoryModel}
+                      onChange={(event) => setPlanMemoryModel(event.target.value)}
+                      spellCheck={false}
+                      placeholder="gemini-2.5-flash-lite"
+                      className="w-full rounded-md border border-line-strong bg-studio-800 px-2 py-2 font-mono text-xs text-studio-100 placeholder:text-studio-500 focus:border-accent-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-2xs leading-relaxed text-studio-500">Default suggestion: Gemini 2.5 Flash-Lite. You can choose any supported provider and enter a custom model ID. The selected provider's key must be saved under Provider keys; Ollama can run locally. The feature is off until you enable it.</p>
+                <div className="flex justify-end">
+                  <Button size="xs" variant="outline" onClick={() => void handleSavePlanMemorySettings()} disabled={isBusy || !planMemoryModel.trim()}>
+                    Save plan-memory model
+                  </Button>
+                </div>
+              </div>
               {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
             </div>
           ) : activeSection === "system" ? <SystemCheckPanel /> : <UsagePanel projectId={project?.id} />}
