@@ -765,11 +765,40 @@ def apply_task_state_update(
         state = dict(row.state_json or {})
         changed: list[str] = []
 
-        for key in ("constraints", "decisions", "completed"):
-            incoming = patch.get(f"{key}_add") or []
-            if incoming:
-                state[key] = _append_unique(state.get(key), incoming)
+        user_events = (
+            db.query(models.TaskStateEvent)
+            .filter(
+                models.TaskStateEvent.task_state_id == task_state_id,
+                models.TaskStateEvent.event_type.in_(["task_created", "user_instruction", "live_user_instruction"]),
+            )
+            .order_by(models.TaskStateEvent.created_at.asc())
+            .all()
+        )
+        user_corpus = "\\n".join(
+            [row.original_objective, row.current_instruction]
+            + [event.content for event in user_events if isinstance(event.content, str)]
+        ).casefold()
+        accepted_constraints: list[str] = []
+        accepted_decisions: list[str] = []
+        ignored_constraints: list[str] = []
+        ignored_decisions: list[str] = []
+
+        for key in ("constraints", "decisions"):
+            incoming = _normalized_items(patch.get(f"{key}_add"), limit=5)
+            accepted = [item for item in incoming if item.casefold() in user_corpus]
+            ignored = [item for item in incoming if item.casefold() not in user_corpus]
+            if accepted:
+                state[key] = _append_unique(state.get(key), accepted)
                 changed.append(key)
+            if key == "constraints":
+                accepted_constraints, ignored_constraints = accepted, ignored
+            else:
+                accepted_decisions, ignored_decisions = accepted, ignored
+
+        completed_incoming = patch.get("completed_add") or []
+        if completed_incoming:
+            state["completed"] = _append_unique(state.get("completed"), completed_incoming)
+            changed.append("completed")
 
         for key in ("remaining", "blockers"):
             if key in patch and patch[key] is not None:
@@ -905,9 +934,17 @@ def apply_task_state_update(
             note = "Updated task memory: " + ", ".join(dict.fromkeys(changed))
         event_payload = {
             key: patch.get(key, patch.get(f"{key}_add"))
-            for key in ("constraints", "decisions", "completed", "remaining", "blockers", "next_action")
+            for key in ("completed", "remaining", "blockers", "next_action")
             if key in patch or f"{key}_add" in patch
         }
+        if accepted_constraints:
+            event_payload["accepted_constraints"] = accepted_constraints
+        if accepted_decisions:
+            event_payload["accepted_decisions"] = accepted_decisions
+        if ignored_constraints:
+            event_payload["ignored_unverified_constraints"] = ignored_constraints
+        if ignored_decisions:
+            event_payload["ignored_unverified_decisions"] = ignored_decisions
         if completed_plan_nodes:
             event_payload["plan_nodes_completed"] = completed_plan_nodes
         if plan_nodes_added:
