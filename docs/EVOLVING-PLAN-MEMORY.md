@@ -34,7 +34,7 @@ The cheap model proposes structured deltas; it never writes directly to SQLite.
 - The root objective is immutable.
 - A user-authored goal or constraint is accepted only when the supplied evidence is an exact substring of the current user message.
 - A user decision is marked accepted only with exact user-message evidence. Other decisions remain proposals and are explicitly labelled non-binding.
-- Agent-generated phases/tasks are stored as agent-owned execution-plan nodes, separate from user goals.
+- Agent-generated phases/tasks are stored as agent-owned execution-plan nodes, separate from user goals. The main agent can add its own execution-plan nodes and prerequisite edges through the existing execution-bound task-memory tool at meaningful checkpoints; the cheap interpreter continuously reconciles later user and execution evidence into that same hierarchy.
 - A plan node can be paused, blocked, reactivated, or superseded only when the model supplies exact user-message evidence.
 - The interpreter cannot mark work complete. The execution-bound task-state update tool may complete a matching hierarchy node only when it records a verified milestone; it stores the execution ID on that node and in the append-only event payload.
 - When a user explicitly changes a decision, the interpreter can identify the prior decision it supersedes; the event log preserves both the old decision and the replacement.
