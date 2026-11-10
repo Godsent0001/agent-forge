@@ -121,7 +121,8 @@ def _watch_parent_exit() -> None:
 
     def watch() -> None:
         try:
-            sys.stdin.buffer.read()
+            while os.read(sys.stdin.fileno(), 4096):
+                pass
         finally:
             # The Electron owner closed its pipe. Never leave a sidecar orphaned.
             os._exit(0)
