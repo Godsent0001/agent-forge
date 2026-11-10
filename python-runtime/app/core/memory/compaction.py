@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
+
 _KEEP_RECENT_MESSAGES = 6
 _IMPORTANT = re.compile(
     r"\b(decid(?:e|ed|ing)|must|should|never|always|prefer(?:s|red)?|"
