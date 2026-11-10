@@ -4,15 +4,20 @@ from app.core.memory.compaction import compact_conversation, should_compact_conv
 
 
 @pytest.mark.asyncio
-async def test_compaction_summarizes_older_turns():
+async def test_compaction_extracts_older_evidence_without_llm_call():
     history = [{"role": "user", "content": f"message {i} " * 500} for i in range(10)]
+    calls = []
+
     async def fake_complete(messages):
-        class Turn:
-            text = "summary of older turns"
-        return Turn()
+        calls.append(messages)
+        raise AssertionError("deterministic compaction must not call an LLM")
+
     summary, count = await compact_conversation(history, context_window=8000, llm_complete_fn=fake_complete)
-    assert summary == "summary of older turns"
+    assert summary.startswith("Conversation memory:")
+    assert "[user] message 0" in summary
+    assert "[user] message 3" in summary
     assert count == 4
+    assert calls == []
     assert should_compact_conversation(history, context_window=8000)
 
 @pytest.mark.xfail(reason="blind spot, fixed in A-06")
