@@ -2,8 +2,8 @@
 
 AgentForge keeps long-running work coherent across chats using three connected layers:
 
-1. **Current plan state** — a bounded, recursively nested hierarchy stored in the existing `TaskState.state_json`. Nodes represent goals, phases, subgoals, tasks, and milestones. Nodes have stable IDs, parent IDs, source, status, and version metadata.
-2. **Durable history** — every reconciled plan delta is appended to `task_state_events` as `plan_memory_updated`, including the exact additions/status changes and the model identifier. The current plan is a projection of this history, not a replacement for it.
+1. **Current plan state** — a bounded, recursively nested hierarchy stored in the existing `TaskState.state_json`. Nodes represent goals, phases, subgoals, tasks, and milestones. Nodes have stable IDs, parent IDs, source, status, and version metadata. Separate dependency edges record prerequisites without confusing them with hierarchy.
+2. **Durable history** — every reconciled plan delta is appended to `task_state_events` as `plan_memory_updated`, including the exact additions/status changes and the model identifier. The current plan is a projection of this history, not a replacement for it. Verified task-state updates can complete matching nodes and record the execution ID that supplied the evidence.
 3. **Working context** — RunnerCore compiles the root objective, current hierarchy, accepted decisions, explicit constraints, and proposals into a bounded context block. It does not replay hundreds of conversations into every prompt.
 
 ## Cross-conversation continuity
