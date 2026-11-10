@@ -234,3 +234,49 @@ def test_plan_memory_settings_api(client, monkeypatch, tmp_path):
         json={"enabled": True, "provider": "not-a-provider", "model": "bad model"},
     )
     assert invalid.status_code == 422
+
+
+
+def test_agent_plan_status_can_follow_exact_execution_evidence(db_session, monkeypatch):
+    task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+    with Session() as db:
+        row = db.get(models.TaskState, task.id)
+        row.state_json = {
+            **row.state_json,
+            "plan": {
+                "nodes": [{
+                    "id": "agent-task-1",
+                    "parent_id": task.id,
+                    "type": "task",
+                    "title": "Create the database schema",
+                    "status": "active",
+                    "source": "agent",
+                    "version": 1,
+                }]
+            },
+        }
+        db.commit()
+
+    plan_intelligence._apply_interpretation(
+        task.id,
+        {
+            "summary": "The schema task is blocked by a verified tool error.",
+            "nodes": [],
+            "node_updates": [{
+                "id": "agent-task-1",
+                "status": "blocked",
+                "evidence": "ERROR: operation is blocked because the database is locked.",
+            }],
+            "decisions": [],
+            "constraints": [],
+        },
+        "Continue with the payment platform.",
+        "Tool result: ERROR: operation is blocked because the database is locked.",
+    )
+
+    db_session.expire_all()
+    node = db_session.get(models.TaskState, task.id).state_json["plan"]["nodes"][0]
+    assert node["status"] == "blocked"
