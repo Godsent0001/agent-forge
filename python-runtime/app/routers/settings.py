@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.infra.paths import data_dir
+from app.services.memory_settings import cross_conversation_memory_enabled, save_cross_conversation_memory
 
 logger = logging.getLogger("agentforge.settings")
 
@@ -16,18 +17,6 @@ DEFAULT_EMBEDDING_MODEL = "local:BAAI/bge-small-en-v1.5"
 def _embedding_settings_path() -> Path:
     return data_dir() / "embedding_settings.json"
 
-
-def _memory_settings_path() -> Path:
-    return data_dir() / "memory_settings.json"
-
-
-def cross_conversation_memory_enabled() -> bool:
-    """Cross-conversation recall is privacy-sensitive and remains opt-in."""
-    try:
-        stored = json.loads(_memory_settings_path().read_text("utf-8"))
-        return stored.get("cross_conversation_enabled") is True
-    except (OSError, ValueError, AttributeError):
-        return False
 
 
 def _valid_embedding_model(value: str) -> bool:
@@ -143,12 +132,8 @@ def set_memory_settings(payload: dict):
     enabled = payload.get("cross_conversation_enabled")
     if not isinstance(enabled, bool):
         raise HTTPException(status_code=422, detail="cross_conversation_enabled must be a boolean.")
-    path = _memory_settings_path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps({"cross_conversation_enabled": enabled}, indent=2), encoding="utf-8")
-        temporary.replace(path)
+        save_cross_conversation_memory(enabled)
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Could not persist memory settings.") from exc
     logger.info("Cross-conversation memory %s", "enabled" if enabled else "disabled")
