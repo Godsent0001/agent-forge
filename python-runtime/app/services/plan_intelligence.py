@@ -1,0 +1,385 @@
+"""Cheap-LLM interpretation and deterministic reconciliation for hierarchical task plans.
+
+TaskState.state_json holds the current hierarchy; TaskStateEvent is its append-only
+history. The interpreter can suggest structure, but it cannot rewrite the immutable
+root objective, silently accept design decisions, or mark work complete.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from app.core.llm.adapter import complete
+from app.core.llm.model_names import litellm_model
+from app.core.llm.types import LLMParams
+from app.db import SessionLocal
+from app.infra.paths import data_dir
+from app import models
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_CONFIG = {
+    "enabled": False,
+    "provider": "gemini",
+    "model": "gemini-2.5-flash-lite",
+    "max_tokens": 1400,
+    "temperature": 0,
+}
+_ALLOWED_PROVIDERS = {
+    "anthropic", "openai", "gemini", "google", "deepseek", "mistral",
+    "groq", "xai", "openrouter", "venice", "ollama",
+}
+_ALLOWED_NODE_TYPES = {"goal", "phase", "subgoal", "task", "milestone"}
+_ALLOWED_NODE_STATUSES = {"proposed", "active", "blocked", "paused", "superseded"}
+_MAX_NODES = 100
+_MAX_CONTEXT_CHARS = 4200
+
+
+def _config_path() -> Path:
+    return data_dir() / "plan_memory_settings.json"
+
+
+def _valid_model_config(provider: Any, model: Any) -> bool:
+    return (
+        isinstance(provider, str)
+        and provider in _ALLOWED_PROVIDERS
+        and isinstance(model, str)
+        and 1 <= len(model.strip()) <= 160
+        and not any(char.isspace() for char in model)
+        and bool(re.fullmatch(r"[A-Za-z0-9_.:/-]+", model))
+    )
+
+
+def load_plan_memory_settings() -> dict[str, Any]:
+    config = dict(DEFAULT_CONFIG)
+    try:
+        stored = json.loads(_config_path().read_text("utf-8"))
+        if isinstance(stored, dict):
+            if _valid_model_config(stored.get("provider"), stored.get("model")):
+                config["provider"] = stored["provider"]
+                config["model"] = stored["model"]
+            if isinstance(stored.get("enabled"), bool):
+                config["enabled"] = stored["enabled"]
+    except (OSError, ValueError, TypeError):
+        pass
+    return config
+
+
+def save_plan_memory_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    current = load_plan_memory_settings()
+    enabled = payload.get("enabled", current["enabled"])
+    provider = payload.get("provider", current["provider"])
+    model = payload.get("model", current["model"])
+    if not isinstance(enabled, bool) or not _valid_model_config(provider, model):
+        raise ValueError("Choose a supported provider and a valid model identifier.")
+    result = {"enabled": enabled, "provider": provider, "model": model}
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return result
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _json_object(text: str) -> dict[str, Any]:
+    value = (text or "").strip()
+    if value.startswith("```"):
+        value = re.sub(r"^\`\`\`(?:json)?\s*|\s*\`\`\`$", "", value, flags=re.I)
+    start, end = value.find("{"), value.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("The memory model did not return a JSON object.")
+    parsed = json.loads(value[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("The memory model response must be a JSON object.")
+    return parsed
+
+
+def _normal_text(value: Any, limit: int = 280) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:limit].strip()
+
+
+def _user_evidence_is_exact(evidence: str, user_text: str) -> bool:
+    return bool(evidence and evidence.casefold() in user_text.casefold())
+
+
+def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_text: str) -> dict[str, Any]:
+    now = _now()
+    with SessionLocal() as db:
+        row = db.get(models.TaskState, task_state_id)
+        if row is None:
+            return {"applied": False, "reason": "task_missing"}
+        state = dict(row.state_json or {})
+        plan = dict(state.get("plan") or {})
+        nodes = list(plan.get("nodes") or [])
+        decisions = list(plan.get("decisions") or [])
+        constraints = list(plan.get("constraints") or [])
+        existing = {str(item.get("id")): item for item in nodes if isinstance(item, dict)}
+        changed = 0
+        additions = proposal.get("nodes") if isinstance(proposal.get("nodes"), list) else []
+        for item in additions[:12]:
+            if not isinstance(item, dict) or len(nodes) >= _MAX_NODES:
+                continue
+            title = _normal_text(item.get("title"), 120)
+            objective = _normal_text(item.get("objective"), 500)
+            node_type = item.get("type")
+            if not title or node_type not in _ALLOWED_NODE_TYPES:
+                continue
+            evidence = _normal_text(item.get("evidence"), 500)
+            source = item.get("source")
+            parent_ref = _normal_text(item.get("parent_ref"), 80) or "root"
+            parent_id = task_state_id if parent_ref == "root" else parent_ref
+            if parent_id != task_state_id and parent_id not in existing:
+                continue
+            # User-authored goals/requirements require a verbatim quote. Agent plans
+            # may be recorded as proposals, but cannot masquerade as user decisions.
+            if source == "user" and not _user_evidence_is_exact(evidence, user_text):
+                continue
+            if source != "user":
+                source = "agent"
+            duplicate = next((n for n in nodes if n.get("parent_id") == parent_id and
+                              _normal_text(n.get("title"), 120).casefold() == title.casefold()), None)
+            if duplicate:
+                continue
+            node = {
+                "id": str(uuid.uuid4()),
+                "parent_id": parent_id,
+                "type": node_type,
+                "title": title,
+                "objective": objective,
+                "status": "active" if source == "agent" else "proposed",
+                "source": source,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "version": 1,
+            }
+            nodes.append(node)
+            existing[node["id"]] = node
+            changed += 1
+
+        for item in (proposal.get("decisions") if isinstance(proposal.get("decisions"), list) else [])[:8]:
+            if not isinstance(item, dict):
+                continue
+            statement = _normal_text(item.get("text"), 400)
+            evidence = _normal_text(item.get("evidence"), 500)
+            if not statement:
+                continue
+            user_confirmed = item.get("authority") == "user" and _user_evidence_is_exact(evidence, user_text)
+            status = "accepted" if user_confirmed else "proposed"
+            if any(d.get("text", "").casefold() == statement.casefold() and d.get("status") == status
+                   for d in decisions if isinstance(d, dict)):
+                continue
+            decisions.append({
+                "id": str(uuid.uuid4()),
+                "text": statement,
+                "status": status,
+                "authority": "user" if user_confirmed else "agent",
+                "evidence": evidence if user_confirmed else "",
+                "created_at": now.isoformat(),
+            })
+            changed += 1
+
+        for item in (proposal.get("constraints") if isinstance(proposal.get("constraints"), list) else [])[:8]:
+            if not isinstance(item, dict):
+                continue
+            statement = _normal_text(item.get("text"), 300)
+            evidence = _normal_text(item.get("evidence"), 500)
+            if statement and _user_evidence_is_exact(evidence, user_text) and not any(
+                c.get("text", "").casefold() == statement.casefold()
+                for c in constraints if isinstance(c, dict)
+            ):
+                constraints.append({
+                    "id": str(uuid.uuid4()), "text": statement,
+                    "evidence": evidence, "created_at": now.isoformat(),
+                })
+                changed += 1
+
+        if changed == 0:
+            return {"applied": False, "reason": "no_valid_changes"}
+        plan.update({
+            "schema_version": 1,
+            "nodes": nodes[-_MAX_NODES:],
+            "decisions": decisions[-80:],
+            "constraints": constraints[-80:],
+            "updated_at": now.isoformat(),
+        })
+        state["plan"] = plan
+        row.state_json = state
+        row.version += 1
+        row.updated_at = now
+        db.add(models.TaskStateEvent(
+            id=models._uuid(),
+            task_state_id=row.id,
+            event_type="plan_memory_updated",
+            content=_normal_text(proposal.get("summary"), 500) or f"Plan memory updated ({changed} changes).",
+            payload={
+                "schema_version": 1,
+                "change_count": changed,
+                "node_count": len(nodes),
+                "decision_count": len(decisions),
+                "constraint_count": len(constraints),
+                "model": proposal.get("_model", ""),
+            },
+            created_at=now,
+        ))
+        db.commit()
+        return {"applied": True, "changes": changed, "nodes": len(nodes)}
+
+
+def _should_interpret(message: str) -> bool:
+    text = message.strip()
+    if len(text) < 18:
+        return False
+    normalized = re.sub(r"[^a-z ]", "", text.casefold()).strip()
+    if normalized in {"hi", "hello", "hey", "ok", "okay", "thanks", "thank you", "good morning"}:
+        return False
+    signal = re.search(
+        r"\b(remember|goal|objective|plan|phase|step|subgoal|constraint|requirement|"
+        r"decision|instead|actually|change|correction|don't|do not|must|should|"
+        r"completed|finished|blocked|failed|error|continue|next|first|then|"
+        r"architecture|design|build|implement|test|verify|reject|replace)\b",
+        text, re.I,
+    )
+    return len(text) >= 100 or bool(signal)
+
+
+async def update_plan_memory(
+    task_state_id: str | None,
+    user_message: str,
+    history: list[Any] | None = None,
+    budget: Any = None,
+) -> dict[str, Any]:
+    """Interpret one meaningful user turn and apply only reconciled, evidence-backed changes."""
+    if not task_state_id or not _should_interpret(user_message):
+        return {"applied": False, "reason": "not_meaningful"}
+    config = load_plan_memory_settings()
+    if not config["enabled"]:
+        return {"applied": False, "reason": "disabled"}
+
+    with SessionLocal() as db:
+        row = db.get(models.TaskState, task_state_id)
+        if row is None:
+            return {"applied": False, "reason": "task_missing"}
+        current_plan = dict((row.state_json or {}).get("plan") or {})
+        compact_nodes = [
+            {key: node.get(key) for key in ("id", "parent_id", "type", "title", "objective", "status", "source")}
+            for node in (current_plan.get("nodes") or [])[-50:] if isinstance(node, dict)
+        ]
+        compact_decisions = [
+            {key: item.get(key) for key in ("text", "status", "authority")}
+            for item in (current_plan.get("decisions") or [])[-30:] if isinstance(item, dict)
+        ]
+        objective = row.original_objective
+
+    history_lines = []
+    for msg in (history or [])[-6:]:
+        role = getattr(msg, "role", None) or (msg.get("role") if isinstance(msg, dict) else "")
+        content = getattr(msg, "content", None) or (msg.get("content", "") if isinstance(msg, dict) else "")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            history_lines.append(f"{role}: {content[:900]}")
+    prompt = (
+        "You are AgentForge's low-cost project-plan memory interpreter. Return JSON only. "
+        "Maintain a hierarchical plan for a long-running project. The immutable root objective is "
+        "authoritative. Distinguish user-stated goals/constraints/decisions from agent-generated "
+        "execution-plan ideas. Errors are evidence/blockers, never new goals. Do not mark work complete; "
+        "completion requires verified execution evidence elsewhere. Never invent user approval. "
+        "Only label source='user' or authority='user' when evidence is an exact substring of the current "
+        "user message. Agent-generated phases/tasks should use source='agent'. Add only meaningful deltas; "
+        "avoid duplicating existing nodes. Node parent_ref must be 'root' or an existing node id. "
+        "Allowed node types: goal, phase, subgoal, task, milestone. Keep each item concise.\n"
+        "JSON schema: {summary:string,nodes:[{type,title,objective,parent_ref,source,evidence}],"
+        "decisions:[{text,authority,evidence}],constraints:[{text,evidence}]}\n\n"
+        f"ROOT OBJECTIVE (immutable): {objective[:3000]}\n"
+        f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
+        f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
+        f"RECENT CONVERSATION: {'\n'.join(history_lines)[-4500:]}\n"
+        f"CURRENT USER MESSAGE: {user_message[:5000]}"
+    )
+    try:
+        model_name = litellm_model(config["provider"], config["model"])
+        turn = await complete(
+            messages=[
+                {"role": "system", "content": "Extract structured plan-memory deltas. Output valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            params=LLMParams(timeout_s=25, temperature=0, max_tokens=config["max_tokens"]),
+            model=model_name,
+            provider=config["provider"],
+            max_retries=1,
+        )
+        if budget is not None:
+            budget.record_llm_call(
+                input_tokens=turn.usage.input_tokens,
+                output_tokens=turn.usage.output_tokens,
+                cache_read_tokens=turn.usage.cache_read_tokens,
+                cost_usd=turn.cost_usd,
+            )
+        proposal = _json_object(turn.text or "")
+        proposal["_model"] = model_name
+        return await __import__("asyncio").to_thread(
+            _apply_interpretation, task_state_id, proposal, user_message
+        )
+    except Exception as exc:
+        logger.warning("Plan-memory interpretation skipped (%s): %s", type(exc).__name__, str(exc)[:240])
+        return {"applied": False, "reason": "interpreter_error"}
+
+
+def compile_plan_context(task_state_id: str | None) -> str:
+    """Compile the current hierarchy into a bounded working-context block."""
+    if not task_state_id:
+        return ""
+    try:
+        with SessionLocal() as db:
+            row = db.get(models.TaskState, task_state_id)
+            if row is None:
+                return ""
+            plan = dict((row.state_json or {}).get("plan") or {})
+    except Exception:
+        logger.exception("Could not load hierarchical plan context")
+        return ""
+    nodes = [n for n in (plan.get("nodes") or []) if isinstance(n, dict)]
+    by_parent: dict[str, list[dict[str, Any]]] = {}
+    for node in nodes:
+        by_parent.setdefault(str(node.get("parent_id") or task_state_id), []).append(node)
+    lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
+    def walk(parent: str, depth: int, seen: set[str]) -> None:
+        if depth > 8:
+            return
+        for node in by_parent.get(parent, []):
+            node_id = str(node.get("id") or "")
+            if not node_id or node_id in seen:
+                continue
+            seen.add(node_id)
+            prefix = "  " * depth
+            lines.append(
+                f"{prefix}- [{node.get('status', 'proposed')}] {node.get('type', 'task')}: "
+                f"{_normal_text(node.get('title'), 120)}"
+                + (f" — {_normal_text(node.get('objective'), 220)}" if node.get("objective") else "")
+                + (f" (source: {node.get('source', 'agent')})" if node.get("source") else "")
+            )
+            walk(node_id, depth + 1, seen)
+    walk(task_state_id, 0, set())
+    accepted = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "accepted"]
+    proposed = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "proposed"]
+    if accepted:
+        lines.append("Accepted user decisions:")
+        lines.extend(f"- {_normal_text(d.get('text'), 240)}" for d in accepted[-12:])
+    if proposed:
+        lines.append("Unaccepted agent/user proposals (not binding):")
+        lines.extend(f"- {_normal_text(d.get('text'), 200)}" for d in proposed[-6:])
+    constraints = plan.get("constraints") or []
+    if constraints:
+        lines.append("Explicit user constraints:")
+        lines.extend(f"- {_normal_text(c.get('text'), 220)}" for c in constraints[-12:] if isinstance(c, dict))
+    rendered = "\n".join(lines)
+    return rendered[:_MAX_CONTEXT_CHARS]
