@@ -655,6 +655,10 @@ def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
                         dependency = change.get("dependency")
                         if isinstance(dependency, dict) and dependency.get("id"):
                             plan["dependencies"].append(dict(dependency))
+            elif event.event_type == "plan_integrity_audited":
+                audit = payload.get("audit")
+                if isinstance(audit, dict):
+                    plan["integrity_audit"] = dict(audit)
             elif event.event_type == "agent_state_update":
                 for decision in payload.get("plan_decisions_added", []):
                     if isinstance(decision, dict) and decision.get("id"):
