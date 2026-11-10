@@ -16,6 +16,15 @@ function blockText(node: ReactNode): string {
   return value;
 }
 
+function CopyablePre({ source }: { source: string }) {
+  return (
+    <div className="group relative my-3">
+      <CopyBlockButton text={source} />
+      <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 pr-12 text-xs text-studio-300">{source}</pre>
+    </div>
+  );
+}
+
 function CopyBlockButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -119,7 +128,7 @@ function SequenceDiagram({ source }: { source: string }) {
   }
   const participants = [...names.keys()];
   if (!participants.length || !messages.length) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const width = Math.max(420, participants.length * 180 + 40);
   const height = 72 + messages.length * 58;
