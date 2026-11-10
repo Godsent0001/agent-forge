@@ -15,7 +15,7 @@ from app.services.task_memory import apply_task_state_update
 class PlanNodeDraft(BaseModel):
     ref: str = Field(min_length=1, max_length=64, description="Temporary reference for child nodes in this same update.")
     parent_ref: str = Field(default="root", max_length=64, description="root, an existing plan-node ID, or an earlier node ref in this update.")
-    type: Literal["goal", "phase", "subgoal", "task", "milestone"] = "task"
+    type: Literal["goal", "phase", "subgoal", "task", "milestone"]
     title: str = Field(min_length=1, max_length=120)
     objective: str = Field(default="", max_length=500)
 
