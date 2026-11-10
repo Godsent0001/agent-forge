@@ -125,7 +125,7 @@ def _render_context(db: Session, row: models.TaskState) -> str:
         .all()
     )
     if other_tasks:
-        lines.append("Other tasks in this conversation:")
+        lines.append("Other workstreams in this project:")
         for item in other_tasks:
             lines.append(f"- {item.id[:8]} [{item.status}] {_short(item.title, 100)}")
     recent_executions = state.get("recent_executions")
@@ -355,6 +355,7 @@ def prepare_task_state(
                     payload={"reason": "resume_other_task"},
                     created_at=now,
                 ))
+            previous_conversation_id = target.conversation_id
             target.status = "active"
             # A task is a project workstream, not a single chat. Rebind it to
             # the conversation that is now continuing the work.
@@ -370,7 +371,11 @@ def prepare_task_state(
                 task_state_id=target.id,
                 event_type="task_resumed",
                 content=f"Resumed by user instruction: {_short(message, 300)}",
-                payload={"resumed_by_prefix": resume_prefix},
+                payload={
+                    "resumed_by_prefix": resume_prefix,
+                    "previous_conversation_id": previous_conversation_id,
+                    "resumed_in_conversation_id": conversation.id,
+                },
                 created_at=now,
             ))
             db.commit()
@@ -466,7 +471,7 @@ def prepare_task_state(
         task_state_id=row.id,
         event_type=event_type,
         content=_short(message, 4000),
-        payload={"message_length": len(message)},
+        payload={"message_length": len(message), "conversation_id": conversation.id},
         created_at=now,
     ))
     db.commit()
@@ -606,7 +611,7 @@ def record_live_task_instruction(
                 event_type="live_user_instruction",
                 content=_short(message, 4000),
                 source_execution_id=execution_id,
-                payload={"message_length": len(message)},
+                payload={"message_length": len(message), "conversation_id": conversation_id},
                 created_at=now,
             ))
             db.commit()
