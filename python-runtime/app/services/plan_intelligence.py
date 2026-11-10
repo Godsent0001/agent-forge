@@ -626,14 +626,58 @@ def compile_plan_context(task_state_id: str | None) -> str:
     nodes = [n for n in (plan.get("nodes") or []) if isinstance(n, dict)]
     if not nodes and not plan.get("root_summary") and not plan.get("decisions") and not plan.get("constraints") and not plan.get("dependencies"):
         return ""
-    by_parent: dict[str, list[dict[str, Any]]] = {}
+    node_by_id = {
+        str(node.get("id")): node for node in nodes if node.get("id")
+    }
+    selected_ids: set[str] = set()
+
+    def include_ancestors(node: dict[str, Any]) -> None:
+        current: dict[str, Any] | None = node
+        depth = 0
+        while current is not None and depth <= _MAX_NODES:
+            node_id = str(current.get("id") or "")
+            if not node_id or node_id in selected_ids:
+                break
+            selected_ids.add(node_id)
+            parent_id = str(current.get("parent_id") or task_state_id)
+            current = node_by_id.get(parent_id) if parent_id != task_state_id else None
+            depth += 1
+
     for node in nodes:
+        if node.get("status") in {"active", "blocked", "paused"}:
+            include_ancestors(node)
+    recent_nodes = sorted(
+        nodes,
+        key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+    for node in recent_nodes[:16]:
+        include_ancestors(node)
+    for node in [item for item in recent_nodes if item.get("status") == "completed"][:6]:
+        include_ancestors(node)
+    if not selected_ids:
+        for node in nodes[-20:]:
+            include_ancestors(node)
+
+    selected_nodes = [node for node in nodes if str(node.get("id") or "") in selected_ids]
+    by_parent: dict[str, list[dict[str, Any]]] = {}
+    for node in selected_nodes:
         by_parent.setdefault(str(node.get("parent_id") or task_state_id), []).append(node)
+    status_priority = {"active": 0, "blocked": 1, "paused": 2, "proposed": 3, "completed": 4, "superseded": 5}
+    for children in by_parent.values():
+        children.sort(
+            key=lambda item: (
+                status_priority.get(str(item.get("status")), 6),
+                str(item.get("updated_at") or item.get("created_at") or ""),
+            ),
+            reverse=False,
+        )
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
     if plan.get("root_summary"):
         lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1800))
     elif root_objective:
         lines.append("Root objective excerpt: " + _normal_text(root_objective, 1800))
+
     def walk(parent: str, depth: int, seen: set[str]) -> None:
         if depth > _MAX_NODES:
             return
@@ -645,9 +689,8 @@ def compile_plan_context(task_state_id: str | None) -> str:
             prefix = "  " * depth
             lines.append(
                 f"{prefix}- [{node.get('status', 'proposed')}] {node.get('type', 'task')}: "
-                f"{_normal_text(node.get('title'), 120)}"
+                f"{_normal_text(node.get('title'), 120)} (id={node_id}; source={node.get('source', 'agent')})"
                 + (f" — {_normal_text(node.get('objective'), 220)}" if node.get("objective") else "")
-                + (f" (source: {node.get('source', 'agent')})" if node.get("source") else "")
             )
             walk(node_id, depth + 1, seen)
     walk(task_state_id, 0, set())
@@ -656,7 +699,9 @@ def compile_plan_context(task_state_id: str | None) -> str:
         for node in nodes
     }
     dependencies = [
-        edge for edge in (plan.get("dependencies") or []) if isinstance(edge, dict)
+        edge for edge in (plan.get("dependencies") or [])
+        if isinstance(edge, dict)
+        and (str(edge.get("node_id")) in selected_ids or str(edge.get("depends_on_id")) in selected_ids)
     ]
     if dependencies:
         lines.append("Dependencies (a node depends on its prerequisite):")
