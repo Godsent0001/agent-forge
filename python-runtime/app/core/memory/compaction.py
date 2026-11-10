@@ -1,5 +1,6 @@
 """Deterministic, bounded conversation compaction."""
 from __future__ import annotations
+
 import re
 from typing import Any
 _KEEP_RECENT_MESSAGES = 6
