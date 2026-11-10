@@ -8,7 +8,7 @@ AgentForge keeps long-running work coherent across chats using three connected l
 
 ## Cross-conversation continuity
 
-A task is a project workstream, not just a chat session. The task registry is project-wide. A user can continue a workstream in another conversation with:
+A task is a project workstream, not just a chat session. The task registry is project-wide. A user can continue a workstream in another conversation with a task ID, or simply say “Continue” when there is exactly one active/paused workstream for that project and agent. AgentForge auto-resumes only an unambiguous match; otherwise it does not guess. The explicit form is:
 
 ```text
 Resume task: <8-character-task-id>
