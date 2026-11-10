@@ -781,6 +781,10 @@ def apply_task_state_update(
         accepted_constraints: list[str] = []
         accepted_decisions: list[str] = []
         ignored_constraints: list[str] = []
+        plan_decisions = list((state.get("plan") or {}).get("decisions") or [])
+        plan_constraints = list((state.get("plan") or {}).get("constraints") or [])
+        plan_decisions_added: list[dict[str, Any]] = []
+        plan_constraints_added: list[dict[str, Any]] = []
         ignored_decisions: list[str] = []
 
         for key in ("constraints", "decisions"):
@@ -794,6 +798,29 @@ def apply_task_state_update(
                 accepted_constraints, ignored_constraints = accepted, ignored
             else:
                 accepted_decisions, ignored_decisions = accepted, ignored
+
+        for item in accepted_decisions:
+            if not any(
+                decision.get("text", "").casefold() == item.casefold() and decision.get("status") == "accepted"
+                for decision in plan_decisions if isinstance(decision, dict)
+            ):
+                decision = {
+                    "id": models._uuid(), "text": item, "status": "accepted",
+                    "authority": "user", "evidence": item, "created_at": now.isoformat(),
+                }
+                plan_decisions.append(decision)
+                plan_decisions_added.append(decision)
+        for item in accepted_constraints:
+            if not any(
+                constraint.get("text", "").casefold() == item.casefold()
+                for constraint in plan_constraints if isinstance(constraint, dict)
+            ):
+                constraint = {
+                    "id": models._uuid(), "text": item, "evidence": item,
+                    "created_at": now.isoformat(),
+                }
+                plan_constraints.append(constraint)
+                plan_constraints_added.append(constraint)
 
         completed_incoming = patch.get("completed_add") or []
         if completed_incoming:
@@ -841,7 +868,7 @@ def apply_task_state_update(
                 completed_plan_nodes.append({"node_id": str(node.get("id", "")), "title": _short(node.get("title"), 120)})
         plan_nodes_added: list[dict[str, Any]] = []
         plan_dependencies_added: list[dict[str, Any]] = []
-        plan_changed = bool(completed_plan_nodes)
+        plan_changed = bool(completed_plan_nodes or plan_decisions_added or plan_constraints_added)
         existing_nodes = {
             str(node.get("id")): node for node in plan_nodes if isinstance(node, dict)
         }
@@ -914,8 +941,8 @@ def apply_task_state_update(
         if plan_changed:
             plan.setdefault("schema_version", 1)
             plan.setdefault("root_summary", "")
-            plan.setdefault("decisions", [])
-            plan.setdefault("constraints", [])
+            plan["decisions"] = plan_decisions[-80:]
+            plan["constraints"] = plan_constraints[-80:]
             plan["nodes"] = plan_nodes[-500:]
             plan["dependencies"] = dependencies[-300:]
             plan["updated_at"] = now.isoformat()
@@ -947,6 +974,10 @@ def apply_task_state_update(
             event_payload["accepted_constraints"] = accepted_constraints
         if accepted_decisions:
             event_payload["accepted_decisions"] = accepted_decisions
+        if plan_decisions_added:
+            event_payload["plan_decisions_added"] = plan_decisions_added
+        if plan_constraints_added:
+            event_payload["plan_constraints_added"] = plan_constraints_added
         if ignored_constraints:
             event_payload["ignored_unverified_constraints"] = ignored_constraints
         if ignored_decisions:
