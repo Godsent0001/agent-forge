@@ -298,21 +298,21 @@ def test_meaningful_short_design_choices_trigger_interpretation():
 
 
 def test_optional_memory_call_reserves_primary_execution_budget():
-    class Spec:
-        max_llm_calls = 1
-        max_total_tokens = None
-        max_cost_usd = None
-        max_seconds = None
+    from types import SimpleNamespace
 
-    class Totals:
-        llm_calls = 0
-        input_tokens = 0
-        output_tokens = 0
-        cost_usd = 0.0
-
-    class Budget:
-        spec = Spec()
-        totals = Totals()
-        elapsed_seconds = 0.0
-
-    assert not plan_intelligence._budget_allows_memory_call(Budget(), "Plan update", 1800)
+    budget = SimpleNamespace(
+        spec=SimpleNamespace(
+            max_llm_calls=1,
+            max_total_tokens=None,
+            max_cost_usd=None,
+            max_seconds=None,
+        ),
+        totals=SimpleNamespace(
+            llm_calls=0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+        ),
+        elapsed_seconds=0.0,
+    )
+    assert not plan_intelligence._budget_allows_memory_call(budget, "Plan update", 1800)
