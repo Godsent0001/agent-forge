@@ -54,7 +54,7 @@ from app.core.tools.workspace_capabilities import (
     WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
-from app.routers.settings import cross_conversation_memory_enabled
+from app.services.memory_settings import cross_conversation_memory_enabled
 from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
