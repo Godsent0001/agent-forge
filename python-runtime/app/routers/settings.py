@@ -17,6 +17,19 @@ def _embedding_settings_path() -> Path:
     return data_dir() / "embedding_settings.json"
 
 
+def _memory_settings_path() -> Path:
+    return data_dir() / "memory_settings.json"
+
+
+def cross_conversation_memory_enabled() -> bool:
+    """Cross-conversation recall is privacy-sensitive and remains opt-in."""
+    try:
+        stored = json.loads(_memory_settings_path().read_text("utf-8"))
+        return stored.get("cross_conversation_enabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def _valid_embedding_model(value: str) -> bool:
     return bool(value and len(value) <= 200 and not any(char.isspace() for char in value)
                 and re.fullmatch(r"[A-Za-z0-9_.:/-]+", value)
@@ -117,6 +130,29 @@ def set_embedding_model(payload: dict[str, str]):
     os.environ["AGENTFORGE_EMBEDDING_MODEL"] = value
     logger.info("Embedding model configuration updated: %s", value)
     return {"status": "ok", "model": value}
+
+
+
+@router.get("/memory")
+def get_memory_settings():
+    return {"cross_conversation_enabled": cross_conversation_memory_enabled()}
+
+
+@router.post("/memory")
+def set_memory_settings(payload: dict):
+    enabled = payload.get("cross_conversation_enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=422, detail="cross_conversation_enabled must be a boolean.")
+    path = _memory_settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps({"cross_conversation_enabled": enabled}, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not persist memory settings.") from exc
+    logger.info("Cross-conversation memory %s", "enabled" if enabled else "disabled")
+    return {"status": "ok", "cross_conversation_enabled": enabled}
 
 
 @router.post("/search/test")
