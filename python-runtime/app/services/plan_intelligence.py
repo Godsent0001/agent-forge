@@ -109,6 +109,74 @@ def _normal_text(value: Any, limit: int = 280) -> str:
     return " ".join(value.split())[:limit].strip()
 
 
+def _integrity_audit_due(db: Any, row: models.TaskState) -> bool:
+    """Run the semantic integrity audit initially and every five plan updates."""
+    events = (
+        db.query(models.TaskStateEvent)
+        .filter(models.TaskStateEvent.task_state_id == row.id,
+                models.TaskStateEvent.event_type.in_(["plan_memory_updated", "plan_integrity_audited"]))
+        .order_by(models.TaskStateEvent.created_at.desc()).limit(32).all()
+    )
+    last_audit = next((e for e in events if e.event_type == "plan_integrity_audited"), None)
+    if last_audit is None:
+        return True
+    return sum(1 for e in events if e.event_type == "plan_memory_updated"
+               and e.created_at > last_audit.created_at) >= 4
+
+
+def _record_integrity_audit(task_state_id: str, audit: Any, model_name: str) -> dict[str, Any]:
+    """Persist findings only; the auditor is never permitted to change plan nodes."""
+    if not isinstance(audit, dict):
+        return {"recorded": False, "reason": "invalid_audit"}
+    categories = {"objective_drift", "requirement_missing", "prerequisite_regression",
+                  "decision_conflict", "stale_subgoal", "goal_alignment"}
+    severities = {"info", "warning", "critical"}
+    now = _now()
+    with SessionLocal() as db:
+        row = db.get(models.TaskState, task_state_id)
+        if row is None:
+            return {"recorded": False, "reason": "task_missing"}
+        plan = dict((row.state_json or {}).get("plan") or {})
+        known = {str(n.get("id")) for n in (plan.get("nodes") or [])
+                 if isinstance(n, dict) and n.get("id")}
+        known.add("root")
+        findings = []
+        raw = audit.get("findings") if isinstance(audit.get("findings"), list) else []
+        for item in raw[:8]:
+            if not isinstance(item, dict):
+                continue
+            category, severity = item.get("category"), item.get("severity")
+            summary = _normal_text(item.get("summary"), 320)
+            refs = item.get("affected_ids") if isinstance(item.get("affected_ids"), list) else []
+            refs = [str(ref) for ref in refs[:6] if str(ref) in known]
+            if category not in categories or severity not in severities or not summary:
+                continue
+            if not refs and category != "objective_drift":
+                continue
+            findings.append({"id": str(uuid.uuid4()), "category": category, "severity": severity,
+                             "summary": summary, "affected_ids": refs,
+                             "evidence": _normal_text(item.get("evidence"), 500), "status": "open"})
+        snapshot = {"created_at": now.isoformat(), "model": model_name, "findings": findings,
+                    "overall": _normal_text(audit.get("overall"), 320)}
+        plan["integrity_audit"] = snapshot
+        state = dict(row.state_json or {})
+        state["plan"] = plan
+        row.state_json = state
+        row.version += 1
+        row.updated_at = now
+        db.add(models.TaskStateEvent(id=models._uuid(), task_state_id=row.id,
+            event_type="plan_integrity_audited",
+            content=snapshot["overall"] or f"Plan integrity audit: {len(findings)} finding(s).",
+            payload={"schema_version": 1, "audit": snapshot}, created_at=now))
+        db.commit()
+        try:
+            from app.services.task_memory import _write_projection
+            _write_projection(db, row)
+        except Exception:
+            logger.exception("Could not refresh task projection after integrity audit")
+        return {"recorded": True, "findings": len(findings), "overall": snapshot["overall"]}
+
+
 def _user_evidence_is_exact(evidence: str, user_text: str) -> bool:
     return bool(evidence and evidence.casefold() in user_text.casefold())
 
@@ -435,6 +503,16 @@ async def update_plan_memory(
             for item in (current_plan.get("decisions") or [])[-30:] if isinstance(item, dict)
         ]
         objective = row.original_objective
+        audit_due = _integrity_audit_due(db, row)
+        compact_constraints = [
+            {key: item.get(key) for key in ("id", "text")}
+            for item in (current_plan.get("constraints") or [])[-30:] if isinstance(item, dict)
+        ]
+        compact_completed = [
+            {key: node.get(key) for key in ("id", "title", "completed_at", "verified_by_execution_id")}
+            for node in (current_plan.get("nodes") or [])
+            if isinstance(node, dict) and node.get("status") == "completed"
+        ][-20:]
 
     history_lines = []
     for msg in (history or [])[-6:]:
@@ -467,8 +545,18 @@ async def update_plan_memory(
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:4000]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:1800]}\n"
         f"CURRENT DEPENDENCIES: {json.dumps(compact_dependencies, ensure_ascii=False)[:1400]}\n"
+        f"EXPLICIT CONSTRAINTS: {json.dumps(compact_constraints, ensure_ascii=False)[:1600]}\n"
+        f"VERIFIED COMPLETED WORK: {json.dumps(compact_completed, ensure_ascii=False)[:1200]}\n"
         f"RECENT CONVERSATION: {recent_history}\n"
         f"CURRENT USER MESSAGE: {current_message_section}"
+        + ("\nINTEGRITY AUDIT REQUIRED. Check objective drift; missing accepted requirements/constraints; "
+           "completed tasks whose prerequisites became incomplete, superseded, or changed after completion; "
+           "contradictions between accepted decisions; stale/irrelevant subgoals; and whether active execution "
+           "paths still lead to the immutable root objective. Report only evidence-backed findings. Do not "
+           "modify the plan. Use categories objective_drift, requirement_missing, prerequisite_regression, "
+           "decision_conflict, stale_subgoal, goal_alignment; severity info, warning, critical; affected_ids "
+           "must be existing node IDs or root. Limit to 8. Return integrity_audit:{overall,findings}. "
+           if audit_due else "\nINTEGRITY AUDIT NOT DUE; return integrity_audit:{overall,findings:[]}.")
     )
     if not _budget_allows_memory_call(budget, prompt, config["max_tokens"]):
         return {"applied": False, "reason": "run_budget_reserved_for_execution"}
@@ -494,9 +582,15 @@ async def update_plan_memory(
         proposal = _json_object(turn.text or "")
         proposal["_model"] = model_name
         evidence_text = user_message + "\n" + recent_history
-        return await asyncio.to_thread(
+        applied = await asyncio.to_thread(
             _apply_interpretation, task_state_id, proposal, user_message, evidence_text
         )
+        audit_result = {"recorded": False, "reason": "not_due"}
+        if audit_due:
+            audit_result = await asyncio.to_thread(
+                _record_integrity_audit, task_state_id, proposal.get("integrity_audit"), model_name
+            )
+        return {**applied, "integrity_audit": audit_result}
     except Exception as exc:
         logger.warning("Plan-memory interpretation skipped (%s): %s", type(exc).__name__, str(exc)[:240])
         return {"applied": False, "reason": "interpreter_error"}
@@ -675,6 +769,14 @@ def compile_plan_context(task_state_id: str | None) -> str:
         lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1500))
     elif root_objective:
         lines.append("Root objective excerpt: " + _normal_text(root_objective, 1500))
+    audit = plan.get("integrity_audit") if isinstance(plan.get("integrity_audit"), dict) else {}
+    findings = audit.get("findings") if isinstance(audit.get("findings"), list) else []
+    open_findings = [f for f in findings if isinstance(f, dict) and f.get("status") == "open"]
+    if open_findings:
+        lines.append("Open plan-integrity findings (review; no automatic changes):")
+        for finding in open_findings[:5]:
+            lines.append(f"- [{finding.get('severity', 'warning')}] {finding.get('category', 'integrity')}: "
+                         f"{_normal_text(finding.get('summary'), 220)}")
 
     def walk(parent: str, depth: int, seen: set[str]) -> None:
         if depth > _MAX_NODES:
