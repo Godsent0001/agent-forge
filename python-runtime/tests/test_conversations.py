@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app import models
+from app.routers import conversations
 
 
 def _project_agent(db_session):
@@ -13,8 +14,12 @@ def _project_agent(db_session):
     return project, agent
 
 
-def test_conversation_persists_messages_feedback_and_title(client, db_session):
+def test_conversation_persists_messages_feedback_and_title(client, db_session, monkeypatch):
     project, agent = _project_agent(db_session)
+    monkeypatch.setattr(
+        conversations, "_generate_conversation_title",
+        lambda _db, _conversation, _content: "Ship Feature Release",
+    )
     created = client.post("/v2/conversations", json={"project_id": project.id, "agent_id": agent.id})
     assert created.status_code == 200
     conversation = created.json()
@@ -68,7 +73,7 @@ def test_conversation_persists_messages_feedback_and_title(client, db_session):
     listing = client.get(f"/v2/conversations?project_id={project.id}&agent_id={agent.id}")
     assert listing.status_code == 200
     assert len(listing.json()) == 1
-    assert listing.json()[0]["title"] == "Help me ship the feature"
+    assert listing.json()[0]["title"] == "Ship Feature Release"
 
 
 def test_conversation_cannot_cross_project_or_attach_foreign_execution(client, db_session):
@@ -109,8 +114,12 @@ def test_feedback_only_accepts_assistant_messages(client, db_session):
     assert client.put(f"/v2/messages/{user['id']}/feedback", json={"value": 1}).status_code == 422
 
 
-def test_editing_user_message_truncates_later_turns_and_updates_title(client, db_session):
+def test_editing_user_message_truncates_later_turns_and_updates_title(client, db_session, monkeypatch):
     project, agent = _project_agent(db_session)
+    monkeypatch.setattr(
+        conversations, "_generate_conversation_title",
+        lambda _db, _conversation, content: "Revised Question" if "Revised" in content else "Old Question",
+    )
     conversation = client.post(
         "/v2/conversations", json={"project_id": project.id, "agent_id": agent.id}
     ).json()
@@ -149,7 +158,7 @@ def test_editing_user_message_truncates_later_turns_and_updates_title(client, db
         ("user", "Revised question")
     ]
     listing = client.get(f"/v2/conversations?project_id={project.id}&agent_id={agent.id}").json()
-    assert listing[0]["title"] == "Revised question"
+    assert listing[0]["title"] == "Revised Question"
 
 
 def test_editing_assistant_message_is_rejected(client, db_session):
@@ -176,3 +185,26 @@ def test_editing_assistant_message_is_rejected(client, db_session):
         json={"content": "Edited answer"},
     )
     assert response.status_code == 422
+
+
+def test_conversation_titles_are_unique_within_agent_scope(client, db_session):
+    project, agent = _project_agent(db_session)
+    first = client.post(
+        "/v2/conversations",
+        json={"project_id": project.id, "agent_id": agent.id, "title": "Payment Architecture"},
+    )
+    second = client.post(
+        "/v2/conversations",
+        json={"project_id": project.id, "agent_id": agent.id, "title": "payment architecture"},
+    )
+    assert first.status_code == second.status_code == 200
+    assert first.json()["title"] == "Payment Architecture"
+    assert second.json()["title"] == "payment architecture (2)"
+
+
+def test_fallback_conversation_title_is_shorter_than_full_message():
+    message = "Please investigate why the payment reconciliation workflow fails every night and propose a reliable fix."
+    title = conversations._fallback_conversation_title(message)
+    assert len(title) <= 60
+    assert title != message
+    assert len(title.split()) <= 8
