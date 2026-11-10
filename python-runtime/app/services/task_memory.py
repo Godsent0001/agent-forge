@@ -883,6 +883,10 @@ def apply_task_state_update(
             plan_changed = True
 
         if plan_changed:
+            plan.setdefault("schema_version", 1)
+            plan.setdefault("root_summary", "")
+            plan.setdefault("decisions", [])
+            plan.setdefault("constraints", [])
             plan["nodes"] = plan_nodes[-500:]
             plan["dependencies"] = dependencies[-300:]
             plan["updated_at"] = now.isoformat()
