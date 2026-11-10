@@ -211,6 +211,8 @@ def _write_projection(db: Session, row: models.TaskState) -> None:
     plan_nodes = plan.get("nodes") if isinstance(plan.get("nodes"), list) else []
     if plan_nodes or plan.get("decisions") or plan.get("constraints"):
         lines.extend(["", "## Evolving plan", ""])
+        if plan.get("root_summary"):
+            lines.extend(["### Root objective summary", "", _short(plan.get("root_summary"), 1800)])
         by_parent: dict[str, list[dict[str, Any]]] = {}
         for node in plan_nodes:
             if isinstance(node, dict):
