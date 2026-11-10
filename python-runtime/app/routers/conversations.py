@@ -67,12 +67,12 @@ class MessageEdit(BaseModel):
 
 
 def _is_placeholder_title(title: str | None) -> bool:
-    return bool(re.fullmatch(r"New conversation(?: \\(\\d+\\))?", (title or "").strip(), re.IGNORECASE))
+    return bool(re.fullmatch(r"New conversation(?: \(\d+\))?", (title or "").strip(), re.IGNORECASE))
 
 
 def _fallback_conversation_title(content: str) -> str:
     """Create a short readable fallback, never reuse the entire first message."""
-    normalized = re.sub(r"\\s+", " ", content).strip()
+    normalized = re.sub(r"\s+", " ", content).strip()
     words = normalized.split(" ")
     title = " ".join(words[:7]).strip(" .,:;!?-")
     if len(words) > 7:
@@ -82,7 +82,7 @@ def _fallback_conversation_title(content: str) -> str:
 
 def _unique_conversation_title(db: Session, conversation: models.Conversation, candidate: str) -> str:
     """Keep titles unique within an agent's project, case-insensitively."""
-    base = re.sub(r"\\s+", " ", candidate).strip().strip('"\\'')[:160] or "New conversation"
+    base = re.sub(r"\\s+", " ", candidate).strip().strip("\"'")[:160] or "New conversation"
     query = db.query(models.Conversation.title).filter(
         models.Conversation.project_id == conversation.project_id,
         models.Conversation.agent_id == conversation.agent_id,
@@ -128,8 +128,8 @@ def _generate_conversation_title(
                 provider=agent.provider,
                 max_retries=1,
             ))
-            generated = (turn.text or "").strip().strip('"\\'').strip()
-            generated = re.sub(r"^(?:title|conversation title)\\s*:\\s*", "", generated, flags=re.IGNORECASE)
+            generated = (turn.text or "").strip().strip("\"'").strip()
+            generated = re.sub(r"^(?:title|conversation title)\s*:\s*", "", generated, flags=re.IGNORECASE)
             generated = re.sub(r"\\s+", " ", generated).strip(" .,:;!?-")
             if generated and len(generated) <= 60 and len(generated.split()) <= 9:
                 candidate = generated
