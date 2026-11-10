@@ -775,7 +775,7 @@ def apply_task_state_update(
             .all()
         )
         user_corpus = "\\n".join(
-            [row.original_objective, row.current_instruction]
+            [row.original_objective or "", row.current_instruction or ""]
             + [event.content for event in user_events if isinstance(event.content, str)]
         ).casefold()
         accepted_constraints: list[str] = []
