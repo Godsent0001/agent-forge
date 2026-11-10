@@ -438,3 +438,31 @@ def test_project_task_can_be_resumed_from_a_different_conversation(db_session, m
     assert resumed.original_objective == "Build a multi-stage AI research platform."
     assert "multi-stage AI research platform" in context
     assert db_session.query(models.TaskState).filter_by(project_id=project.id).count() == 1
+
+
+
+def test_continue_in_new_chat_resumes_the_only_active_project_workstream(db_session, monkeypatch, tmp_path):
+    project, agent, first_conversation = _conversation(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: tmp_path)
+    task_id, _ = task_memory.prepare_task_state(
+        db_session, first_conversation, "Build the AgentForge memory architecture."
+    )
+
+    next_conversation = models.Conversation(
+        project_id=project.id,
+        agent_id=agent.id,
+        title="Continue long-running work",
+    )
+    db_session.add(next_conversation)
+    db_session.commit()
+
+    resumed_id, context = task_memory.prepare_task_state(
+        db_session, next_conversation, "Continue"
+    )
+
+    db_session.expire_all()
+    resumed = db_session.get(models.TaskState, task_id)
+    assert resumed_id == task_id
+    assert resumed.conversation_id == next_conversation.id
+    assert "Build the AgentForge memory architecture." in context
+    assert db_session.query(models.TaskState).filter_by(project_id=project.id).count() == 1
