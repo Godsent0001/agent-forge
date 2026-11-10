@@ -164,6 +164,12 @@ class IngestionQueue:
             )
             return True
 
+    def is_cancelled(self, job_id: str) -> bool:
+        """Allow long-running processors to stop cleanly between batches."""
+        with self._connect() as db:
+            row = db.execute("SELECT status FROM ingestion_jobs WHERE id=?", (job_id,)).fetchone()
+        return row is None or row["status"] == "cancelled"
+
     def cancel(self, job_id: str) -> bool:
         """Cancel queued or running work; workers check status between batches."""
         with self._connect() as db:
