@@ -488,6 +488,12 @@ export const api = {
     runtimeKeyStatus: () => request<Record<string, boolean>>("/settings/keys"),
     testSearchConnection: () => request<{ status: string; provider: string; results: number }>("/settings/search/test", { method: "POST" }),
     getEmbeddingModel: () => request<{ model: string }>("/settings/embedding-model"),
+    getMemorySettings: () => request<{ cross_conversation_enabled: boolean }>("/settings/memory"),
+    setMemorySettings: (cross_conversation_enabled: boolean) =>
+      request<{ status: string; cross_conversation_enabled: boolean }>("/settings/memory", {
+        method: "POST",
+        body: JSON.stringify({ cross_conversation_enabled }),
+      }),
     setEmbeddingModel: (model: string) =>
       request<{ status: string; model: string }>("/settings/embedding-model", {
         method: "POST",
