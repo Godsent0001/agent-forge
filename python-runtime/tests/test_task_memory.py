@@ -5,7 +5,7 @@ import json
 from sqlalchemy.orm import sessionmaker
 
 from app import models
-from app.services import task_memory
+from app.services import plan_intelligence, task_memory
 
 
 def _conversation(db_session):
@@ -151,10 +151,9 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     )
     db_session.add(execution)
     db_session.commit()
-    monkeypatch.setattr(
-        "app.db.SessionLocal",
-        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
-    )
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr("app.db.SessionLocal", Session)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
 
     task_memory.bind_task_state_to_execution(task_id, execution.id)
     result = task_memory.apply_task_state_update(
@@ -216,6 +215,12 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert event.source_execution_id == execution.id
     assert len(event.payload["plan_nodes_added"]) == 2
     assert len(event.payload["plan_dependencies_added"]) == 1
+    rebuilt = plan_intelligence.rebuild_plan_from_history(task_id)
+    db_session.expire_all()
+    rebuilt_plan = db_session.get(models.TaskState, task_id).state_json["plan"]
+    assert rebuilt["rebuilt"] is True
+    assert len(rebuilt_plan["nodes"]) == 2
+    assert len(rebuilt_plan["dependencies"]) == 1
     task_header = task_memory._render_context(db_session, state)
     assert "Use PostgreSQL" in task_header
     assert "Implement transaction matching" in task_header
