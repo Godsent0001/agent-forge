@@ -681,6 +681,11 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       let userMsg: ChatMessage;
       if (editingIndex >= 0 && editingMessageId) {
         const savedUser = await api.conversations.editUserMessage(editingMessageId, userText);
+        void api.conversations.list(project.id, agent.id)
+          .then((items) => {
+            if (activeScopeRef.current === runScope) setConversations(items);
+          })
+          .catch(() => undefined);
         userMsg = {
           id: savedUser.id,
           sender: "user",
@@ -689,10 +694,19 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         };
         setChatMessages(agent.id, [...historyMessages, userMsg]);
       } else {
+        const currentTitle = conversations.find((item) => item.id === activeConversationId)?.title ?? "";
+        const needsTitleRefresh = /^New conversation(?: \\(\\d+\\))?$/i.test(currentTitle);
         const savedUser = await api.conversations.appendMessage(activeConversationId, {
           role: "user",
           content: userText,
         });
+        if (needsTitleRefresh) {
+          void api.conversations.list(project.id, agent.id)
+            .then((items) => {
+              if (activeScopeRef.current === runScope) setConversations(items);
+            })
+            .catch(() => undefined);
+        }
         userMsg = {
           id: savedUser.id,
           sender: "user",
