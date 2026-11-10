@@ -266,7 +266,7 @@ const markdownComponents: Components = {
       if (language === "chart" || language === "graph-data" || language === "graph") return <DataChart source={source} />;
     }
     const copyText = child && child.type === "code"
-      ? String((child as ReactElement<{ children?: ReactNode }>).props.children ?? "").replace(/\\n$/, "")
+      ? String((child as ReactElement<{ children?: ReactNode }>).props.children ?? "").replace(/\n$/, "")
       : "";
     return (
       <div className="group relative my-3">
