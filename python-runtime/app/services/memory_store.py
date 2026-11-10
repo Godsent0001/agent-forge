@@ -23,6 +23,7 @@ def _memory_item(row: models.MemoryEntry) -> MemoryItem:
     return MemoryItem(
         id=row.id,
         agent_id=row.agent_id,
+        conversation_id=row.conversation_id,
         text=row.content,
         kind=row.kind if row.kind in {"fact", "preference", "decision"} else "fact",
         source_type=row.source_type if row.source_type in {"user_stated", "user_edited", "inferred"} else "user_stated",
@@ -71,11 +72,13 @@ class SqlMemoryStore:
     def __init__(self, session_factory: Callable[[], Session] | sessionmaker = SessionLocal):
         self._session_factory = session_factory
 
-    async def pinned(self, agent_id: str) -> list[MemoryItem]:
+    async def pinned(self, agent_id: str, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         now = datetime.now(timezone.utc)
         with self._session_factory() as db:
-            rows = db.query(models.MemoryEntry).filter(
-                models.MemoryEntry.agent_id == agent_id,
+            query = db.query(models.MemoryEntry).filter(models.MemoryEntry.agent_id == agent_id)
+            if not include_other_conversations:
+                query = query.filter(models.MemoryEntry.conversation_id == conversation_id)
+            rows = query.filter(
                 models.MemoryEntry.pinned.is_(True),
                 models.MemoryEntry.status == "active",
             ).order_by(models.MemoryEntry.created_at.desc()).all()
@@ -89,15 +92,20 @@ class SqlMemoryStore:
         *,
         query_embedding: list[float] | None = None,
         embedding_model: str | None = None,
+        conversation_id: str | None = None,
+        include_other_conversations: bool = False,
     ) -> list[MemoryHit]:
         if limit <= 0:
             return []
         now = datetime.now(timezone.utc)
         with self._session_factory() as db:
-            rows = db.query(models.MemoryEntry).filter(
+            query_rows = db.query(models.MemoryEntry).filter(
                 models.MemoryEntry.agent_id == agent_id,
                 models.MemoryEntry.status == "active",
-            ).order_by(models.MemoryEntry.created_at.desc()).all()
+            )
+            if not include_other_conversations:
+                query_rows = query_rows.filter(models.MemoryEntry.conversation_id == conversation_id)
+            rows = query_rows.order_by(models.MemoryEntry.created_at.desc()).all()
             hits = []
             for row in rows:
                 if not _not_expired(row, now):
@@ -117,16 +125,19 @@ class SqlMemoryStore:
             hits.sort(key=lambda hit: (hit.item.pinned, hit.keyword_score * 0.6 + hit.vector_score * 0.4), reverse=True)
             return hits[:limit]
 
-    async def related(self, agent_id: str, text: str, limit: int) -> list[MemoryItem]:
+    async def related(self, agent_id: str, text: str, limit: int, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         with self._session_factory() as db:
-            rows = db.query(models.MemoryEntry).filter(
+            query = db.query(models.MemoryEntry).filter(
                 models.MemoryEntry.agent_id == agent_id,
                 models.MemoryEntry.status == "active",
-            ).order_by(models.MemoryEntry.created_at.desc()).all()
+            )
+            if not include_other_conversations:
+                query = query.filter(models.MemoryEntry.conversation_id == conversation_id)
+            rows = query.order_by(models.MemoryEntry.created_at.desc()).all()
             matched = [row for row in rows if _keyword_score(row.content, text) > 0]
             return [_memory_item(row) for row in matched[:max(0, limit)]]
 
-    async def add(self, agent_id: str, items: list[MemoryCandidate]) -> list[MemoryItem]:
+    async def add(self, agent_id: str, items: list[MemoryCandidate], *, conversation_id: str | None = None) -> list[MemoryItem]:
         if not items:
             return []
         now = datetime.now(timezone.utc)
@@ -142,6 +153,7 @@ class SqlMemoryStore:
                 row = models.MemoryEntry(
                     id=str(uuid.uuid4()),
                     agent_id=agent_id,
+                    conversation_id=conversation_id,
                     content=candidate.text.strip()[:200],
                     kind=candidate.kind,
                     source_type=candidate.source_type,
