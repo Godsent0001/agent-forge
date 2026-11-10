@@ -130,7 +130,7 @@ def _generate_conversation_title(
             ))
             generated = (turn.text or "").strip().strip("\"'").strip()
             generated = re.sub(r"^(?:title|conversation title)\s*:\s*", "", generated, flags=re.IGNORECASE)
-            generated = re.sub(r"\\s+", " ", generated).strip(" .,:;!?-")
+            generated = re.sub(r"\s+", " ", generated).strip(" .,:;!?-")
             if generated and len(generated) <= 60 and len(generated.split()) <= 9:
                 candidate = generated
         except Exception:
