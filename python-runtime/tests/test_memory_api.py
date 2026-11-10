@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from sqlalchemy.orm import sessionmaker
 
 from app import models
