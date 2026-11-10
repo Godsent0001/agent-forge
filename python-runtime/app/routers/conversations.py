@@ -82,7 +82,7 @@ def _fallback_conversation_title(content: str) -> str:
 
 def _unique_conversation_title(db: Session, conversation: models.Conversation, candidate: str) -> str:
     """Keep titles unique within an agent's project, case-insensitively."""
-    base = re.sub(r"\\s+", " ", candidate).strip().strip("\"'")[:160] or "New conversation"
+    base = re.sub(r"\s+", " ", candidate).strip().strip('"')[:160] or "New conversation"
     query = db.query(models.Conversation.title).filter(
         models.Conversation.project_id == conversation.project_id,
         models.Conversation.agent_id == conversation.agent_id,
