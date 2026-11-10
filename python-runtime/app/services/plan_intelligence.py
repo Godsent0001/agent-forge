@@ -124,6 +124,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
         decisions = list(plan.get("decisions") or [])
         constraints = list(plan.get("constraints") or [])
         existing = {str(item.get("id")): item for item in nodes if isinstance(item, dict)}
+        ref_to_id = {"root": task_state_id, **{node_id: node_id for node_id in existing}}
         changed = 0
         applied_changes: list[dict[str, Any]] = []
         additions = proposal.get("nodes") if isinstance(proposal.get("nodes"), list) else []
@@ -138,8 +139,11 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             evidence = _normal_text(item.get("evidence"), 500)
             source = item.get("source")
             parent_ref = _normal_text(item.get("parent_ref"), 80) or "root"
-            parent_id = task_state_id if parent_ref == "root" else parent_ref
-            if parent_id != task_state_id and parent_id not in existing:
+            parent_id = ref_to_id.get(parent_ref)
+            if not parent_id:
+                continue
+            node_ref = _normal_text(item.get("ref"), 80)
+            if node_ref and node_ref in ref_to_id:
                 continue
             # User-authored goals/requirements require a verbatim quote. Agent plans
             # may be recorded as proposals, but cannot masquerade as user decisions.
@@ -165,6 +169,8 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             }
             nodes.append(node)
             existing[node["id"]] = node
+            if node_ref:
+                ref_to_id[node_ref] = node["id"]
             applied_changes.append({"kind": "node_added", "node": node})
             changed += 1
 
@@ -319,7 +325,7 @@ async def update_plan_memory(
             for node in (current_plan.get("nodes") or [])[-50:] if isinstance(node, dict)
         ]
         compact_decisions = [
-            {key: item.get(key) for key in ("text", "status", "authority")}
+            {key: item.get(key) for key in ("id", "text", "status", "authority")}
             for item in (current_plan.get("decisions") or [])[-30:] if isinstance(item, dict)
         ]
         objective = row.original_objective
@@ -339,15 +345,15 @@ async def update_plan_memory(
         "completion requires verified execution evidence elsewhere. Never invent user approval. "
         "Only label source='user' or authority='user' when evidence is an exact substring of the current "
         "user message. Agent-generated phases/tasks should use source='agent'. Add only meaningful deltas; "
-        "avoid duplicating existing nodes. Node parent_ref must be 'root' or an existing node id. "
+        "avoid duplicating existing nodes. Node parent_ref must be 'root', an existing node id, or an earlier node ref from this same response. Include a unique ref on new parent nodes before their children. "
         "Allowed node types: goal, phase, subgoal, task, milestone. Keep each item concise.\n"
-        "JSON schema: {summary:string,nodes:[{type,title,objective,parent_ref,source,evidence}],"
+        "JSON schema: {summary:string,nodes:[{ref,type,title,objective,parent_ref,source,evidence}],"
         "decisions:[{text,authority,evidence,supersedes}],constraints:[{text,evidence}],node_updates:[{id,status,evidence}]}\n\n"
-        f"ROOT OBJECTIVE (immutable): {objective[:3000]}\n"
+        f"ROOT OBJECTIVE (immutable): {objective[:10000]}\n"
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
         f"RECENT CONVERSATION: {recent_history}\\n"
-        f"CURRENT USER MESSAGE: {user_message[:5000]}"
+        f"CURRENT USER MESSAGE: {user_message[:10000]}"
     )
     try:
         if budget is not None:
