@@ -357,3 +357,79 @@ def test_working_context_prioritizes_active_and_recent_nodes(db_session, monkeyp
     assert "Current payment reconciliation" in context
     assert "id=current-task" in context
     assert "Archived task 0" not in context
+
+
+def test_integrity_audit_is_append_only_and_rejects_unknown_node_references(db_session, monkeypatch):
+    task = _task(db_session)
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
+    with Session() as db:
+        row = db.get(models.TaskState, task.id)
+        row.state_json = {
+            **row.state_json,
+            "plan": {"nodes": [{
+                "id": "phase-persistence", "parent_id": task.id, "type": "phase",
+                "title": "Persistence", "status": "active", "source": "agent",
+            }]},
+        }
+        db.commit()
+
+    result = plan_intelligence._record_integrity_audit(
+        task.id,
+        {
+            "overall": "One prerequisite concern needs review.",
+            "findings": [
+                {
+                    "category": "prerequisite_regression", "severity": "warning",
+                    "summary": "A completed task depends on a prerequisite that is no longer complete.",
+                    "affected_ids": ["phase-persistence", "made-up-node"],
+                    "evidence": "The dependency edge points to a superseded prerequisite.",
+                },
+                {
+                    "category": "decision_conflict", "severity": "critical",
+                    "summary": "Invented finding with no valid node reference.",
+                    "affected_ids": ["made-up-node"],
+                },
+            ],
+        },
+        "gemini/gemini-2.5-flash-lite",
+    )
+
+    db_session.expire_all()
+    updated = db_session.get(models.TaskState, task.id)
+    audit = updated.state_json["plan"]["integrity_audit"]
+    assert result["recorded"] is True
+    assert result["findings"] == 1
+    assert audit["findings"][0]["affected_ids"] == ["phase-persistence"]
+    assert updated.original_objective == "Build a reliable payment platform."
+    assert updated.state_json["plan"]["nodes"][0]["status"] == "active"
+    event = db_session.query(models.TaskStateEvent).filter_by(
+        task_state_id=task.id, event_type="plan_integrity_audited"
+    ).one()
+    assert event.payload["audit"]["findings"][0]["category"] == "prerequisite_regression"
+
+
+def test_integrity_audit_is_due_initially_and_after_five_plan_updates(db_session, monkeypatch):
+    task = _task(db_session)
+    assert plan_intelligence._integrity_audit_due(db_session, task) is True
+    now = plan_intelligence._now()
+    db_session.add(models.TaskStateEvent(
+        id=models._uuid(), task_state_id=task.id, event_type="plan_integrity_audited",
+        content="Audit complete.", payload={}, created_at=now,
+    ))
+    db_session.flush()
+    for index in range(3):
+        db_session.add(models.TaskStateEvent(
+            id=models._uuid(), task_state_id=task.id, event_type="plan_memory_updated",
+            content=f"Plan update {index}.", payload={}, created_at=now,
+        ))
+    db_session.flush()
+    assert plan_intelligence._integrity_audit_due(db_session, task) is False
+    later = now + __import__("datetime").timedelta(seconds=1)
+    db_session.add(models.TaskStateEvent(
+        id=models._uuid(), task_state_id=task.id, event_type="plan_memory_updated",
+        content="Fifth update.", payload={}, created_at=later,
+    ))
+    db_session.flush()
+    assert plan_intelligence._integrity_audit_due(db_session, task) is True
