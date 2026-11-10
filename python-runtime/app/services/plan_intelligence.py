@@ -611,6 +611,7 @@ def compile_plan_context(task_state_id: str | None) -> str:
             if row is None:
                 return ""
             plan = dict((row.state_json or {}).get("plan") or {})
+            root_objective = row.original_objective
     except Exception:
         logger.exception("Could not load hierarchical plan context")
         return ""
@@ -623,6 +624,8 @@ def compile_plan_context(task_state_id: str | None) -> str:
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
     if plan.get("root_summary"):
         lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1800))
+    elif root_objective:
+        lines.append("Root objective excerpt: " + _normal_text(root_objective, 1800))
     def walk(parent: str, depth: int, seen: set[str]) -> None:
         if depth > _MAX_NODES:
             return
