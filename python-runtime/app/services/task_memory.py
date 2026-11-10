@@ -713,6 +713,28 @@ def _append_unique(existing: Any, additions: Any) -> list[str]:
     return values[-12:]
 
 
+def _would_create_dependency_cycle(
+    dependencies: list[dict[str, Any]],
+    node_id: str,
+    depends_on_id: str,
+) -> bool:
+    adjacency: dict[str, list[str]] = {}
+    for edge in dependencies:
+        if isinstance(edge, dict):
+            adjacency.setdefault(str(edge.get("node_id")), []).append(str(edge.get("depends_on_id")))
+    pending = [depends_on_id]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current == node_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, []))
+    return False
+
+
 def apply_task_state_update(
     task_state_id: str,
     execution_id: str,
@@ -788,10 +810,85 @@ def apply_task_state_update(
                 node["updated_at"] = now.isoformat()
                 node["version"] = int(node.get("version", 1)) + 1
                 completed_plan_nodes.append({"node_id": str(node.get("id", "")), "title": _short(node.get("title"), 120)})
-        if completed_plan_nodes:
-            plan["nodes"] = plan_nodes
+        plan_nodes_added: list[dict[str, Any]] = []
+        plan_dependencies_added: list[dict[str, Any]] = []
+        plan_changed = bool(completed_plan_nodes)
+        existing_nodes = {
+            str(node.get("id")): node for node in plan_nodes if isinstance(node, dict)
+        }
+        ref_to_id = {"root": task_state_id, **{node_id: node_id for node_id in existing_nodes}}
+        for draft in (patch.get("plan_nodes_add") or [])[:8]:
+            if not isinstance(draft, dict):
+                continue
+            ref = _short(draft.get("ref"), 64)
+            title = _short(draft.get("title"), 120)
+            node_type = draft.get("type")
+            parent_ref = _short(draft.get("parent_ref") or "root", 64)
+            parent_id = ref_to_id.get(parent_ref)
+            if not ref or ref in ref_to_id or not title or not parent_id:
+                continue
+            if node_type not in {"goal", "phase", "subgoal", "task", "milestone"}:
+                continue
+            if any(
+                node.get("parent_id") == parent_id
+                and _short(node.get("title"), 120).casefold() == title.casefold()
+                for node in plan_nodes if isinstance(node, dict)
+            ):
+                continue
+            node = {
+                "id": models._uuid(),
+                "parent_id": parent_id,
+                "type": node_type,
+                "title": title,
+                "objective": _short(draft.get("objective"), 500),
+                "status": "active",
+                "source": "agent",
+                "evidence": "",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "version": 1,
+            }
+            plan_nodes.append(node)
+            existing_nodes[node["id"]] = node
+            ref_to_id[ref] = node["id"]
+            plan_nodes_added.append(node)
+            plan_changed = True
+
+        dependencies = plan.get("dependencies") if isinstance(plan.get("dependencies"), list) else []
+        for draft in (patch.get("plan_dependencies_add") or [])[:8]:
+            if not isinstance(draft, dict):
+                continue
+            node_id = ref_to_id.get(_short(draft.get("node_ref"), 64))
+            depends_on_id = ref_to_id.get(_short(draft.get("depends_on_ref"), 64))
+            if (
+                not node_id or not depends_on_id or node_id == depends_on_id
+                or _would_create_dependency_cycle(dependencies, node_id, depends_on_id)
+            ):
+                continue
+            if any(
+                edge.get("node_id") == node_id and edge.get("depends_on_id") == depends_on_id
+                for edge in dependencies if isinstance(edge, dict)
+            ):
+                continue
+            edge = {
+                "id": models._uuid(),
+                "node_id": node_id,
+                "depends_on_id": depends_on_id,
+                "reason": _short(draft.get("reason"), 240),
+                "source": "agent",
+                "created_at": now.isoformat(),
+            }
+            dependencies.append(edge)
+            plan_dependencies_added.append(edge)
+            plan_changed = True
+
+        if plan_changed:
+            plan["nodes"] = plan_nodes[-500:]
+            plan["dependencies"] = dependencies[-300:]
             plan["updated_at"] = now.isoformat()
             state["plan"] = plan
+            if "plan" not in changed:
+                changed.append("plan")
 
         if not changed:
             return {"updated": False, "reason": "No task-state fields were supplied.", "version": row.version}
@@ -809,6 +906,10 @@ def apply_task_state_update(
         }
         if completed_plan_nodes:
             event_payload["plan_nodes_completed"] = completed_plan_nodes
+        if plan_nodes_added:
+            event_payload["plan_nodes_added"] = plan_nodes_added
+        if plan_dependencies_added:
+            event_payload["plan_dependencies_added"] = plan_dependencies_added
         db.add(models.TaskStateEvent(
             id=models._uuid(),
             task_state_id=row.id,
