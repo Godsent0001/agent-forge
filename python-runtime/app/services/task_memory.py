@@ -205,6 +205,45 @@ def _write_projection(db: Session, row: models.TaskState) -> None:
             lines.extend(f"- {_short(value, 300)}" for value in values if isinstance(value, str))
     if state.get("next_action"):
         lines.extend(["", "## Next action", "", _short(state["next_action"], 300)])
+
+    plan = state.get("plan") if isinstance(state.get("plan"), dict) else {}
+    plan_nodes = plan.get("nodes") if isinstance(plan.get("nodes"), list) else []
+    if plan_nodes or plan.get("decisions") or plan.get("constraints"):
+        lines.extend(["", "## Evolving plan", ""])
+        by_parent: dict[str, list[dict[str, Any]]] = {}
+        for node in plan_nodes:
+            if isinstance(node, dict):
+                by_parent.setdefault(str(node.get("parent_id") or row.id), []).append(node)
+
+        def append_plan(parent_id: str, depth: int, seen: set[str]) -> None:
+            if depth > 8:
+                return
+            for node in by_parent.get(parent_id, []):
+                node_id = str(node.get("id") or "")
+                if not node_id or node_id in seen:
+                    continue
+                seen.add(node_id)
+                indent = "  " * depth
+                lines.append(
+                    f"{indent}- [{node.get('status', 'proposed')}] "
+                    f"{node.get('type', 'task')}: {_short(node.get('title', ''), 120)}"
+                )
+                append_plan(node_id, depth + 1, seen)
+
+        append_plan(row.id, 0, set())
+        for label, key, accepted_only in (
+            ("Accepted user decisions", "decisions", True),
+            ("Explicit user constraints", "constraints", False),
+        ):
+            items = plan.get(key) if isinstance(plan.get(key), list) else []
+            if accepted_only:
+                items = [item for item in items if isinstance(item, dict) and item.get("status") == "accepted"]
+            if items:
+                lines.extend(["", f"### {label}", ""])
+                lines.extend(
+                    f"- {_short(item.get('text', ''), 300)}"
+                    for item in items if isinstance(item, dict)
+                )
     if last:
         lines.extend([
             "",
