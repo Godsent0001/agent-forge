@@ -1,6 +1,9 @@
 """Persistent conversations and per-message feedback (D-14)."""
 from __future__ import annotations
 
+import asyncio
+import logging
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -9,9 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, selectinload
 
 from app import models
+from app.core.llm.adapter import complete as adapter_complete
+from app.core.llm.model_names import litellm_model
+from app.core.llm.types import LLMParams
 from app.deps import get_db
 
 router = APIRouter(prefix="/v2", tags=["conversations"])
+logger = logging.getLogger(__name__)
 
 
 class ConversationCreate(BaseModel):
@@ -55,6 +62,80 @@ class FeedbackUpdate(BaseModel):
 
 class MessageEdit(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
+
+
+
+
+def _is_placeholder_title(title: str | None) -> bool:
+    return bool(re.fullmatch(r"New conversation(?: \\(\\d+\\))?", (title or "").strip(), re.IGNORECASE))
+
+
+def _fallback_conversation_title(content: str) -> str:
+    """Create a short readable fallback, never reuse the entire first message."""
+    normalized = re.sub(r"\\s+", " ", content).strip()
+    words = normalized.split(" ")
+    title = " ".join(words[:7]).strip(" .,:;!?-")
+    if len(words) > 7:
+        title += "…"
+    return title[:60].strip() or "New conversation"
+
+
+def _unique_conversation_title(db: Session, conversation: models.Conversation, candidate: str) -> str:
+    """Keep titles unique within an agent's project, case-insensitively."""
+    base = re.sub(r"\\s+", " ", candidate).strip().strip('"\\'')[:160] or "New conversation"
+    query = db.query(models.Conversation.title).filter(
+        models.Conversation.project_id == conversation.project_id,
+        models.Conversation.agent_id == conversation.agent_id,
+    )
+    if conversation.id:
+        query = query.filter(models.Conversation.id != conversation.id)
+    existing = {str(row[0]).strip().casefold() for row in query.all()}
+    if base.casefold() not in existing:
+        return base
+    for suffix_number in range(2, 10_000):
+        suffix = f" ({suffix_number})"
+        unique = base[: 160 - len(suffix)].rstrip() + suffix
+        if unique.casefold() not in existing:
+            return unique
+    # A UUID fragment makes this path safe even in an unusually large collision set.
+    return f"{base[:140].rstrip()} ({conversation.id[:8]})"
+
+
+def _generate_conversation_title(
+    db: Session, conversation: models.Conversation, first_message: str
+) -> str:
+    """Generate a concise title with the agent's configured model, then de-duplicate it."""
+    candidate = _fallback_conversation_title(first_message)
+    agent = db.get(models.Agent, conversation.agent_id)
+    if agent and agent.model and agent.provider and agent.provider.casefold() != "fake":
+        try:
+            turn = asyncio.run(adapter_complete(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Create a clear, specific title for this conversation. "
+                            "Return only the title, 3 to 7 words, at most 60 characters. "
+                            "Capture the user's actual topic or intended outcome. "
+                            "Do not copy the full message, add quotes, use a generic title, "
+                            "or include a date or numbering."
+                        ),
+                    },
+                    {"role": "user", "content": first_message[:6000]},
+                ],
+                params=LLMParams(timeout_s=12, temperature=0.1, max_tokens=40),
+                model=litellm_model(agent.provider, agent.model),
+                provider=agent.provider,
+                max_retries=1,
+            ))
+            generated = (turn.text or "").strip().strip('"\\'').strip()
+            generated = re.sub(r"^(?:title|conversation title)\\s*:\\s*", "", generated, flags=re.IGNORECASE)
+            generated = re.sub(r"\\s+", " ", generated).strip(" .,:;!?-")
+            if generated and len(generated) <= 60 and len(generated.split()) <= 9:
+                candidate = generated
+        except Exception:
+            logger.warning("Conversation title generation failed; using concise fallback", exc_info=True)
+    return _unique_conversation_title(db, conversation, candidate)
 
 
 def _message_out(message: models.ConversationMessage, execution_status: str | None = None) -> MessageOut:
@@ -109,6 +190,7 @@ def create_conversation(
         agent_id=agent.id,
         title=payload.title.strip() or "New conversation",
     )
+    conversation.title = _unique_conversation_title(db, conversation, conversation.title)
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
@@ -171,11 +253,8 @@ def append_message(
         execution_id=payload.execution_id,
     )
     db.add(message)
-    if payload.role == "user" and conversation.title == "New conversation":
-        conversation.title = " ".join(payload.content.split())[:157]
-        if len(" ".join(payload.content.split())) > 157:
-            conversation.title = conversation.title.rstrip() + "…"
-        conversation.title = conversation.title or "New conversation"
+    if payload.role == "user" and _is_placeholder_title(conversation.title):
+        conversation.title = _generate_conversation_title(db, conversation, payload.content)
     db.commit()
     db.refresh(message)
     return _message_out(message, execution.status if payload.execution_id else None)
@@ -215,9 +294,7 @@ def edit_user_message(
 
     first_user = next((item for item in ordered if item.role == "user"), None)
     if first_user and first_user.id == message.id:
-        title = " ".join(message.content.split())
-        conversation.title = title[:157].rstrip() + ("…" if len(title) > 157 else "")
-        conversation.title = conversation.title or "New conversation"
+        conversation.title = _generate_conversation_title(db, conversation, message.content)
     db.commit()
     db.refresh(message)
     return _message_out(message)
