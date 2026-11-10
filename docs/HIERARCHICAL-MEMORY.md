@@ -56,3 +56,8 @@ The header includes the objective, latest instruction, up to three earlier user 
 ## Deliberate limitations of this first implementation
 
 This is the durable continuity foundation, not the final memory feature set. Task identification uses conservative explicit switch phrases so ordinary follow-ups cannot accidentally erase the active objective. The root agent can batch structured decisions, constraints, verified completed steps, remaining work, blockers, and next actions through a compact task-memory tool at meaningful checkpoints. The tool writes directly to SQLite and refreshes the Markdown projection; it does not launch a separate summarization model. When invoked, it uses the normal tool-call cycle, so the agent should batch updates and avoid calling it after trivial operations. Background consolidation, FTS5 retrieval, task resume UI, and richer evidence-backed progress extraction should be added in separate tested increments.
+
+
+## Evolving hierarchical plan intelligence
+
+The original task-state foundation has now been extended with an optional, configurable low-cost plan interpreter. See [Evolving hierarchical plan memory](EVOLVING-PLAN-MEMORY.md) for the current model: a recursive project hierarchy, append-only plan-change events, and a bounded working-context compiler. Task workstreams can be explicitly resumed from a different conversation in the same project using their task ID. The interpreter is off by default until a provider/model is configured and enabled.
