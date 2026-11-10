@@ -41,3 +41,17 @@ The cheap model proposes structured deltas; it never writes directly to SQLite.
 - Errors are treated as evidence/blockers, not new objectives.
 
 This is an initial, evidence-gated implementation. It does not yet provide a visual plan editor, a user approval queue for every agent proposal, or automatic semantic conflict resolution across unrelated workstreams. Those require explicit UI and reconciliation work rather than trusting a low-cost model to guess.
+
+
+## Periodic plan-integrity auditing
+
+When the low-cost plan-memory interpreter is enabled, AgentForge performs a semantic integrity audit during the initial meaningful plan reconciliation and then every five reconciliations. The audit shares that reconciliation's model call rather than introducing a separate call on every message. It checks:
+
+- Whether the immutable original objective is still represented by the current plan.
+- Whether accepted requirements, constraints, or decisions have disappeared from the current hierarchy.
+- Whether a completed task now has a missing, incomplete, superseded, or subsequently changed prerequisite.
+- Whether accepted decisions conflict with one another.
+- Whether subgoals appear stale or no longer contribute to the root objective.
+- Whether the active execution path still leads toward the original goal.
+
+Findings are bounded, typed, linked to existing plan-node IDs where possible, and appended as `plan_integrity_audited` task events. The latest audit is also included in the compiled working context so the main agent can address open concerns. The audit is **read-only**: it cannot change the root objective, accept or reject decisions, alter task status, or rewrite the execution plan. It reports evidence-backed concerns for the main agent and user to resolve. If the optional interpreter is disabled or the run budget cannot afford the memory call, auditing is skipped and normal execution continues.
