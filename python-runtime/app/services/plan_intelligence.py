@@ -532,6 +532,12 @@ def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
                         if isinstance(dependency, dict) and dependency.get("id"):
                             plan["dependencies"].append(dict(dependency))
             elif event.event_type == "agent_state_update":
+                for node in payload.get("plan_nodes_added", []):
+                    if isinstance(node, dict) and node.get("id"):
+                        nodes_by_id[str(node["id"])] = dict(node)
+                for dependency in payload.get("plan_dependencies_added", []):
+                    if isinstance(dependency, dict) and dependency.get("id"):
+                        plan["dependencies"].append(dict(dependency))
                 for completed in payload.get("plan_nodes_completed", []):
                     if not isinstance(completed, dict):
                         continue
