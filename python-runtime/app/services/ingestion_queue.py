@@ -109,10 +109,19 @@ class IngestionQueue:
                    WHERE status='running' AND lease_until < ?""",
                 (now, now, now),
             )
+            # A worker may call process_one repeatedly to advance its own
+            # bounded job. Resume that still-leased claim before taking new work.
             row = db.execute(
-                "SELECT * FROM ingestion_jobs WHERE status='queued' AND available_at <= ? ORDER BY created_at, id LIMIT 1",
-                (now,),
+                """SELECT * FROM ingestion_jobs
+                   WHERE status='running' AND worker_id=? AND lease_until >= ?
+                   ORDER BY updated_at, created_at LIMIT 1""",
+                (worker, now),
             ).fetchone()
+            if row is None:
+                row = db.execute(
+                    "SELECT * FROM ingestion_jobs WHERE status='queued' AND available_at <= ? ORDER BY created_at, id LIMIT 1",
+                    (now,),
+                ).fetchone()
             if row is None:
                 return None
             db.execute(
