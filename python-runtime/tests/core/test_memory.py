@@ -60,3 +60,28 @@ async def test_conversation_compaction():
     summary, count = await compact_conversation(history, context_window=8000, llm_complete_fn=fake_complete)
     assert summary == "Summarized conversation history."
     assert count == 4
+
+
+@pytest.mark.asyncio
+async def test_memory_is_conversation_scoped_unless_user_opts_in():
+    store = InMemoryStore()
+    await store.add(
+        "agent_1",
+        [MemoryCandidate(text="User is building the Orion platform", evidence="I am building Orion")],
+        conversation_id="conversation_a",
+    )
+
+    same_conversation, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_a",
+    )
+    other_conversation_private, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_b",
+    )
+    other_conversation_shared, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_b",
+        include_other_conversations=True,
+    )
+
+    assert len(same_conversation) == 1
+    assert other_conversation_private == []
+    assert len(other_conversation_shared) == 1
