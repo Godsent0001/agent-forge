@@ -168,8 +168,8 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
         task_id,
         execution.id,
         {
-            "constraints_add": ["Use PostgreSQL", "Maintain an auditable ledger"],
-            "decisions_add": ["Use idempotency keys"],
+            "constraints_add": ["Use PostgreSQL", "Maintain an auditable ledger", "Avoid MongoDB"],
+            "decisions_add": ["Use idempotency keys", "Use Redis caching"],
             "completed_add": ["Database schema created"],
             "remaining": ["Implement transaction matching"],
             "blockers": [],
@@ -223,6 +223,10 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     assert event.source_execution_id == execution.id
     assert len(event.payload["plan_nodes_added"]) == 2
     assert len(event.payload["plan_dependencies_added"]) == 1
+    assert event.payload["accepted_decisions"] == ["Use idempotency keys"]
+    assert event.payload["accepted_constraints"] == ["Use PostgreSQL", "Maintain an auditable ledger"]
+    assert event.payload["ignored_unverified_decisions"] == ["Use Redis caching"]
+    assert event.payload["ignored_unverified_constraints"] == ["Avoid MongoDB"]
     rebuilt = plan_intelligence.rebuild_plan_from_history(task_id)
     db_session.expire_all()
     rebuilt_plan = db_session.get(models.TaskState, task_id).state_json["plan"]
