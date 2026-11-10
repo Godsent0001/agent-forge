@@ -5,12 +5,42 @@ from sqlalchemy.orm import sessionmaker
 from app import models
 from app.services import plan_intelligence, task_memory
 
+from pathlib import Path
+
+def _task(db_session):
+    project = models.Project(name="Nested plan tests")
+    db_session.add(project)
+    db_session.flush()
+    agent = models.Agent(project_id=project.id, name="Plan agent", provider="fake", model="fake/demo")
+    db_session.add(agent)
+    db_session.flush()
+    conversation = models.Conversation(project_id=project.id, agent_id=agent.id)
+    db_session.add(conversation)
+    db_session.flush()
+    task = models.TaskState(
+        id="nested-plan-task",
+        conversation_id=conversation.id,
+        project_id=project.id,
+        agent_id=agent.id,
+        title="Build platform",
+        original_objective="Build a reliable platform.",
+        current_instruction="Build a reliable platform.",
+        status="active",
+        state_json={},
+        version=1,
+    )
+    db_session.add(task)
+    db_session.commit()
+    return task
+
+
+
 
 
 
 def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_session, monkeypatch):
     task = _task(db_session)
-    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: __import__("pathlib").Path("/tmp/agentforge-plan-tests"))
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
     Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
 
