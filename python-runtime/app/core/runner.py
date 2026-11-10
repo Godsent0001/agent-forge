@@ -1567,6 +1567,7 @@ class RunnerCore:
                 store=memory,
                 llm_complete_fn=llm_fn,
                 conversation_id=req.conversation_id,
+                include_other_conversations=cross_conversation_memory_enabled(),
             )
 
 
