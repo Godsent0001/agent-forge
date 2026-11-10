@@ -164,11 +164,11 @@ function MermaidDiagram({ source }: { source: string }) {
   }
   if (/^\s*sequenceDiagram\b/i.test(source)) return <SequenceDiagram source={source} />;
   if (!/^\s*(?:flowchart|graph)\b/i.test(source)) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const { nodes, edges, direction } = mermaidParts(source);
   if (!nodes.length) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const nodeW = 184;
   const nodeH = 54;
@@ -234,7 +234,7 @@ function DataChart({ source }: { source: string }) {
       </div>
     );
   } catch {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
 }
 
