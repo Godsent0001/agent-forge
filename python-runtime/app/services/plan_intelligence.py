@@ -368,19 +368,19 @@ def _apply_interpretation(
 
 def _should_interpret(message: str) -> bool:
     text = message.strip()
-    if len(text) < 18:
+    if len(text) < 8:
         return False
     normalized = re.sub(r"[^a-z ]", "", text.casefold()).strip()
-    if normalized in {"hi", "hello", "hey", "ok", "okay", "thanks", "thank you", "good morning"}:
+    if normalized in {"hi", "hello", "hey", "hi there", "hello there", "hey there", "ok", "okay", "thanks", "thank you", "good morning", "good afternoon", "good evening"}:
         return False
     signal = re.search(
         r"\b(remember|goal|objective|plan|phase|step|subgoal|constraint|requirement|"
-        r"decision|instead|actually|change|correction|don't|do not|must|should|"
+        r"decision|instead|actually|change|correction|don't|do not|must|should|use|avoid|prefer|choose|selected|switch|replace|rather than|never|always|require|requires|ensure|keep|remove|add|we decided|"
         r"completed|finished|blocked|failed|error|continue|next|first|then|"
         r"architecture|design|build|implement|test|verify|reject|replace)\b",
         text, re.I,
     )
-    return len(text) >= 100 or bool(signal)
+    return len(text) >= 70 or bool(signal)
 
 
 async def update_plan_memory(
