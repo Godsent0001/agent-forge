@@ -112,6 +112,28 @@ def _user_evidence_is_exact(evidence: str, user_text: str) -> bool:
     return bool(evidence and evidence.casefold() in user_text.casefold())
 
 
+def _would_create_dependency_cycle(
+    dependencies: list[dict[str, Any]],
+    node_id: str,
+    depends_on_id: str,
+) -> bool:
+    adjacency: dict[str, list[str]] = {}
+    for edge in dependencies:
+        if isinstance(edge, dict):
+            adjacency.setdefault(str(edge.get("node_id")), []).append(str(edge.get("depends_on_id")))
+    pending = [depends_on_id]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current == node_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, []))
+    return False
+
+
 def _status_matches_evidence(status: str, evidence: str) -> bool:
     patterns = {
         "active": r"\b(resume|continue|restart|reactivate|proceed)\b",
@@ -194,6 +216,8 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             node_id = ref_to_id.get(node_ref)
             depends_on_id = ref_to_id.get(depends_on_ref)
             if not node_id or not depends_on_id or node_id == depends_on_id:
+                continue
+            if _would_create_dependency_cycle(dependencies, node_id, depends_on_id):
                 continue
             if any(
                 edge.get("node_id") == node_id and edge.get("depends_on_id") == depends_on_id
