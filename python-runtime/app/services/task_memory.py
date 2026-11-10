@@ -116,7 +116,8 @@ def _render_context(db: Session, row: models.TaskState) -> str:
     other_tasks = (
         db.query(models.TaskState)
         .filter(
-            models.TaskState.conversation_id == row.conversation_id,
+            models.TaskState.project_id == row.project_id,
+            models.TaskState.agent_id == row.agent_id,
             models.TaskState.id != row.id,
         )
         .order_by(models.TaskState.updated_at.desc())
@@ -329,7 +330,8 @@ def prepare_task_state(
         matches = (
             db.query(models.TaskState)
             .filter(
-                models.TaskState.conversation_id == conversation.id,
+                models.TaskState.project_id == conversation.project_id,
+                models.TaskState.agent_id == conversation.agent_id,
                 models.TaskState.id.like(f"{resume_prefix}%"),
             )
             .limit(2)
@@ -354,6 +356,9 @@ def prepare_task_state(
                     created_at=now,
                 ))
             target.status = "active"
+            # A task is a project workstream, not a single chat. Rebind it to
+            # the conversation that is now continuing the work.
+            target.conversation_id = conversation.id
             target.current_instruction = (
                 _short((target.state_json or {}).get("next_action") or "", 300)
                 or target.original_objective
