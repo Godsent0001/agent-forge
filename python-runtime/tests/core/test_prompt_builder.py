@@ -23,6 +23,7 @@ def test_build_system_prompt_stable_and_volatile_order():
         plan_block="1. [done] Search news\n2. [doing] Summarize results",
         lessons_block="- Avoid single word queries in search",
         history_summary_block="User previously discussed AI architectures.",
+        task_state_block="Original objective: Build a payment reconciliation engine.",
     )
 
     assert "<role>" in prompt
@@ -35,6 +36,9 @@ def test_build_system_prompt_stable_and_volatile_order():
     assert "<memory>" in prompt
     assert "<recent_runs trust=\"untrusted\">" in prompt
     assert "<conversation_summary>" in prompt
+    assert '<active_task_state trust="untrusted">' in prompt
+    assert "Original objective: Build a payment reconciliation engine." in prompt
+    assert "task-memory update tool" in prompt
 
     # Verify stable content comes before volatile content
     lessons_idx = prompt.index("<lessons>")

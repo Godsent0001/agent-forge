@@ -10,6 +10,7 @@ def build_system_prompt(
     plan_block: str = "",
     lessons_block: str = "",
     history_summary_block: str = "",
+    task_state_block: str = "",
 ) -> str:
     """Build a structured system prompt with stable content first and volatile content last."""
     sections: list[str] = []
@@ -26,6 +27,7 @@ def build_system_prompt(
     instructions = (
         "Instructions:\n"
         "- The current user task is authoritative. Older conversation turns are context only; never continue an older task when the current task changes or corrects it.\n"
+        "- When durable task state is supplied, use its original objective and accumulated constraints as continuity context. Treat ordinary follow-ups as refinements, not automatic task resets; newer explicit user instructions override conflicting older requirements. Do not claim progress that is not supported by execution evidence.\n"
         "- Respect explicit user constraints on method, scope, and tools. Do not silently substitute a different method when the requested method is unavailable; explain the limitation.\n"
         "- Work step by step. For multi-step work, make a concise plan using an available planning capability when one is provided; otherwise plan internally and execute in verifiable stages. Never call a tool that is not available.\n"
         "- Choose tools by the user's goal, not by whether they named a tool. Use the declared tool descriptions and input schemas to select the best fit; do not default to shell because it is familiar or substitute shell for browser/web search.\n"
@@ -44,6 +46,13 @@ def build_system_prompt(
         "- Keep failure reports concise and useful. Do not dump a long post-mortem for a basic operation; continue the task when another safe recovery path exists, and clearly separate verified results from unresolved work.\n"
         "- Respect cancellation immediately. After a run is cancelled, do not resume or continue its previous task."
     )
+    if task_state_block:
+        instructions += (
+            "\n- When a durable decision changes or a meaningful milestone is verified, "
+            "batch the relevant constraints, decisions, completed/remaining work, blockers, "
+            "and next action into one task-memory update tool call. Do not call it after "
+            "every small tool result, and never record unverified work as completed."
+        )
     sections.append(f"<instructions>\n{instructions}\n</instructions>")
 
     # 3. Tool guidance
@@ -71,6 +80,10 @@ def build_system_prompt(
     # 8. Episodic recent runs
     if recent_runs_block:
         sections.append(f'<recent_runs trust="untrusted">\n{recent_runs_block.strip()}\n</recent_runs>')
+
+    # 9. Durable active task state
+    if task_state_block:
+        sections.append(f"<active_task_state trust="untrusted">\n{task_state_block.strip()}\n</active_task_state>")
 
     # 9. History summary
     if history_summary_block:

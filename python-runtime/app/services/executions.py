@@ -21,6 +21,7 @@ from app.services.core_adapters import Workspace
 from app.services.graph_loader import load_agent_graph
 from app.services.memory_store import SqlLessonStore, SqlMemoryStore
 from app.services.runner_factory import get_runner
+from app.services.task_memory import record_task_execution_result
 from app.tools.registry import DefaultToolFactory
 from app.ws import manager as legacy_ws_manager
 
@@ -461,6 +462,19 @@ class ExecutionManager:
                     db.commit()
             finally:
                 db.close()
+
+            if req.task_state_id:
+                try:
+                    await asyncio.to_thread(
+                        record_task_execution_result,
+                        req.task_state_id,
+                        req.execution_id,
+                        status,
+                        final_output,
+                        error,
+                    )
+                except Exception:
+                    logger.exception("Could not persist task-memory execution result for %s", req.execution_id)
 
             self.active.pop(req.execution_id, None)
             self.tokens.pop(req.execution_id, None)

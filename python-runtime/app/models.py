@@ -253,6 +253,56 @@ class ConversationMessage(Base):
     )
 
 
+class TaskState(Base):
+    """Durable, conversation-scoped working memory for one user task."""
+
+    __tablename__ = "task_states"
+    __table_args__ = (
+        Index("ix_task_states_conversation_status", "conversation_id", "status", "updated_at"),
+        Index("ix_task_states_project_updated", "project_id", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    original_objective: Mapped[str] = mapped_column(Text, nullable=False)
+    current_instruction: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
+    state_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+
+class TaskStateEvent(Base):
+    """Append-only facts that explain how a task's durable state evolved."""
+
+    __tablename__ = "task_state_events"
+    __table_args__ = (
+        Index("ix_task_state_events_task_created", "task_state_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    task_state_id: Mapped[str] = mapped_column(
+        ForeignKey("task_states.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    source_execution_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executions.id", ondelete="SET NULL"), nullable=True
+    )
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+
 class MessageFeedback(Base):
     """One optional rating per assistant message."""
 

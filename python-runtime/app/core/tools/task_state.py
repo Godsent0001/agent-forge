@@ -1,0 +1,69 @@
+"""Low-token tool for durable, structured task-memory updates."""
+from __future__ import annotations
+
+import asyncio
+import json
+
+from pydantic import BaseModel, Field
+
+from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
+from app.services.task_memory import apply_task_state_update
+
+
+class TaskStateUpdateInput(BaseModel):
+    decisions_add: list[str] = Field(
+        default_factory=list, max_length=5,
+        description="New durable decisions, each a short standalone statement.",
+    )
+    constraints_add: list[str] = Field(
+        default_factory=list, max_length=5,
+        description="New requirements or constraints that must remain true.",
+    )
+    completed_add: list[str] = Field(
+        default_factory=list, max_length=5,
+        description="Milestones verified as completed by actual execution evidence.",
+    )
+    remaining: list[str] | None = Field(
+        default=None, max_length=12,
+        description="Replace the outstanding-work list. Omit to leave it unchanged; use [] to clear it.",
+    )
+    blockers: list[str] | None = Field(
+        default=None, max_length=12,
+        description="Replace the current blocker list. Omit to leave it unchanged; use [] to clear it.",
+    )
+    next_action: str | None = Field(
+        default=None, max_length=300,
+        description="The single most useful next action. Omit to leave unchanged; use an empty string to clear.",
+    )
+    note: str = Field(
+        default="", max_length=300,
+        description="Brief reason for this memory update.",
+    )
+
+
+class TaskStateUpdateTool(Tool):
+    kind = "task_state_update"
+    default_description = (
+        "Persist meaningful task memory: decisions, constraints, verified completed milestones, "
+        "remaining work, blockers, and the next action. Batch several changes into one call. "
+        "Use this only at meaningful milestones or when a durable decision/constraint changes; "
+        "do not call after every trivial tool result. Never mark work completed without evidence. "
+        "The original objective is immutable."
+    )
+    Input = TaskStateUpdateInput
+    permissions: set[Permission] = set()
+
+    def __init__(self, task_state_id: str):
+        self._task_state_id = task_state_id
+
+    async def run(self, args: TaskStateUpdateInput, ctx: ToolContext) -> ToolResult:
+        try:
+            result = await asyncio.to_thread(
+                apply_task_state_update,
+                self._task_state_id,
+                ctx.execution_id,
+                args.model_dump(exclude_unset=True),
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        return ToolResult(content=json.dumps(result, ensure_ascii=False))

@@ -26,7 +26,6 @@ from app.contracts.tools import (
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.capability_intelligence import build_runtime_capability_manifest
 from app.core.durable_scheduler import SQLiteTaskPlanStore
-from app.core.embeddings import embed_text
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
@@ -47,6 +46,7 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
+from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
@@ -442,30 +442,13 @@ class RunnerCore:
                 memory_block = ""
                 if spec.memory_enabled and memory:
                     try:
-                        embedding_model = req.options.memory.embedding_model
-                        query_embedding = None
-                        if embedding_model:
-                            try:
-                                query_embedding = await asyncio.to_thread(embed_text, task, embedding_model)
-                                missing = await memory.missing_embeddings(spec.id, embedding_model, limit=50)
-                                if missing:
-                                    pairs = []
-                                    for item in missing:
-                                        vector = await asyncio.to_thread(embed_text, item.text, embedding_model)
-                                        if vector:
-                                            pairs.append((item.id, vector, embedding_model))
-                                    if pairs:
-                                        await memory.set_embeddings(pairs)
-                            except Exception as embedding_error:
-                                logger.warning("Local embedding unavailable; using keyword memory recall: %s", embedding_error)
-                                query_embedding = None
+                        # Basic memory recall must never wait for embedding generation or
+                        # backfill. Semantic indexing is an optional background optimization.
                         _, memory_block = await recall_memories(
                             store=memory,
                             agent_id=spec.id,
                             query=task,
                             recall_budget_tokens=req.options.memory.recall_budget_tokens,
-                            query_embedding=query_embedding,
-                            embedding_model=embedding_model,
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
@@ -493,6 +476,7 @@ class RunnerCore:
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
                     history_summary_block=history_summary,
+                    task_state_block=req.task_state_context if depth == 0 else "",
                 )
 
                 # Keep the workspace contract explicit in every agent context so the
@@ -527,12 +511,32 @@ class RunnerCore:
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
                 )
+                task_state_tool_name = None
+                if depth == 0 and req.task_state_id:
+                    task_state_tool = TaskStateUpdateTool(req.task_state_id)
+                    task_state_tool_name = "agentforge_task_state_update"
+                    suffix = 2
+                    while any(item.name == task_state_tool_name for item in all_tool_specs):
+                        task_state_tool_name = f"agentforge_task_state_update_{suffix}"
+                        suffix += 1
+                    tool_instances[task_state_tool_name] = task_state_tool
+                    all_tool_specs.append(ToolSpec(
+                        name=task_state_tool_name,
+                        description=task_state_tool.default_description,
+                        parameters=task_state_tool.Input.model_json_schema(),
+                    ))
                 native_tool_specs, requested_tool = constrain_tools_for_task(task, all_tool_specs)
                 # Keep the internal reply control available even when task-aware
                 # selection narrows ordinary tools to a smaller subset.
                 reply_user_spec = next((item for item in all_tool_specs if item.name == "agentforge_reply_user"), None)
                 if reply_user_spec and all(item.name != "agentforge_reply_user" for item in native_tool_specs):
                     native_tool_specs.append(reply_user_spec)
+                task_state_spec = next(
+                    (item for item in all_tool_specs if item.name == task_state_tool_name),
+                    None,
+                ) if task_state_tool_name else None
+                if task_state_spec and all(item.name != task_state_spec.name for item in native_tool_specs):
+                    native_tool_specs.append(task_state_spec)
                 allowed_tool_names = {tool.name for tool in native_tool_specs}
                 tool_instances = {
                     name: instance for name, instance in tool_instances.items()
