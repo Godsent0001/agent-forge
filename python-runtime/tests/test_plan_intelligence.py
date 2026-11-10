@@ -419,14 +419,15 @@ def test_integrity_audit_is_due_initially_and_after_five_plan_updates(db_session
         content="Audit complete.", payload={}, created_at=now,
     ))
     db_session.flush()
+    timedelta = __import__("datetime").timedelta
     for index in range(3):
         db_session.add(models.TaskStateEvent(
             id=models._uuid(), task_state_id=task.id, event_type="plan_memory_updated",
-            content=f"Plan update {index}.", payload={}, created_at=now,
+            content=f"Plan update {index}.", payload={}, created_at=now + timedelta(seconds=index + 1),
         ))
     db_session.flush()
     assert plan_intelligence._integrity_audit_due(db_session, task) is False
-    later = now + __import__("datetime").timedelta(seconds=1)
+    later = now + timedelta(seconds=4)
     db_session.add(models.TaskStateEvent(
         id=models._uuid(), task_state_id=task.id, event_type="plan_memory_updated",
         content="Fifth update.", payload={}, created_at=later,
