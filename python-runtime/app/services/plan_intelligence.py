@@ -144,7 +144,12 @@ def _status_matches_evidence(status: str, evidence: str) -> bool:
     return bool(re.search(patterns.get(status, r"(?!)"), evidence, re.I))
 
 
-def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_text: str) -> dict[str, Any]:
+def _apply_interpretation(
+    task_state_id: str,
+    proposal: dict[str, Any],
+    user_text: str,
+    evidence_text: str | None = None,
+) -> dict[str, Any]:
     now = _now()
     with SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
@@ -245,7 +250,8 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             node = existing.get(node_id)
             if not node or status not in {"active", "blocked", "paused", "superseded"}:
                 continue
-            if not _user_evidence_is_exact(evidence, user_text) or not _status_matches_evidence(status, evidence):
+            evidence_source = user_text if node.get("source") == "user" else (evidence_text or user_text)
+            if not _user_evidence_is_exact(evidence, evidence_source) or not _status_matches_evidence(status, evidence):
                 continue
             if node.get("status") != status:
                 previous_status = node.get("status")
@@ -406,8 +412,8 @@ async def update_plan_memory(
     for msg in (history or [])[-6:]:
         role = getattr(msg, "role", None) or (msg.get("role") if isinstance(msg, dict) else "")
         content = getattr(msg, "content", None) or (msg.get("content", "") if isinstance(msg, dict) else "")
-        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
-            history_lines.append(f"{role}: {content[:900]}")
+        if role in {"user", "assistant", "tool"} and isinstance(content, str) and content.strip():
+            history_lines.append(f"{role}: {content[:700]}")
     recent_history = "\n".join(history_lines)[-4500:]
     prompt = (
         "You are AgentForge's low-cost project-plan memory interpreter. Return JSON only. "
@@ -451,8 +457,9 @@ async def update_plan_memory(
             )
         proposal = _json_object(turn.text or "")
         proposal["_model"] = model_name
+        evidence_text = user_message + "\\n" + recent_history
         return await asyncio.to_thread(
-            _apply_interpretation, task_state_id, proposal, user_message
+            _apply_interpretation, task_state_id, proposal, user_message, evidence_text
         )
     except Exception as exc:
         logger.warning("Plan-memory interpretation skipped (%s): %s", type(exc).__name__, str(exc)[:240])
