@@ -4,8 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-from pydantic import BaseModel, Field
 from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolError, ToolResult
 from app.services.task_memory import apply_task_state_update
