@@ -58,6 +58,14 @@ def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_sessi
                     "source": "agent",
                 },
                 {
+                    "ref": "phase_implement",
+                    "type": "phase",
+                    "title": "Implement the platform",
+                    "objective": "Build the approved architecture.",
+                    "parent_ref": "root",
+                    "source": "agent",
+                },
+                {
                     "ref": "task_schema",
                     "type": "task",
                     "title": "Design the database schema",
@@ -76,14 +84,21 @@ def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_sessi
             ],
             "decisions": [],
             "constraints": [],
+            "dependencies": [{
+                "node_ref": "phase_implement",
+                "depends_on_ref": "phase_design",
+                "reason": "Implementation follows architecture approval.",
+            }],
         },
         "Please create a plan for the platform.",
     )
 
     db_session.expire_all()
     plan = db_session.get(models.TaskState, task.id).state_json["plan"]
-    assert len(plan["nodes"]) == 3
+    assert len(plan["nodes"]) == 4
     by_title = {node["title"]: node for node in plan["nodes"]}
     assert by_title["Design the platform"]["parent_id"] == task.id
     assert by_title["Design the database schema"]["parent_id"] == by_title["Design the platform"]["id"]
     assert by_title["Define indexes"]["parent_id"] == by_title["Design the database schema"]["id"]
+    assert plan["dependencies"][0]["node_id"] == by_title["Implement the platform"]["id"]
+    assert plan["dependencies"][0]["depends_on_id"] == by_title["Design the platform"]["id"]
