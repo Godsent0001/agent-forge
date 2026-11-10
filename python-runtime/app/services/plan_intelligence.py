@@ -37,7 +37,7 @@ _ALLOWED_PROVIDERS = {
 }
 _ALLOWED_NODE_TYPES = {"goal", "phase", "subgoal", "task", "milestone"}
 _MAX_NODES = 500
-_MAX_CONTEXT_CHARS = 4200
+_MAX_CONTEXT_CHARS = 4800
 
 
 def _config_path() -> Path:
@@ -651,9 +651,9 @@ def compile_plan_context(task_state_id: str | None) -> str:
         key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
         reverse=True,
     )
-    for node in recent_nodes[:16]:
+    for node in recent_nodes[:10]:
         include_ancestors(node)
-    for node in [item for item in recent_nodes if item.get("status") == "completed"][:6]:
+    for node in [item for item in recent_nodes if item.get("status") == "completed"][:4]:
         include_ancestors(node)
     if not selected_ids:
         for node in nodes[-20:]:
@@ -672,9 +672,9 @@ def compile_plan_context(task_state_id: str | None) -> str:
         children.sort(key=lambda item: status_priority.get(str(item.get("status")), 6))
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
     if plan.get("root_summary"):
-        lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1800))
+        lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1500))
     elif root_objective:
-        lines.append("Root objective excerpt: " + _normal_text(root_objective, 1800))
+        lines.append("Root objective excerpt: " + _normal_text(root_objective, 1500))
 
     def walk(parent: str, depth: int, seen: set[str]) -> None:
         if depth > _MAX_NODES:
@@ -703,22 +703,22 @@ def compile_plan_context(task_state_id: str | None) -> str:
     ]
     if dependencies:
         lines.append("Dependencies (a node depends on its prerequisite):")
-        for edge in dependencies[-20:]:
+        for edge in dependencies[-12:]:
             dependent = node_titles.get(str(edge.get("node_id")), "unknown task")
             prerequisite = node_titles.get(str(edge.get("depends_on_id")), "unknown task")
-            reason = _normal_text(edge.get("reason"), 160)
+            reason = _normal_text(edge.get("reason"), 120)
             lines.append(f"- {dependent} depends on {prerequisite}" + (f": {reason}" if reason else ""))
     accepted = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "accepted"]
     proposed = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "proposed"]
     if accepted:
         lines.append("Accepted user decisions:")
-        lines.extend(f"- {_normal_text(d.get('text'), 240)}" for d in accepted[-12:])
+        lines.extend(f"- {_normal_text(d.get('text'), 240)}" for d in accepted[-8:])
     if proposed:
         lines.append("Unaccepted agent/user proposals (not binding):")
-        lines.extend(f"- {_normal_text(d.get('text'), 200)}" for d in proposed[-6:])
+        lines.extend(f"- {_normal_text(d.get('text'), 200)}" for d in proposed[-4:])
     constraints = plan.get("constraints") or []
     if constraints:
         lines.append("Explicit user constraints:")
-        lines.extend(f"- {_normal_text(c.get('text'), 220)}" for c in constraints[-12:] if isinstance(c, dict))
+        lines.extend(f"- {_normal_text(c.get('text'), 220)}" for c in constraints[-8:] if isinstance(c, dict))
     rendered = "\n".join(lines)
     return rendered[:_MAX_CONTEXT_CHARS]
