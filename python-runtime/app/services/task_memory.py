@@ -232,6 +232,19 @@ def _write_projection(db: Session, row: models.TaskState) -> None:
                 append_plan(node_id, depth + 1, seen)
 
         append_plan(row.id, 0, set())
+        node_titles = {
+            str(node.get("id")): _short(node.get("title", ""), 120)
+            for node in plan_nodes if isinstance(node, dict)
+        }
+        dependencies = plan.get("dependencies") if isinstance(plan.get("dependencies"), list) else []
+        if dependencies:
+            lines.extend(["", "### Dependencies", ""])
+            for edge in dependencies[-30:]:
+                if not isinstance(edge, dict):
+                    continue
+                dependent = node_titles.get(str(edge.get("node_id")), "unknown task")
+                prerequisite = node_titles.get(str(edge.get("depends_on_id")), "unknown task")
+                lines.append(f"- {dependent} depends on {prerequisite}")
         for label, key, accepted_only in (
             ("Accepted user decisions", "decisions", True),
             ("Explicit user constraints", "constraints", False),
