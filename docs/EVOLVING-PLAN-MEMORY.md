@@ -14,7 +14,7 @@ A task is a project workstream, not just a chat session. The task registry is pr
 Resume task: <8-character-task-id>
 ```
 
-The task is rebound to the new conversation while preserving its original objective, hierarchy, decisions, and event history. A new conversation does not silently attach itself to an unrelated active task.
+The task is rebound to the new conversation while preserving its original objective, hierarchy, decisions, and event history. Resume events retain the previous and new conversation IDs for provenance. A new conversation does not silently attach itself to an unrelated active task.
 
 ## Cheap model configuration
 
@@ -36,7 +36,7 @@ The cheap model proposes structured deltas; it never writes directly to SQLite.
 - A user decision is marked accepted only with exact user-message evidence. Other decisions remain proposals and are explicitly labelled non-binding.
 - Agent-generated phases/tasks are stored as agent-owned execution-plan nodes, separate from user goals.
 - A plan node can be paused, blocked, reactivated, or superseded only when the model supplies exact user-message evidence.
-- The interpreter cannot mark work complete. Completion remains grounded in execution evidence and the existing task-state update path.
+- The interpreter cannot mark work complete. The execution-bound task-state update tool may complete a matching hierarchy node only when it records a verified milestone; it stores the execution ID on that node and in the append-only event payload.
 - When a user explicitly changes a decision, the interpreter can identify the prior decision it supersedes; the event log preserves both the old decision and the replacement.
 - Errors are treated as evidence/blockers, not new objectives.
 
