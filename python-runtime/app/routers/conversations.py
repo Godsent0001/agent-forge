@@ -254,10 +254,37 @@ def append_message(
     )
     db.add(message)
     if payload.role == "user" and _is_placeholder_title(conversation.title):
-        conversation.title = _generate_conversation_title(db, conversation, payload.content)
+        conversation.title = _unique_conversation_title(
+            db, conversation, _fallback_conversation_title(payload.content)
+        )
     db.commit()
     db.refresh(message)
     return _message_out(message, execution.status if payload.execution_id else None)
+
+
+
+
+@router.post("/conversations/{conversation_id}/title", response_model=ConversationOut)
+def generate_conversation_title(
+    conversation_id: str, db: Session = Depends(get_db)
+) -> models.Conversation:
+    """Generate or refresh the title from the first user turn using the agent's model."""
+    conversation = _get_conversation(db, conversation_id)
+    first_user = (
+        db.query(models.ConversationMessage)
+        .filter(
+            models.ConversationMessage.conversation_id == conversation.id,
+            models.ConversationMessage.role == "user",
+        )
+        .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id)
+        .first()
+    )
+    if first_user is None:
+        return conversation
+    conversation.title = _generate_conversation_title(db, conversation, first_user.content)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
 
 
 @router.patch("/messages/{message_id}", response_model=MessageOut)
@@ -294,7 +321,9 @@ def edit_user_message(
 
     first_user = next((item for item in ordered if item.role == "user"), None)
     if first_user and first_user.id == message.id:
-        conversation.title = _generate_conversation_title(db, conversation, message.content)
+        conversation.title = _unique_conversation_title(
+            db, conversation, _fallback_conversation_title(message.content)
+        )
     db.commit()
     db.refresh(message)
     return _message_out(message)
