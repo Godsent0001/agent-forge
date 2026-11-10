@@ -96,6 +96,17 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
     assert event.payload["change_count"] == 3
     assert len(event.payload["changes"]) == 3
 
+    updated.state_json = {**updated.state_json, "plan": {}}
+    db_session.commit()
+    rebuilt = plan_intelligence.rebuild_plan_from_history(task.id)
+    db_session.expire_all()
+    restored = db_session.get(models.TaskState, task.id).state_json["plan"]
+    assert rebuilt["rebuilt"] is True
+    assert rebuilt["events_replayed"] >= 1
+    assert len(restored["nodes"]) == 1
+    assert restored["decisions"][0]["status"] == "accepted"
+    assert len(restored["constraints"]) == 1
+
 
 def test_agent_plan_is_kept_separate_from_accepted_user_decisions(db_session, monkeypatch):
     task = _task(db_session)
