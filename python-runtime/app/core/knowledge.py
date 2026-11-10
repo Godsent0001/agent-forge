@@ -402,7 +402,7 @@ class KnowledgeIndex:
             if row["chunk_id"] in fts_ranks:
                 # SQLite BM25 is lower-is-better and commonly negative; invert its magnitude
                 # into a stable positive score before the existing hybrid normalization.
-                lexical = 1.0 / (1.0 + max(0.0, -fts_ranks[row["chunk_id"]]))
+                lexical = 1.0 / (1e-6 + max(0.0, -fts_ranks[row["chunk_id"]]))
             else:
                 tf = sum(min(tokens.count(t), 4) for t in qtokens)
                 idf = sum(
