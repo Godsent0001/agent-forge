@@ -79,7 +79,7 @@ def _fts_memory_candidate_ids(
     limit: int,
 ) -> list[str] | None:
     """Return bounded FTS5 candidates, or None when the optional index is unavailable."""
-    terms = sorted(set(re.findall(r"[\\w'-]{2,}", query.casefold())))
+    terms = sorted(set(re.findall(r"[\w'-]{2,}", query.casefold())))
     if not terms:
         return None
     match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
