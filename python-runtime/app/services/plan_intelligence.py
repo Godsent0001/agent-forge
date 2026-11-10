@@ -666,12 +666,10 @@ def compile_plan_context(task_state_id: str | None) -> str:
     status_priority = {"active": 0, "blocked": 1, "paused": 2, "proposed": 3, "completed": 4, "superseded": 5}
     for children in by_parent.values():
         children.sort(
-            key=lambda item: (
-                status_priority.get(str(item.get("status")), 6),
-                str(item.get("updated_at") or item.get("created_at") or ""),
-            ),
-            reverse=False,
+            key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
+            reverse=True,
         )
+        children.sort(key=lambda item: status_priority.get(str(item.get("status")), 6))
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
     if plan.get("root_summary"):
         lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1800))
