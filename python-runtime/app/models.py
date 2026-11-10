@@ -137,6 +137,7 @@ class MemoryEntry(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String, default="fact")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
