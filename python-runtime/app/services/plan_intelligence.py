@@ -460,7 +460,7 @@ async def update_plan_memory(
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:1800]}\n"
         f"CURRENT DEPENDENCIES: {json.dumps(compact_dependencies, ensure_ascii=False)[:1400]}\n"
         f"RECENT CONVERSATION: {recent_history}\\n"
-        f"CURRENT USER MESSAGE: {user_message[:8000]}"
+        f"CURRENT USER MESSAGE: {current_message_section}"
     )
     if not _budget_allows_memory_call(budget, prompt, config["max_tokens"]):
         return {"applied": False, "reason": "run_budget_reserved_for_execution"}
