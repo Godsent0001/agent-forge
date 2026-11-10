@@ -32,18 +32,22 @@ async def recall_memories(
     recall_budget_tokens: int = 800,
     query_embedding: list[float] | None = None,
     embedding_model: str | None = None,
+    conversation_id: str | None = None,
+    include_other_conversations: bool = False,
     now: datetime | None = None,
 ) -> tuple[list[MemoryItem], str]:
     """Recall pinned and top candidate memories within token budget."""
     now = now or datetime.now(timezone.utc)
 
-    pinned_items = await store.pinned(agent_id)
+    pinned_items = await store.pinned(agent_id, conversation_id=conversation_id, include_other_conversations=include_other_conversations)
     candidates = await store.candidates(
         agent_id=agent_id,
         query=query,
         limit=30,
         query_embedding=query_embedding,
         embedding_model=embedding_model,
+        conversation_id=conversation_id,
+        include_other_conversations=include_other_conversations,
     )
 
     # Filter out pinned items from candidates to avoid duplicates
