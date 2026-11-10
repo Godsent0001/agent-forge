@@ -62,7 +62,7 @@ describe("RichMarkdown", () => {
     });
     render(<RichMarkdown content={markdown("| Name | Status |", "| --- | --- |", "| Build | Done |")} />);
     fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Name\\tStatus\\nBuild\\tDone"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Name" + String.fromCharCode(9) + "Status" + String.fromCharCode(10) + "Build" + String.fromCharCode(9) + "Done"));
   });
 
   it("renders structured chart JSON from a chart code fence", () => {
