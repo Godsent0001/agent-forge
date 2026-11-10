@@ -464,7 +464,7 @@ async def update_plan_memory(
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:4000]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:1800]}\n"
         f"CURRENT DEPENDENCIES: {json.dumps(compact_dependencies, ensure_ascii=False)[:1400]}\n"
-        f"RECENT CONVERSATION: {recent_history}\\n"
+        f"RECENT CONVERSATION: {recent_history}\n"
         f"CURRENT USER MESSAGE: {current_message_section}"
     )
     if not _budget_allows_memory_call(budget, prompt, config["max_tokens"]):
