@@ -924,7 +924,13 @@ def apply_task_state_update(
                 changed.append("plan")
 
         if not changed:
-            return {"updated": False, "reason": "No task-state fields were supplied.", "version": row.version}
+            return {
+                "updated": False,
+                "reason": "No verified task-state fields were supplied.",
+                "version": row.version,
+                "ignored_unverified_constraints": ignored_constraints,
+                "ignored_unverified_decisions": ignored_decisions,
+            }
 
         row.state_json = state
         row.updated_at = now
@@ -973,4 +979,6 @@ def apply_task_state_update(
             "version": version,
             "updated_fields": list(dict.fromkeys(changed)),
             "next_action": next_action,
+            "ignored_unverified_constraints": ignored_constraints,
+            "ignored_unverified_decisions": ignored_decisions,
         }
