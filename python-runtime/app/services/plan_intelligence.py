@@ -35,7 +35,7 @@ _ALLOWED_PROVIDERS = {
     "groq", "xai", "openrouter", "venice", "ollama",
 }
 _ALLOWED_NODE_TYPES = {"goal", "phase", "subgoal", "task", "milestone"}
-_MAX_NODES = 100
+_MAX_NODES = 500
 _MAX_CONTEXT_CHARS = 4200
 
 
@@ -350,16 +350,18 @@ async def update_plan_memory(
         f"CURRENT USER MESSAGE: {user_message[:5000]}"
     )
     try:
+        if budget is not None:
+            budget.check_limits()
         model_name = litellm_model(config["provider"], config["model"])
         turn = await complete(
             messages=[
                 {"role": "system", "content": "Extract structured plan-memory deltas. Output valid JSON only."},
                 {"role": "user", "content": prompt},
             ],
-            params=LLMParams(timeout_s=25, temperature=0, max_tokens=config["max_tokens"]),
+            params=LLMParams(timeout_s=12, temperature=0, max_tokens=config["max_tokens"]),
             model=model_name,
             provider=config["provider"],
-            max_retries=1,
+            max_retries=0,
         )
         if budget is not None:
             budget.record_llm_call(
@@ -397,7 +399,7 @@ def compile_plan_context(task_state_id: str | None) -> str:
         by_parent.setdefault(str(node.get("parent_id") or task_state_id), []).append(node)
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
     def walk(parent: str, depth: int, seen: set[str]) -> None:
-        if depth > 8:
+        if depth > _MAX_NODES:
             return
         for node in by_parent.get(parent, []):
             node_id = str(node.get("id") or "")
