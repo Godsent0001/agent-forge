@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.services import plan_intelligence, task_memory
 
-from pathlib import Path
 
 def _task(db_session):
     project = models.Project(name="Nested plan tests")
@@ -32,9 +33,6 @@ def _task(db_session):
     db_session.add(task)
     db_session.commit()
     return task
-
-
-
 
 
 
