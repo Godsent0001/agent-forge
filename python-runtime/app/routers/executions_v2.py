@@ -35,7 +35,7 @@ from app.infra.paths import project_dir
 from app.services.core_adapters import Workspace
 from app.services.executions import manager
 from app.services.previews import preview_manager
-from app.services.task_memory import bind_task_state_to_execution, prepare_task_state, record_live_task_instruction
+from app.services.task_memory import (\n    bind_task_state_to_execution,\n    prepare_task_state,\n    record_live_task_instruction,\n)
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
