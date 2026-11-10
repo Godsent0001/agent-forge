@@ -61,6 +61,16 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
                 ready_port = int(match.group(1))
                 break
 
+        # Drain the reader after child exit so its final traceback is not lost
+        # to the race between process.poll() and the stdout reader thread.
+        if process.poll() is not None:
+            reader.join(timeout=1)
+            while True:
+                try:
+                    captured.append(lines.get_nowait())
+                except queue.Empty:
+                    break
+
         assert ready_port, "runtime never became ready; output:\n" + "".join(captured[-40:])
         with urllib.request.urlopen(f"http://127.0.0.1:{ready_port}/health", timeout=3) as response:
             assert response.status == 200
