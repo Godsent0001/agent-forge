@@ -4,7 +4,7 @@ import json
 from sqlalchemy.orm import sessionmaker
 
 from app import models
-from app.services import plan_intelligence
+from app.services import plan_intelligence, task_memory
 
 
 def _task(db_session):
@@ -36,6 +36,7 @@ def _task(db_session):
 
 def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypatch):
     task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: __import__("pathlib").Path("/tmp/agentforge-plan-tests"))
     Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
 
