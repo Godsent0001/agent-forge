@@ -126,6 +126,14 @@ def test_agent_authored_updates_are_structured_bounded_and_versioned(
     project, agent, conversation = _conversation(db_session)
     monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: tmp_path)
     task_id, _ = task_memory.prepare_task_state(db_session, conversation, "Build the reconciliation engine.")
+    db_session.add(models.TaskStateEvent(
+        id=models._uuid(),
+        task_state_id=task_id,
+        event_type="user_instruction",
+        content="Use PostgreSQL. Maintain an auditable ledger. Use idempotency keys.",
+        payload={"test_user_evidence": True},
+    ))
+    db_session.commit()
     task_row = db_session.get(models.TaskState, task_id)
     task_row.state_json = {
         **task_row.state_json,
