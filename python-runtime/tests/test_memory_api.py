@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from app import models
@@ -105,3 +106,44 @@ async def test_sql_memory_store_enforces_conversation_scope(db_session):
     assert isolated == []
     assert len(shared) == 1
     assert shared[0].item.conversation_id == conversation_a.id
+
+
+@pytest.mark.asyncio
+async def test_memory_fts_index_tracks_insert_update_and_delete(db_session):
+    project, agent = _agent(db_session)
+    conversation = models.Conversation(project_id=project.id, agent_id=agent.id, title="FTS")
+    db_session.add(conversation)
+    db_session.commit()
+    store = SqlMemoryStore(sessionmaker(bind=db_session.get_bind(), expire_on_commit=False))
+    created = await store.add(
+        agent.id,
+        [MemoryCandidate(text="Distinctive Orion memory retrieval phrase", evidence="Orion")],
+        conversation_id=conversation.id,
+    )
+
+    try:
+        indexed = db_session.execute(
+            text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
+        ).fetchall()
+    except Exception:
+        pytest.skip("SQLite build does not include FTS5")
+
+    assert [row[0] for row in indexed] == [created[0].id]
+
+    row = db_session.get(models.MemoryEntry, created[0].id)
+    row.content = "Distinctive Atlas memory retrieval phrase"
+    db_session.commit()
+    old_hits = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
+    ).fetchall()
+    new_hits = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Atlas'")
+    ).fetchall()
+    assert old_hits == []
+    assert [hit[0] for hit in new_hits] == [created[0].id]
+
+    db_session.delete(row)
+    db_session.commit()
+    assert db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Atlas'")
+    ).fetchall() == []
