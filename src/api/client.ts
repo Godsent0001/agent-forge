@@ -338,6 +338,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, agent_id: agentId, title }),
       }),
+    generateTitle: (conversationId: string) =>
+      request<ConversationSummary>(`/v2/conversations/${encodeURIComponent(conversationId)}/title`, {
+        method: "POST",
+      }),
     remove: (conversationId: string) =>
       request<{ deleted: boolean }>(`/v2/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" }),
     messages: (conversationId: string) =>
