@@ -102,3 +102,5 @@ def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_sessi
     assert by_title["Define indexes"]["parent_id"] == by_title["Design the database schema"]["id"]
     assert plan["dependencies"][0]["node_id"] == by_title["Implement the platform"]["id"]
     assert plan["dependencies"][0]["depends_on_id"] == by_title["Design the platform"]["id"]
+    context = plan_intelligence.compile_plan_context(task.id)
+    assert "Implement the platform depends on Design the platform" in context
