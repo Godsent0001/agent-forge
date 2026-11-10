@@ -358,6 +358,13 @@ class KnowledgeIndex:
                             f"JOIN knowledge_sources s USING(source_id) WHERE c.chunk_id IN ({placeholders})",
                             ids,
                         ).fetchall()
+                    else:
+                        # Tokenizer differences (for example, punctuation-heavy identifiers)
+                        # should degrade to the proven lexical scorer rather than no results.
+                        rows = db.execute(
+                            "SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                            "JOIN knowledge_sources s USING(source_id)"
+                        ).fetchall()
                 except sqlite3.OperationalError:
                     # Malformed/unsupported FTS state should never make knowledge unavailable.
                     rows = []
