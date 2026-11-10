@@ -4,6 +4,18 @@ import remarkGfm from "remark-gfm";
 
 
 
+function blockText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(blockText).join("");
+  if (!isValidElement(node)) return "";
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  const value = blockText(element.props.children);
+  if (element.type === "tr") return value.trimEnd() + "\n";
+  if (element.type === "th" || element.type === "td") return value + "\t";
+  return value;
+}
+
 function CopyBlockButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -218,6 +230,23 @@ function DataChart({ source }: { source: string }) {
 }
 
 const markdownComponents: Components = {
+  table({ children }) {
+    return (
+      <div className="group relative my-3 overflow-x-auto rounded-xl border border-line bg-studio-900 px-2 pb-2 pt-10">
+        <CopyBlockButton text={blockText(children).trim()} />
+        <table>{children}</table>
+      </div>
+    );
+  },
+  blockquote({ children }) {
+    return (
+      <div className="group relative my-3 rounded-xl border border-line bg-studio-900 p-3 pr-12">
+        <CopyBlockButton text={blockText(children).trim()} />
+        <blockquote className="border-l-2 border-accent-500/60 pl-3 text-studio-300">{children}</blockquote>
+      </div>
+    );
+  },
+
   pre({ children }) {
     const child = Children.toArray(children).find(isValidElement);
     if (child && child.type === "code") {
