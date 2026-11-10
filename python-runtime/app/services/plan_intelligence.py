@@ -528,6 +528,7 @@ def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
                     node = nodes_by_id.get(str(completed.get("node_id")))
                     if node:
                         node["status"] = "completed"
+                        node["completed_at"] = event.created_at.isoformat()
                         node["verified_by_execution_id"] = event.source_execution_id
                         node["updated_at"] = event.created_at.isoformat()
                         node["version"] = int(node.get("version", 1)) + 1
