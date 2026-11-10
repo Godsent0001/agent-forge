@@ -302,7 +302,7 @@ async def update_plan_memory(
         f"ROOT OBJECTIVE (immutable): {objective[:3000]}\n"
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
-        f"RECENT CONVERSATION: {'\n'.join(history_lines)[-4500:]}\n"
+        f"RECENT CONVERSATION: {recent_history}\\n"
         f"CURRENT USER MESSAGE: {user_message[:5000]}"
     )
     try:
