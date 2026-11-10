@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
     "enabled": False,
     "provider": "gemini",
     "model": "gemini-2.5-flash-lite",
-    "max_tokens": 1400,
+    "max_tokens": 1800,
     "temperature": 0,
 }
 _ALLOWED_PROVIDERS = {
@@ -166,6 +166,11 @@ def _apply_interpretation(
         ref_to_id = {"root": task_state_id, **{node_id: node_id for node_id in existing}}
         changed = 0
         applied_changes: list[dict[str, Any]] = []
+        root_summary = _normal_text(proposal.get("root_summary"), 1800)
+        if root_summary and not plan.get("root_summary"):
+            plan["root_summary"] = root_summary
+            applied_changes.append({"kind": "root_summary_set", "text": root_summary})
+            changed += 1
         additions = proposal.get("nodes") if isinstance(proposal.get("nodes"), list) else []
         for item in additions[:12]:
             if not isinstance(item, dict) or len(nodes) >= _MAX_NODES:
@@ -214,7 +219,7 @@ def _apply_interpretation(
             applied_changes.append({"kind": "node_added", "node": node})
             changed += 1
 
-        for item in (proposal.get("dependencies") if isinstance(proposal.get("dependencies"), list) else [])[:12]:
+        for item in (proposal.get("dependencies") if isinstance(proposal.get("dependencies"), list) else [])[:16]:
             if not isinstance(item, dict):
                 continue
             node_ref = _normal_text(item.get("node_ref"), 80)
@@ -268,7 +273,7 @@ def _apply_interpretation(
                 })
                 changed += 1
 
-        for item in (proposal.get("decisions") if isinstance(proposal.get("decisions"), list) else [])[:8]:
+        for item in (proposal.get("decisions") if isinstance(proposal.get("decisions"), list) else [])[:12]:
             if not isinstance(item, dict):
                 continue
             statement = _normal_text(item.get("text"), 400)
@@ -324,6 +329,7 @@ def _apply_interpretation(
             return {"applied": False, "reason": "no_valid_changes"}
         plan.update({
             "schema_version": 1,
+            "root_summary": plan.get("root_summary", ""),
             "nodes": nodes[-_MAX_NODES:],
             "decisions": decisions[-80:],
             "constraints": constraints[-80:],
@@ -415,25 +421,25 @@ async def update_plan_memory(
         content = getattr(msg, "content", None) or (msg.get("content", "") if isinstance(msg, dict) else "")
         if role in {"user", "assistant", "tool"} and isinstance(content, str) and content.strip():
             history_lines.append(f"{role}: {content[:700]}")
-    recent_history = "\n".join(history_lines)[-4500:]
+    recent_history = "\n".join(history_lines)[-3000:]
     prompt = (
         "You are AgentForge's low-cost project-plan memory interpreter. Return JSON only. "
         "Maintain a hierarchical plan for a long-running project. The immutable root objective is "
-        "authoritative. Distinguish user-stated goals/constraints/decisions from agent-generated "
+        "authoritative. root_summary must concisely preserve the root objective and its major requirements only; never fold later corrections into it. Extract important requirements, constraints, and decisions rather than a generic summary. Distinguish user-stated goals/constraints/decisions from agent-generated "
         "execution-plan ideas. Errors are evidence/blockers, never new goals. Do not mark work complete; "
         "completion requires verified execution evidence elsewhere. Never invent user approval. "
         "Only label source='user' or authority='user' when evidence is an exact substring of the current "
         "user message. Agent-generated phases/tasks should use source='agent'. Add only meaningful deltas; "
         "avoid duplicating existing nodes. Node parent_ref must be 'root', an existing node id, or an earlier node ref from this same response. Include a unique ref on new parent nodes before their children. "
         "Allowed node types: goal, phase, subgoal, task, milestone. Keep each item concise.\n"
-        "JSON schema: {summary:string,nodes:[{ref,type,title,objective,parent_ref,source,evidence}],"
+        "JSON schema: {summary:string,root_summary:string,nodes:[{ref,type,title,objective,parent_ref,source,evidence}],"
         "decisions:[{text,authority,evidence,supersedes}],constraints:[{text,evidence}],dependencies:[{node_ref,depends_on_ref,reason}],node_updates:[{id,status,evidence}]}\n\n"
         f"ROOT OBJECTIVE (immutable): {objective[:10000]}\n"
         f"CURRENT HIERARCHY: {json.dumps(compact_nodes, ensure_ascii=False)[:6500]}\n"
         f"CURRENT DECISIONS: {json.dumps(compact_decisions, ensure_ascii=False)[:3000]}\n"
         f"CURRENT DEPENDENCIES: {json.dumps(compact_dependencies, ensure_ascii=False)[:2500]}\n"
         f"RECENT CONVERSATION: {recent_history}\\n"
-        f"CURRENT USER MESSAGE: {user_message[:10000]}"
+        f"CURRENT USER MESSAGE: {user_message[:8000]}"
     )
     try:
         if budget is not None:
@@ -481,6 +487,7 @@ def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
         )
         plan: dict[str, Any] = {
             "schema_version": 1,
+            "root_summary": "",
             "nodes": [],
             "decisions": [],
             "constraints": [],
@@ -495,7 +502,9 @@ def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
                     if not isinstance(change, dict):
                         continue
                     kind = change.get("kind")
-                    if kind == "node_added":
+                    if kind == "root_summary_set":
+                        plan["root_summary"] = _normal_text(change.get("text"), 1800)
+                    elif kind == "node_added":
                         node = change.get("node")
                         if isinstance(node, dict) and node.get("id"):
                             nodes_by_id[str(node["id"])] = dict(node)
@@ -579,6 +588,8 @@ def compile_plan_context(task_state_id: str | None) -> str:
     for node in nodes:
         by_parent.setdefault(str(node.get("parent_id") or task_state_id), []).append(node)
     lines = ["[AgentForge evolving project plan]", "Root objective is immutable; user decisions outrank agent proposals."]
+    if plan.get("root_summary"):
+        lines.append("Root objective summary: " + _normal_text(plan.get("root_summary"), 1800))
     def walk(parent: str, depth: int, seen: set[str]) -> None:
         if depth > _MAX_NODES:
             return
