@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
 from sqlalchemy.orm import sessionmaker
 
 from app import models
@@ -36,7 +38,7 @@ def _task(db_session):
 
 def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypatch):
     task = _task(db_session)
-    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: __import__("pathlib").Path("/tmp/agentforge-plan-tests"))
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
     Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
 
@@ -97,6 +99,7 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
 
 def test_agent_plan_is_kept_separate_from_accepted_user_decisions(db_session, monkeypatch):
     task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
     Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
 
