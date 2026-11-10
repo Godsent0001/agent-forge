@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 from app import models
@@ -208,3 +209,37 @@ def test_fallback_conversation_title_is_shorter_than_full_message():
     assert len(title) <= 60
     assert title != message
     assert len(title.split()) <= 8
+
+
+def test_conversation_title_uses_agent_model_and_deduplicates(db_session, monkeypatch):
+    project, agent = _project_agent(db_session)
+    agent.provider = "openai"
+    agent.model = "gpt-4o-mini"
+    db_session.commit()
+    calls = []
+
+    async def fake_complete(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(text="Payment Reconciliation Flow")
+
+    monkeypatch.setattr(conversations, "adapter_complete", fake_complete)
+    first = models.Conversation(project_id=project.id, agent_id=agent.id, title="New conversation")
+    db_session.add(first)
+    db_session.commit()
+    second = models.Conversation(project_id=project.id, agent_id=agent.id, title="New conversation")
+    db_session.add(second)
+    db_session.commit()
+
+    first_title = conversations._generate_conversation_title(
+        db_session, first, "Please help me investigate our nightly payment reconciliation failures."
+    )
+    first.title = first_title
+    db_session.commit()
+    second_title = conversations._generate_conversation_title(
+        db_session, second, "Please help me investigate a similar reconciliation problem."
+    )
+
+    assert first_title == "Payment Reconciliation Flow"
+    assert second_title == "Payment Reconciliation Flow (2)"
+    assert calls[0]["model"] == "openai/gpt-4o-mini"
+    assert calls[0]["params"].max_tokens == 40
