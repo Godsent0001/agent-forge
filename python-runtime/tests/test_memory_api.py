@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
