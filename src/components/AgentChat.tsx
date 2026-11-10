@@ -679,9 +679,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       const historyMessages = editingIndex >= 0 ? agentMessages.slice(0, editingIndex) : agentMessages;
       const history = buildRunHistory(historyMessages);
       let userMsg: ChatMessage;
-      let shouldGenerateConversationTitle = false;
+      const currentTitle = conversations.find((item) => item.id === activeConversationId)?.title ?? "";
+      const firstUserMessage = agentMessages.find((message) => message.sender === "user");
+      const normalizedFirstMessage = firstUserMessage?.text.replace(/\s+/g, " ").trim() ?? "";
+      const legacyMessageTitle = normalizedFirstMessage.length > 157
+        ? normalizedFirstMessage.slice(0, 157).trimEnd() + "…"
+        : normalizedFirstMessage;
+      const needsTitleRefresh = /^New conversation(?: \(\d+\))?$/i.test(currentTitle)
+        || (!!legacyMessageTitle && currentTitle === legacyMessageTitle);
+      let shouldGenerateConversationTitle = needsTitleRefresh;
       if (editingIndex >= 0 && editingMessageId) {
-        shouldGenerateConversationTitle = editingIndex === 0;
+        shouldGenerateConversationTitle = needsTitleRefresh || editingIndex === 0;
         const savedUser = await api.conversations.editUserMessage(editingMessageId, userText);
         userMsg = {
           id: savedUser.id,
@@ -691,8 +699,6 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         };
         setChatMessages(agent.id, [...historyMessages, userMsg]);
       } else {
-        const currentTitle = conversations.find((item) => item.id === activeConversationId)?.title ?? "";
-        shouldGenerateConversationTitle = /^New conversation(?: \(\d+\))?$/i.test(currentTitle);
         const savedUser = await api.conversations.appendMessage(activeConversationId, {
           role: "user",
           content: userText,
