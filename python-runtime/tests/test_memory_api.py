@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from sqlalchemy.orm import sessionmaker
+
 from app import models
+from app.contracts.memory import MemoryCandidate
+from app.services.memory_store import SqlMemoryStore
 
 
 def _agent(db_session):
@@ -73,3 +77,29 @@ def test_lessons_can_be_archived_restored_and_deleted(client, db_session):
     assert restored.status_code == 200
     assert restored.json()["status"] == "active"
     assert client.delete(f"/v2/agents/{agent.id}/lessons/{lesson['id']}").json() == {"deleted": True}
+
+
+@pytest.mark.asyncio
+async def test_sql_memory_store_enforces_conversation_scope(db_session):
+    project, agent = _agent(db_session)
+    conversation_a = models.Conversation(project_id=project.id, agent_id=agent.id, title="A")
+    conversation_b = models.Conversation(project_id=project.id, agent_id=agent.id, title="B")
+    db_session.add_all([conversation_a, conversation_b])
+    db_session.commit()
+
+    store = SqlMemoryStore(sessionmaker(bind=db_session.get_bind(), expire_on_commit=False))
+    await store.add(
+        agent.id,
+        [MemoryCandidate(text="User is building the Orion platform", evidence="I am building Orion")],
+        conversation_id=conversation_a.id,
+    )
+
+    isolated = await store.candidates(agent.id, "Orion platform", 10, conversation_id=conversation_b.id)
+    shared = await store.candidates(
+        agent.id, "Orion platform", 10,
+        conversation_id=conversation_b.id, include_other_conversations=True,
+    )
+
+    assert isolated == []
+    assert len(shared) == 1
+    assert shared[0].item.conversation_id == conversation_a.id
