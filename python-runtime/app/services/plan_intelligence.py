@@ -112,6 +112,16 @@ def _user_evidence_is_exact(evidence: str, user_text: str) -> bool:
     return bool(evidence and evidence.casefold() in user_text.casefold())
 
 
+def _status_matches_evidence(status: str, evidence: str) -> bool:
+    patterns = {
+        "active": r"\b(resume|continue|restart|reactivate|proceed)\b",
+        "blocked": r"\b(blocked|stuck|cannot proceed|can't proceed|unable to continue)\b",
+        "paused": r"\b(pause|paused|hold|defer)\b",
+        "superseded": r"\b(replace|supersede|discard|cancel|no longer|instead|switch from)\b",
+    }
+    return bool(re.search(patterns.get(status, r"(?!)"), evidence, re.I))
+
+
 def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_text: str) -> dict[str, Any]:
     now = _now()
     with SessionLocal() as db:
@@ -163,6 +173,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 "objective": objective,
                 "status": "active",
                 "source": source,
+                "evidence": evidence if source == "user" else "",
                 "created_at": now.isoformat(),
                 "updated_at": now.isoformat(),
                 "version": 1,
@@ -183,7 +194,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             node = existing.get(node_id)
             if not node or status not in {"active", "blocked", "paused", "superseded"}:
                 continue
-            if not _user_evidence_is_exact(evidence, user_text):
+            if not _user_evidence_is_exact(evidence, user_text) or not _status_matches_evidence(status, evidence):
                 continue
             if node.get("status") != status:
                 previous_status = node.get("status")
@@ -206,7 +217,11 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             evidence = _normal_text(item.get("evidence"), 500)
             if not statement:
                 continue
-            user_confirmed = item.get("authority") == "user" and _user_evidence_is_exact(evidence, user_text)
+            user_confirmed = (
+                item.get("authority") == "user"
+                and _user_evidence_is_exact(evidence, user_text)
+                and statement.casefold() in evidence.casefold()
+            )
             status = "accepted" if user_confirmed else "proposed"
             supersedes = _normal_text(item.get("supersedes"), 80)
             if user_confirmed and supersedes in {d.get("id") for d in decisions if isinstance(d, dict) and d.get("status") == "accepted"}:
@@ -235,7 +250,7 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
                 continue
             statement = _normal_text(item.get("text"), 300)
             evidence = _normal_text(item.get("evidence"), 500)
-            if statement and _user_evidence_is_exact(evidence, user_text) and not any(
+            if statement and _user_evidence_is_exact(evidence, user_text) and statement.casefold() in evidence.casefold() and not any(
                 c.get("text", "").casefold() == statement.casefold()
                 for c in constraints if isinstance(c, dict)
             ):
