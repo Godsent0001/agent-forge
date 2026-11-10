@@ -114,21 +114,49 @@ async def test_memory_fts_index_tracks_insert_update_and_delete(db_session):
     conversation = models.Conversation(project_id=project.id, agent_id=agent.id, title="FTS")
     db_session.add(conversation)
     db_session.commit()
+    connection = db_session.connection()
+    try:
+        connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE memory_entries_fts USING fts5("
+            "memory_id UNINDEXED, agent_id UNINDEXED, conversation_id UNINDEXED, content)"
+        )
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_ai AFTER INSERT ON memory_entries BEGIN
+                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+            END
+        """)
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_ad AFTER DELETE ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+            END
+        """)
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_au AFTER UPDATE OF content, agent_id, conversation_id ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+            END
+        """)
+    except Exception:
+        pytest.skip("SQLite build does not include FTS5")
+
     store = SqlMemoryStore(sessionmaker(bind=db_session.get_bind(), expire_on_commit=False))
     created = await store.add(
         agent.id,
         [MemoryCandidate(text="Distinctive Orion memory retrieval phrase", evidence="Orion")],
         conversation_id=conversation.id,
     )
-
-    try:
-        indexed = db_session.execute(
-            text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
-        ).fetchall()
-    except Exception:
-        pytest.skip("SQLite build does not include FTS5")
+    indexed = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
+    ).fetchall()
+    fts_hits = await store.candidates(
+        agent.id, "Orion memory", 10, conversation_id=conversation.id,
+    )
+    assert len(fts_hits) == 1
 
     assert [row[0] for row in indexed] == [created[0].id]
+    assert fts_hits[0].item.id == created[0].id
 
     row = db_session.get(models.MemoryEntry, created[0].id)
     row.content = "Distinctive Atlas memory retrieval phrase"
