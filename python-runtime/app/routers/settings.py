@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.infra.paths import data_dir
+from app.services.plan_intelligence import load_plan_memory_settings, save_plan_memory_settings
 from app.services.memory_settings import (
     cross_conversation_memory_enabled,
     save_cross_conversation_memory,
@@ -162,3 +163,28 @@ async def test_search_provider():
         logger.warning("Serper connection test failed: %s", type(exc).__name__)
         raise HTTPException(status_code=status_code, detail=message[:300]) from exc
     return {"status": "ok", "provider": "serper", "results": len(results)}
+
+
+
+@router.get("/plan-memory")
+def get_plan_memory_settings():
+    """Return cheap-LLM hierarchical plan-memory configuration without credentials."""
+    return load_plan_memory_settings()
+
+
+@router.post("/plan-memory")
+def set_plan_memory_settings(payload: dict):
+    """Configure the optional cheap model used to maintain hierarchical task memory."""
+    try:
+        result = save_plan_memory_settings(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not persist plan-memory settings.") from exc
+    logger.info(
+        "Hierarchical plan memory %s using %s/%s",
+        "enabled" if result["enabled"] else "disabled",
+        result["provider"],
+        result["model"],
+    )
+    return {"status": "ok", **result}
