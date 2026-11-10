@@ -84,9 +84,11 @@ def test_cancel_prevents_future_claims_and_completion(tmp_path):
     claimed = queue.claim(worker_id="worker")
     assert claimed
     assert queue.cancel(job.id) is True
+    assert queue.is_cancelled(job.id) is True
     assert queue.complete(job.id, "worker", {"ok": True}) is False
     assert queue.claim(worker_id="another-worker") is None
     assert queue.get(job.id).status == "cancelled"
+    assert queue.is_cancelled("missing-job") is True
 
 
 def test_process_one_validates_batch_size(tmp_path):
