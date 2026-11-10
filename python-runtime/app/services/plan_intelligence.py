@@ -573,6 +573,8 @@ def compile_plan_context(task_state_id: str | None) -> str:
         logger.exception("Could not load hierarchical plan context")
         return ""
     nodes = [n for n in (plan.get("nodes") or []) if isinstance(n, dict)]
+    if not nodes and not plan.get("decisions") and not plan.get("constraints") and not plan.get("dependencies"):
+        return ""
     by_parent: dict[str, list[dict[str, Any]]] = {}
     for node in nodes:
         by_parent.setdefault(str(node.get("parent_id") or task_state_id), []).append(node)
