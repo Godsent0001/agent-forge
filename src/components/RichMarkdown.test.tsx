@@ -8,7 +8,7 @@ const markdown = (...lines: string[]) => lines.join(String.fromCharCode(10));
 describe("RichMarkdown", () => {
   it("renders Mermaid flowchart nodes and connections as an SVG diagram", () => {
     render(<RichMarkdown content={markdown(fence + "mermaid", "flowchart TD", "  A[Inspect files] --> B[Verify output]", fence)} />);
-    expect(screen.getByRole("img", { name: "Rendered Mermaid flowchart" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Rendered Mermaid flowchart" })).toBeTruthy();
     expect(screen.getByText("Inspect files")).toBeTruthy();
     expect(screen.getByText("Verify output")).toBeTruthy();
     expect(screen.getByText(/2 nodes · 1 connections/)).toBeTruthy();
@@ -16,13 +16,13 @@ describe("RichMarkdown", () => {
 
   it("renders Mermaid xychart-beta data as a chart", () => {
     render(<RichMarkdown content={markdown(fence + "mermaid", "xychart-beta", '  title "Monthly sales"', '  x-axis ["Jan", "Feb"]', "  bar [12, 19]", fence)} />);
-    expect(screen.getByRole("img", { name: "Monthly sales" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Monthly sales" })).toBeTruthy();
     expect(screen.getByText("Monthly sales")).toBeTruthy();
   });
 
   it("renders Mermaid sequence diagrams", () => {
     render(<RichMarkdown content={markdown(fence + "mermaid", "sequenceDiagram", "  participant U as User", "  participant A as Agent", "  U->>A: Inspect file", "  A-->>U: Verify output", fence)} />);
-    expect(screen.getByRole("img", { name: "Rendered Mermaid sequence diagram" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Rendered Mermaid sequence diagram" })).toBeTruthy();
     expect(screen.getByText(/2 participants · 2 messages/)).toBeTruthy();
   });
 
@@ -37,7 +37,7 @@ describe("RichMarkdown", () => {
     render(<RichMarkdown content={markdown(fence + "typescript", "const answer = 42;", fence)} />);
     fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("const answer = 42;"));
-    expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+    expect((await screen.findByRole("status")).textContent).toBe("Copied");
   });
 
   it("provides copy controls for rendered Mermaid diagrams", async () => {
@@ -54,7 +54,7 @@ describe("RichMarkdown", () => {
 
   it("renders structured chart JSON from a chart code fence", () => {
     render(<RichMarkdown content={markdown(fence + "chart", '{"type":"line","title":"Revenue","labels":["Q1","Q2"],"values":[10,15]}', fence)} />);
-    expect(screen.getByRole("img", { name: "Revenue" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Revenue" })).toBeTruthy();
     expect(screen.getByText("Revenue")).toBeTruthy();
   });
 });
