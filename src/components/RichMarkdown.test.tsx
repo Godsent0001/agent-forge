@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { RichMarkdown } from "./RichMarkdown";
 
 const fence = String.fromCharCode(96).repeat(3);
@@ -24,6 +24,32 @@ describe("RichMarkdown", () => {
     render(<RichMarkdown content={markdown(fence + "mermaid", "sequenceDiagram", "  participant U as User", "  participant A as Agent", "  U->>A: Inspect file", "  A-->>U: Verify output", fence)} />);
     expect(screen.getByRole("img", { name: "Rendered Mermaid sequence diagram" })).toBeTruthy();
     expect(screen.getByText(/2 participants · 2 messages/)).toBeTruthy();
+  });
+
+
+
+  it("copies code blocks and confirms the copy action", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<RichMarkdown content={markdown(fence + "typescript", "const answer = 42;", fence)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("const answer = 42;"));
+    expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+  });
+
+  it("provides copy controls for rendered Mermaid diagrams", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const source = markdown(fence + "mermaid", "flowchart TD", "A[Start] --> B[Finish]", fence);
+    render(<RichMarkdown content={source} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy block" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("flowchart TD\\nA[Start] --> B[Finish]"));
   });
 
   it("renders structured chart JSON from a chart code fence", () => {
