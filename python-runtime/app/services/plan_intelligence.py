@@ -459,6 +459,97 @@ async def update_plan_memory(
         return {"applied": False, "reason": "interpreter_error"}
 
 
+def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
+    """Reconstruct the current hierarchy from its append-only task events."""
+    with SessionLocal() as db:
+        row = db.get(models.TaskState, task_state_id)
+        if row is None:
+            return {"rebuilt": False, "reason": "task_missing"}
+        events = (
+            db.query(models.TaskStateEvent)
+            .filter(models.TaskStateEvent.task_state_id == task_state_id)
+            .order_by(models.TaskStateEvent.created_at.asc(), models.TaskStateEvent.id.asc())
+            .all()
+        )
+        plan: dict[str, Any] = {
+            "schema_version": 1,
+            "nodes": [],
+            "decisions": [],
+            "constraints": [],
+            "dependencies": [],
+        }
+        nodes_by_id: dict[str, dict[str, Any]] = {}
+        decisions_by_id: dict[str, dict[str, Any]] = {}
+        for event in events:
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            if event.event_type == "plan_memory_updated":
+                for change in payload.get("changes", []):
+                    if not isinstance(change, dict):
+                        continue
+                    kind = change.get("kind")
+                    if kind == "node_added":
+                        node = change.get("node")
+                        if isinstance(node, dict) and node.get("id"):
+                            nodes_by_id[str(node["id"])] = dict(node)
+                    elif kind == "node_status_changed":
+                        node = nodes_by_id.get(str(change.get("node_id")))
+                        if node:
+                            node["status"] = change.get("to", node.get("status"))
+                            node["updated_at"] = event.created_at.isoformat()
+                            node["version"] = int(node.get("version", 1)) + 1
+                    elif kind == "decision_added":
+                        decision = change.get("decision")
+                        if isinstance(decision, dict) and decision.get("id"):
+                            decisions_by_id[str(decision["id"])] = dict(decision)
+                    elif kind == "decision_superseded":
+                        decision = decisions_by_id.get(str(change.get("decision_id")))
+                        if decision:
+                            decision["status"] = "superseded"
+                            decision["superseded_by"] = change.get("replacement", "")
+                    elif kind == "constraint_added":
+                        constraint = change.get("constraint")
+                        if isinstance(constraint, dict) and constraint.get("id"):
+                            plan["constraints"].append(dict(constraint))
+                    elif kind == "dependency_added":
+                        dependency = change.get("dependency")
+                        if isinstance(dependency, dict) and dependency.get("id"):
+                            plan["dependencies"].append(dict(dependency))
+            elif event.event_type == "agent_state_update":
+                for completed in payload.get("plan_nodes_completed", []):
+                    if not isinstance(completed, dict):
+                        continue
+                    node = nodes_by_id.get(str(completed.get("node_id")))
+                    if node:
+                        node["status"] = "completed"
+                        node["verified_by_execution_id"] = event.source_execution_id
+                        node["updated_at"] = event.created_at.isoformat()
+                        node["version"] = int(node.get("version", 1)) + 1
+
+        plan["nodes"] = list(nodes_by_id.values())[-_MAX_NODES:]
+        plan["decisions"] = list(decisions_by_id.values())[-80:]
+        plan["dependencies"] = plan["dependencies"][-300:]
+        plan["updated_at"] = events[-1].created_at.isoformat() if events else _now().isoformat()
+        state = dict(row.state_json or {})
+        state["plan"] = plan
+        row.state_json = state
+        row.version += 1
+        row.updated_at = _now()
+        db.commit()
+        try:
+            from app.services.task_memory import _write_projection
+            _write_projection(db, row)
+        except Exception:
+            logger.exception("Could not refresh task projection after plan-history rebuild")
+        return {
+            "rebuilt": True,
+            "events_replayed": len(events),
+            "nodes": len(plan["nodes"]),
+            "decisions": len(plan["decisions"]),
+            "constraints": len(plan["constraints"]),
+            "dependencies": len(plan["dependencies"]),
+        }
+
+
 def compile_plan_context(task_state_id: str | None) -> str:
     """Compile the current hierarchy into a bounded working-context block."""
     if not task_state_id:
