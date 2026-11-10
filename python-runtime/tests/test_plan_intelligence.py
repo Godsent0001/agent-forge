@@ -64,14 +64,14 @@ def test_user_evidence_is_required_for_binding_plan_changes(db_session, monkeypa
             ],
             "decisions": [
                 {
-                    "text": "PostgreSQL is the primary database.",
+                    "text": "Use PostgreSQL for the primary database.",
                     "authority": "user",
                     "evidence": "Use PostgreSQL for the primary database.",
                 }
             ],
             "constraints": [
                 {
-                    "text": "The database must be PostgreSQL.",
+                    "text": "Use PostgreSQL for the primary database.",
                     "evidence": "Use PostgreSQL for the primary database.",
                 }
             ],
