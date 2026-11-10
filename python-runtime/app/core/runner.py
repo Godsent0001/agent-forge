@@ -54,6 +54,7 @@ from app.core.tools.workspace_capabilities import (
     WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
+from app.routers.settings import cross_conversation_memory_enabled
 from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
@@ -449,6 +450,8 @@ class RunnerCore:
                             agent_id=spec.id,
                             query=task,
                             recall_budget_tokens=req.options.memory.recall_budget_tokens,
+                            conversation_id=req.conversation_id,
+                            include_other_conversations=cross_conversation_memory_enabled(),
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
@@ -1563,6 +1566,7 @@ class RunnerCore:
                 execution_id=req.execution_id,
                 store=memory,
                 llm_complete_fn=llm_fn,
+                conversation_id=req.conversation_id,
             )
 
 
