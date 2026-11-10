@@ -14,6 +14,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    print("[migration 0006] adding conversation_id column", flush=True)
     op.add_column(
         "memory_entries",
         sa.Column(
@@ -23,11 +24,13 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
+    print("[migration 0006] conversation_id column added; creating index", flush=True)
     op.create_index(
         "ix_memory_entries_conversation_id",
         "memory_entries",
         ["conversation_id"],
     )
+    print("[migration 0006] complete", flush=True)
 
 
 def downgrade() -> None:
