@@ -55,8 +55,10 @@ logger = logging.getLogger("agentforge")
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database at %s", DB_PATH)
     init_db()
+    logger.info("Database migrations completed.")
     from app.infra.attachment_storage import cleanup_stale_upload_parts
-    cleanup_stale_upload_parts()
+    removed_parts = cleanup_stale_upload_parts()
+    logger.info("Upload staging cleanup completed; removed %s stale parts.", removed_parts)
     interrupted = manager.mark_running_interrupted()
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
