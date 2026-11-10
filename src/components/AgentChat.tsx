@@ -695,7 +695,7 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
         setChatMessages(agent.id, [...historyMessages, userMsg]);
       } else {
         const currentTitle = conversations.find((item) => item.id === activeConversationId)?.title ?? "";
-        const needsTitleRefresh = /^New conversation(?: \\(\\d+\\))?$/i.test(currentTitle);
+        const needsTitleRefresh = /^New conversation(?: \(\d+\))?$/i.test(currentTitle);
         const savedUser = await api.conversations.appendMessage(activeConversationId, {
           role: "user",
           content: userText,
