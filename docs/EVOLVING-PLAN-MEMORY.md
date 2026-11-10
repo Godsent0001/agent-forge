@@ -32,10 +32,10 @@ The interpreter is deliberately small and bounded:
 The cheap model proposes structured deltas; it never writes directly to SQLite.
 
 - The root objective is immutable.
-- A user-authored goal or constraint is accepted only when the supplied evidence is an exact substring of the current user message.
-- A user decision is marked accepted only with exact user-message evidence. Other decisions remain proposals and are explicitly labelled non-binding.
+- A user-authored goal or constraint is accepted only when the supplied evidence is an exact substring of a stored user-authored message for that workstream. The main task-memory tool applies the same exact-match rule before a decision or constraint enters the binding user state.
+- A user decision is marked accepted only when its text appears verbatim in exact user-message evidence. Other decisions remain proposals and are explicitly labelled non-binding.
 - Agent-generated phases/tasks are stored as agent-owned execution-plan nodes, separate from user goals. The main agent can add its own execution-plan nodes and prerequisite edges through the existing execution-bound task-memory tool at meaningful checkpoints; the cheap interpreter continuously reconciles later user and execution evidence into that same hierarchy.
-- A plan node can be paused, blocked, reactivated, or superseded only when the model supplies exact user-message evidence.
+- A user-owned plan node can be paused, blocked, reactivated, or superseded only with exact evidence from a user-authored message. Agent-owned execution nodes can be updated using exact evidence from recent tool results or conversation history, but cannot be marked complete by the interpreter.
 - The interpreter cannot mark work complete. The execution-bound task-state update tool may complete a matching hierarchy node only when it records a verified milestone; it stores the execution ID on that node and in the append-only event payload.
 - When a user explicitly changes a decision, the interpreter can identify the prior decision it supersedes; the event log preserves both the old decision and the replacement.
 - Errors are treated as evidence/blockers, not new objectives.
