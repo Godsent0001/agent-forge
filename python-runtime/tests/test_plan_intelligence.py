@@ -198,3 +198,25 @@ def test_plan_memory_settings_validate_and_persist_custom_model(tmp_path, monkey
         pass
     else:
         raise AssertionError("Unsupported providers must be rejected.")
+
+
+
+def test_plan_memory_settings_api(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(plan_intelligence, "_config_path", lambda: tmp_path / "plan_memory_settings.json")
+    initial = client.get("/settings/plan-memory")
+    assert initial.status_code == 200
+    assert initial.json()["enabled"] is False
+
+    response = client.post(
+        "/settings/plan-memory",
+        json={"enabled": True, "provider": "gemini", "model": "gemini-2.5-flash-lite"},
+    )
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
+    assert response.json()["model"] == "gemini-2.5-flash-lite"
+
+    invalid = client.post(
+        "/settings/plan-memory",
+        json={"enabled": True, "provider": "not-a-provider", "model": "bad model"},
+    )
+    assert invalid.status_code == 422
