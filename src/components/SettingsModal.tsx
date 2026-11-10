@@ -23,7 +23,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [isBusy, setIsBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "memory" | "system" | "usage">("keys");
   const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
-  const [crossConversationMemory, setCrossConversationMemory] = useState(false);\n  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(false);\n  const [planMemoryProvider, setPlanMemoryProvider] = useState("gemini");\n  const [planMemoryModel, setPlanMemoryModel] = useState("gemini-2.5-flash-lite");
+  const [crossConversationMemory, setCrossConversationMemory] = useState(false);
+  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(false);
+  const [planMemoryProvider, setPlanMemoryProvider] = useState("gemini");
+  const [planMemoryModel, setPlanMemoryModel] = useState("gemini-2.5-flash-lite");
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -42,6 +45,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     void api.settings.getMemorySettings()
       .then((value) => setCrossConversationMemory(value.cross_conversation_enabled))
       .catch(() => setStatus({ tone: "error", text: "Could not load memory settings." }));
+    void api.settings.getPlanMemorySettings()
+      .then((value) => { setPlanMemoryEnabled(value.enabled); setPlanMemoryProvider(value.provider); setPlanMemoryModel(value.model); })
+      .catch(() => setStatus({ tone: "error", text: "Could not load hierarchical plan-memory settings." }));
   }, [refresh]);
 
   const pending = Object.entries(drafts).filter(([, value]) => value.trim().length > 0);
