@@ -470,6 +470,20 @@ def compile_plan_context(task_state_id: str | None) -> str:
             )
             walk(node_id, depth + 1, seen)
     walk(task_state_id, 0, set())
+    node_titles = {
+        str(node.get("id")): _normal_text(node.get("title"), 120)
+        for node in nodes
+    }
+    dependencies = [
+        edge for edge in (plan.get("dependencies") or []) if isinstance(edge, dict)
+    ]
+    if dependencies:
+        lines.append("Dependencies (a node depends on its prerequisite):")
+        for edge in dependencies[-20:]:
+            dependent = node_titles.get(str(edge.get("node_id")), "unknown task")
+            prerequisite = node_titles.get(str(edge.get("depends_on_id")), "unknown task")
+            reason = _normal_text(edge.get("reason"), 160)
+            lines.append(f"- {dependent} depends on {prerequisite}" + (f": {reason}" if reason else ""))
     accepted = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "accepted"]
     proposed = [d for d in (plan.get("decisions") or []) if isinstance(d, dict) and d.get("status") == "proposed"]
     if accepted:
