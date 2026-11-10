@@ -98,7 +98,7 @@ def _unique_conversation_title(db: Session, conversation: models.Conversation, c
         if unique.casefold() not in existing:
             return unique
     # A UUID fragment makes this path safe even in an unusually large collision set.
-    return f"{base[:140].rstrip()} ({conversation.id[:8]})"
+    return f"{base[:140].rstrip()} ({str(conversation.id or "new")[:8]})"
 
 
 def _generate_conversation_title(
@@ -131,7 +131,13 @@ def _generate_conversation_title(
             generated = (turn.text or "").strip().strip("\"'").strip()
             generated = re.sub(r"^(?:title|conversation title)\s*:\s*", "", generated, flags=re.IGNORECASE)
             generated = re.sub(r"\s+", " ", generated).strip(" .,:;!?-")
-            if generated and len(generated) <= 60 and len(generated.split()) <= 9:
+            if (
+                generated
+                and generated.casefold() not in {"new conversation", "conversation", "chat", "untitled"}
+                and generated.casefold() != re.sub(r"\\s+", " ", first_message).strip().casefold()
+                and len(generated) <= 60
+                and len(generated.split()) <= 9
+            ):
                 candidate = generated
         except Exception:
             logger.warning("Conversation title generation failed; using concise fallback", exc_info=True)
