@@ -271,6 +271,11 @@ def _apply_interpretation(task_state_id: str, proposal: dict[str, Any], user_tex
             created_at=now,
         ))
         db.commit()
+        try:
+            from app.services.task_memory import _write_projection
+            _write_projection(db, row)
+        except Exception:
+            logger.exception("Could not refresh task-memory projection after plan update")
         return {"applied": True, "changes": changed, "nodes": len(nodes)}
 
 
