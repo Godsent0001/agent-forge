@@ -55,6 +55,7 @@ from app.core.tools.workspace_capabilities import (
 )
 from app.infra.paths import project_dir
 from app.services.memory_settings import cross_conversation_memory_enabled
+from app.services.plan_intelligence import compile_plan_context, update_plan_memory
 from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
@@ -472,6 +473,26 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
+                task_state_block = req.task_state_context if depth == 0 else ""
+                if depth == 0 and req.task_state_id:
+                    try:
+                        await update_plan_memory(
+                            req.task_state_id,
+                            req.task,
+                            history,
+                            budget=budget,
+                        )
+                        plan_context = await asyncio.to_thread(
+                            compile_plan_context, req.task_state_id
+                        )
+                        if plan_context:
+                            task_state_block = "\\n\\n".join(
+                                part for part in (task_state_block, plan_context) if part
+                            )
+                    except Exception:
+                        # Plan maintenance is advisory and must never block the main run.
+                        logger.exception("Hierarchical plan-memory update failed")
+
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -479,7 +500,7 @@ class RunnerCore:
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
                     history_summary_block=history_summary,
-                    task_state_block=req.task_state_context if depth == 0 else "",
+                    task_state_block=task_state_block,
                 )
 
                 # Keep the workspace contract explicit in every agent context so the
