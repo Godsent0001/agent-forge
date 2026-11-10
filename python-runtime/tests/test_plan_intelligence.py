@@ -317,3 +317,43 @@ def test_optional_memory_call_reserves_primary_execution_budget():
         elapsed_seconds=0.0,
     )
     assert not plan_intelligence._budget_allows_memory_call(budget, "Plan update", 1800)
+
+
+
+def test_working_context_prioritizes_active_and_recent_nodes(db_session, monkeypatch):
+    task = _task(db_session)
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+    with Session() as db:
+        row = db.get(models.TaskState, task.id)
+        archived = [
+            {
+                "id": f"archived-{index}",
+                "parent_id": task.id,
+                "type": "task",
+                "title": f"Archived task {index}",
+                "status": "completed",
+                "source": "agent",
+                "created_at": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+                "updated_at": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+            }
+            for index in range(30)
+        ]
+        current = {
+            "id": "current-task",
+            "parent_id": task.id,
+            "type": "phase",
+            "title": "Current payment reconciliation",
+            "objective": "Finish the active payment flow.",
+            "status": "active",
+            "source": "agent",
+            "created_at": "2026-11-10T00:00:00+00:00",
+            "updated_at": "2026-11-10T00:00:00+00:00",
+        }
+        row.state_json = {**row.state_json, "plan": {"nodes": archived + [current]}}
+        db.commit()
+
+    context = plan_intelligence.compile_plan_context(task.id)
+    assert "Current payment reconciliation" in context
+    assert "id=current-task" in context
+    assert "Archived task 0" not in context
