@@ -771,9 +771,15 @@ class RunnerCore:
                         ))
                     try:
                         if req.options.parallel_tools and len(tool_call_tuples) > 1:
-                            results = await asyncio.gather(
-                                *[
-                                    self._execute_single_tool(
+                            # Parallel mode means overlap, not unlimited process fan-out.
+                            # A model can return many tool calls in one turn; cap the
+                            # number actively executing so browser/shell/Python tools
+                            # cannot exhaust a desktop's CPU and memory.
+                            tool_semaphore = asyncio.Semaphore(2)
+
+                            async def execute_parallel_tool(tc):
+                                async with tool_semaphore:
+                                    return await self._execute_single_tool(
                                         tc=tc,
                                         spec=spec,
                                         graph=graph,
@@ -793,8 +799,9 @@ class RunnerCore:
                                         budget=budget,
                                         active_agent_ids=active_agent_ids,
                                     )
-                                    for tc in tool_call_tuples
-                                ],
+
+                            results = await asyncio.gather(
+                                *(execute_parallel_tool(tc) for tc in tool_call_tuples),
                                 return_exceptions=True,
                             )
                             for tc, res in zip(tool_call_tuples, results):
