@@ -43,8 +43,6 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
             for line in process.stdout:
                 lines.put(line)
         finally:
-            # Explicit EOF notification prevents the test from racing the
-            # reader thread when the child exits immediately after shutdown.
             lines.put(None)
 
     reader = threading.Thread(target=read_output, name="runtime-test-stdout", daemon=True)
@@ -63,12 +61,12 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
             if line is None:
                 break
             captured.append(line)
-            match = re.search(r"AGENTFORGE_READY:(\\d+)", line)
+            match = re.search(r"AGENTFORGE_READY:(\d+)", line)
             if match:
                 ready_port = int(match.group(1))
                 break
 
-        assert ready_port, "runtime never became ready; output:\\n" + "".join(captured[-40:])
+        assert ready_port, "runtime never became ready; output:\n" + "".join(captured[-40:])
         with urllib.request.urlopen(f"http://127.0.0.1:{ready_port}/health", timeout=3) as response:
             assert response.status == 200
             assert json.loads(response.read().decode("utf-8"))["status"] == "ok"
@@ -84,8 +82,6 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         process.stdin.close()
         assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
 
-        # Wait for the stdout reader's explicit EOF sentinel before draining;
-        # joining for an arbitrary short interval can lose final lifespan logs.
         reader.join(timeout=5)
         assert not reader.is_alive(), "runtime stdout reader did not finish after child exit"
         while True:
@@ -93,12 +89,11 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
                 line = lines.get_nowait()
             except queue.Empty:
                 break
-            if line is None:
-                continue
-            captured.append(line)
+            if line is not None:
+                captured.append(line)
 
         assert "AgentForge runtime shutdown complete." in "".join(captured), (
-            "runtime exited without completing FastAPI lifespan cleanup; output:\\n"
+            "runtime exited without completing FastAPI lifespan cleanup; output:\n"
             + "".join(captured[-40:])
         )
     finally:
