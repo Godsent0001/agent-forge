@@ -605,6 +605,16 @@ class RunnerCore:
                 reply_user_spec = next((item for item in all_tool_specs if item.name == "agentforge_reply_user"), None)
                 if reply_user_spec and all(item.name != "agentforge_reply_user" for item in native_tool_specs):
                     native_tool_specs.append(reply_user_spec)
+                # Transcript retrieval is a core memory capability, not an optional
+                # task-selected tool: keep it available when the model needs older context.
+                conversation_memory_spec = next(
+                    (item for item in all_tool_specs if item.name.startswith("conversation_memory")),
+                    None,
+                )
+                if conversation_memory_spec and all(
+                    item.name != conversation_memory_spec.name for item in native_tool_specs
+                ):
+                    native_tool_specs.append(conversation_memory_spec)
                 task_state_spec = next(
                     (item for item in all_tool_specs if item.name == task_state_tool_name),
                     None,
