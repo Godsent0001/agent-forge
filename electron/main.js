@@ -17,6 +17,7 @@ let mainWindow = null;
 let pythonProcess = null;
 let backendPort = null;
 let stoppingBackend = false;
+let backendStopPromise = null;
 let appQuitting = false;
 let restartTimer = null;
 const restartHistory = [];
@@ -322,11 +323,11 @@ function startPythonBackend() {
 }
 
 function stopPythonBackend() {
+  if (backendStopPromise) return backendStopPromise;
   const child = pythonProcess;
   if (!child) return Promise.resolve();
-  if (stoppingBackend) return Promise.resolve();
   stoppingBackend = true;
-  return new Promise((resolve) => {
+  backendStopPromise = new Promise((resolve) => {
     let finished = false;
     let killTimer;
     let finalTimer;
@@ -337,6 +338,7 @@ function stopPythonBackend() {
       clearTimeout(finalTimer);
       if (pythonProcess === child) pythonProcess = null;
       stoppingBackend = false;
+      backendStopPromise = null;
       resolve();
     };
     child.once("exit", finish);
@@ -463,7 +465,7 @@ app.on("before-quit", (event) => {
   appQuitting = true;
   if (restartTimer) clearTimeout(restartTimer);
   restartTimer = null;
-  if (!gotSingleInstanceLock || !pythonProcess || stoppingBackend) return;
+  if (!gotSingleInstanceLock || !pythonProcess) return;
   event.preventDefault();
   void stopPythonBackend().finally(() => app.exit(0));
 });
