@@ -22,6 +22,29 @@ _BROWSER_SESSION_EXPIRY: dict[str, asyncio.Task] = {}
 _BROWSER_SESSION_LOCK = asyncio.Lock()
 
 
+async def _close_browser_resources(playwright: Any, browser: Any) -> None:
+    """Close Chromium and its Playwright driver even if the caller is cancelled."""
+    async def close() -> None:
+        try:
+            await asyncio.wait_for(browser.close(), timeout=3)
+        except Exception:
+            pass
+        try:
+            # Stopping Playwright also tears down its driver process if Chromium's
+            # graceful close timed out or failed.
+            await asyncio.wait_for(playwright.stop(), timeout=5)
+        except Exception:
+            pass
+
+    cleanup = asyncio.create_task(close())
+    try:
+        await asyncio.shield(cleanup)
+    except asyncio.CancelledError:
+        # Do not let a second cancellation strand Chromium/Node child processes.
+        await cleanup
+        raise
+
+
 async def close_browser_session(execution_id: str) -> None:
     async with _BROWSER_SESSION_LOCK:
         expiry = _BROWSER_SESSION_EXPIRY.pop(execution_id, None)
@@ -34,14 +57,7 @@ async def close_browser_session(execution_id: str) -> None:
         return
 
     playwright, browser, _page = session
-    try:
-        await asyncio.wait_for(browser.close(), timeout=3)
-    except Exception:
-        pass
-    try:
-        await asyncio.wait_for(playwright.stop(), timeout=3)
-    except Exception:
-        pass
+    await _close_browser_resources(playwright, browser)
 
 
 async def close_all_browser_sessions() -> None:
@@ -266,10 +282,7 @@ class BrowserTool(Tool):
                 _BROWSER_SESSION_EXPIRY.pop(execution_id, None)
             if session:
                 playwright, browser, _page = session
-                try:
-                    await asyncio.wait_for(browser.close(), timeout=3)
-                finally:
-                    await asyncio.wait_for(playwright.stop(), timeout=3)
+                await _close_browser_resources(playwright, browser)
         except asyncio.CancelledError:
             raise
         except Exception:
