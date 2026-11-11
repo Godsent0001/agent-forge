@@ -132,6 +132,16 @@ def health() -> dict:
     return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "v2")}
 
 
+@app.post("/internal/shutdown")
+async def shutdown_runtime() -> dict:
+    """Authenticated parent-process shutdown request; let Uvicorn run lifespan cleanup."""
+    request_shutdown = getattr(app.state, "request_shutdown", None)
+    if request_shutdown is None:
+        raise HTTPException(status_code=503, detail="Runtime shutdown is not available")
+    request_shutdown()
+    return {"status": "shutting_down"}
+
+
 def _watch_parent_exit(request_shutdown) -> None:
     """Ask Uvicorn to shut down when Electron closes its ownership pipe."""
     if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
@@ -192,6 +202,7 @@ def main() -> None:
             def request_shutdown() -> None:
                 loop.call_soon_threadsafe(setattr, server, "should_exit", True)
 
+            app.state.request_shutdown = request_shutdown
             _watch_parent_exit(request_shutdown)
             task = asyncio.create_task(server.serve(sockets=[sock]))
             while not server.started and not task.done():
