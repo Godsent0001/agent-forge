@@ -592,14 +592,15 @@ class ExecutionManager:
                         logger.exception("Execution task failed during shutdown")
             if pending:
                 logger.error(
-                    "Runtime shutdown timed out waiting for %s execution task(s); "
-                    "issuing a final cancellation.",
+                    "Runtime shutdown is still waiting for %s execution task(s); "
+                    "continuing with global resource cleanup.",
                     len(pending),
                 )
-                for task in pending:
-                    task.cancel()
-                # Never await an unbounded gather here: one broken tool must not
-                # keep the sidecar alive forever during application exit.
+                # Do not cancel these tasks a second time. A repeated Task.cancel()
+                # can interrupt an already-running finally block (for example,
+                # browser.close() or subprocess-tree termination) and orphan the
+                # very processes shutdown is trying to release. The bounded global
+                # cleanup below handles process registries independently.
                 await asyncio.wait(pending, timeout=2.0)
 
         try:
