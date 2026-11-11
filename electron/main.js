@@ -550,6 +550,15 @@ if (gotSingleInstanceLock) {
   });
 }
 
+ipcMain.handle("log-renderer-error", (event, message, componentStack) => {
+  if (!trustedIpc(event)) throw new Error("Untrusted IPC sender");
+  desktopLog("error", "React renderer error", {
+    message: String(message ?? "Unknown renderer error").slice(0, 2000),
+    componentStack: String(componentStack ?? "").slice(0, 6000),
+  });
+  return true;
+});
+
 ipcMain.handle("get-api-token", (event) => trustedIpc(event) ? apiToken : "");
 ipcMain.handle("get-backend-port", async (event) => {
   if (!trustedIpc(event)) throw new Error("Untrusted IPC sender");
