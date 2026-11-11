@@ -423,6 +423,21 @@ class ExecutionManager:
                         tools=_NoopTools(),
                     )
             finally:
+                # BrowserTool instances are scoped to an agent invocation, but
+                # Chromium sessions are process resources. Close the execution's
+                # session immediately instead of leaving it alive for its idle TTL.
+                try:
+                    from app.tools.browser import close_browser_session
+
+                    await asyncio.wait_for(
+                        close_browser_session(req.execution_id),
+                        timeout=8,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not close browser session for execution %s",
+                        req.execution_id,
+                    )
                 workspace.cleanup()
 
             status = result.status
@@ -557,20 +572,40 @@ class ExecutionManager:
     async def shutdown(self) -> None:
         from app.tools.shell_sessions import shell_sessions
 
-        await shell_sessions.stop_all()
+        # Cancel active executions first so their own finally blocks can stop
+        # one-shot subprocesses and release browser sessions before terminal
+        # sessions and preview servers are torn down.
         tasks = list(self.active.values())
-        for token in self.tokens.values():
+        for token in tuple(self.tokens.values()):
             token.cancel()
         for task in tasks:
-            task.cancel()
+            if not task.done():
+                task.cancel()
+
         if tasks:
-            done, pending = await asyncio.wait(tasks, timeout=3.0)
+            done, pending = await asyncio.wait(tasks, timeout=5.0)
+            for task in done:
+                if not task.cancelled():
+                    try:
+                        task.exception()
+                    except Exception:
+                        logger.exception("Execution task failed during shutdown")
             if pending:
+                logger.error(
+                    "Runtime shutdown timed out waiting for %s execution task(s); "
+                    "issuing a final cancellation.",
+                    len(pending),
+                )
                 for task in pending:
                     task.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
-            if done:
-                await asyncio.gather(*done, return_exceptions=True)
+                # Never await an unbounded gather here: one broken tool must not
+                # keep the sidecar alive forever during application exit.
+                await asyncio.wait(pending, timeout=2.0)
+
+        try:
+            await asyncio.wait_for(shell_sessions.stop_all(), timeout=8.0)
+        except asyncio.TimeoutError:
+            logger.error("Timed out while stopping persistent shell sessions")
 
 
 class _NoopApprovals:
