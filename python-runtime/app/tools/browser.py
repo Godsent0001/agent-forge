@@ -187,7 +187,7 @@ class BrowserTool(Tool):
                 "Playwright is not installed in this runtime. Reinstall AgentForge with its bundled browser runtime."
             ) from exc
 
-        async with _BROWSER_SESSION_LOCK
+        async with _BROWSER_SESSION_LOCK:
             session = _BROWSER_SESSIONS.get(execution_id)
             if session is None:
                 if len(_BROWSER_SESSIONS) >= MAX_BROWSER_SESSIONS:
