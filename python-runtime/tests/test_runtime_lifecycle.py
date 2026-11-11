@@ -78,10 +78,18 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         else:
             raise AssertionError("protected route unexpectedly accepted a request without a token")
 
-        assert process.stdin is not None
-        process.stdin.write("AGENTFORGE_SHUTDOWN\n")
-        process.stdin.flush()
-        process.stdin.close()
+        shutdown_request = urllib.request.Request(
+            f"http://127.0.0.1:{ready_port}/internal/shutdown",
+            data=b"{}",
+            headers={
+                "Authorization": "Bearer runtime-lifecycle-test-token",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(shutdown_request, timeout=3) as response:
+            assert response.status == 200
+            assert json.loads(response.read().decode("utf-8"))["status"] == "shutting_down"
         assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
 
         reader.join(timeout=5)
