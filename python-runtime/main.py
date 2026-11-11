@@ -61,12 +61,22 @@ async def lifespan(app: FastAPI):
     logger.info("Upload staging cleanup completed; removed %s stale parts.", removed_parts)
     interrupted = manager.mark_running_interrupted()
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
-    yield
-    await manager.shutdown()
-    from app.tools.browser import close_all_browser_sessions
-    await close_all_browser_sessions()
-    await asyncio.to_thread(preview_manager.shutdown)
-    logger.info("AgentForge runtime shutdown complete.")
+    try:
+        yield
+    finally:
+        # Every resource registry must get a cleanup attempt even if one subsystem
+        # fails. Preserve the first exception while allowing later cleanup to run.
+        try:
+            await manager.shutdown()
+        finally:
+            try:
+                from app.tools.browser import close_all_browser_sessions
+                await close_all_browser_sessions()
+            finally:
+                try:
+                    await asyncio.to_thread(preview_manager.shutdown)
+                finally:
+                    logger.info("AgentForge runtime shutdown complete.")
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
@@ -137,6 +147,7 @@ def _watch_parent_exit(request_shutdown) -> None:
             logger.exception("Parent watchdog could not read the Electron ownership pipe")
         finally:
             try:
+                logger.info("Parent ownership pipe closed; requesting graceful runtime shutdown.")
                 request_shutdown()
             except RuntimeError:
                 logger.exception("Parent watchdog could not request runtime shutdown")
@@ -165,7 +176,12 @@ def main() -> None:
         sock.listen()
         port = int(sock.getsockname()[1])
         os.environ["AGENTFORGE_PORT"] = str(port)
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", access_log=False)
+        # Do not rely on Uvicorn's auto-detection for application cleanup:
+        # FastAPI lifespan owns the database, executions, browsers and previews.
+        config = uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="info",
+            access_log=False, lifespan="on",
+        )
         server = uvicorn.Server(config)
 
         async def serve() -> None:
