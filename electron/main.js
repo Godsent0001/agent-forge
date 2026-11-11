@@ -368,7 +368,7 @@ function stopPythonBackend() {
         finalTimer = setTimeout(finish, 1000);
         finalTimer.unref?.();
       }
-    }, 10000);
+    }, 45000);
     killTimer.unref?.();
   });
 }
