@@ -50,7 +50,7 @@ async def complete(
     params: LLMParams | None = None,
     model: str = "gpt-4o-mini",
     provider: str | None = None,
-    max_retries: int = 3,
+    max_retries: int = 1,
 ) -> LLMTurn:
     """Call LLM backend with retries and error mapping."""
     if not model or not model.strip():
