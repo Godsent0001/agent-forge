@@ -79,6 +79,8 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
             raise AssertionError("protected route unexpectedly accepted a request without a token")
 
         assert process.stdin is not None
+        process.stdin.write("AGENTFORGE_SHUTDOWN\n")
+        process.stdin.flush()
         process.stdin.close()
         assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
 
