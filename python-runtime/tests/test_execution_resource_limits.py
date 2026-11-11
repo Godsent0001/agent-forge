@@ -21,7 +21,8 @@ async def test_execution_manager_bounds_active_runs_and_prunes_finished_tasks() 
     second.cancel()
     await asyncio.gather(first, second, return_exceptions=True)
 
-    manager.active["finished"] = asyncio.create_task(asyncio.sleep(0))
-    await asyncio.sleep(0)
+    finished = asyncio.create_task(asyncio.sleep(0))
+    await finished
+    manager.active["finished"] = finished
     manager._ensure_execution_capacity()
     assert manager.active == {}
