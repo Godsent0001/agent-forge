@@ -338,12 +338,29 @@ class Emitter:
 
 
 class ExecutionManager:
+    MAX_ACTIVE_EXECUTIONS = 2
+
     def __init__(self, hub: Hub | None = None) -> None:
         self.hub = hub or Hub()
         self.active: dict[str, asyncio.Task[None]] = {}
         self.tokens: dict[str, CancelTokenImpl] = {}
 
+    def _ensure_execution_capacity(self) -> None:
+        # Completed tasks should not consume a slot even if their final callback
+        # has not yet removed them from the registry.
+        self.active = {
+            execution_id: task
+            for execution_id, task in self.active.items()
+            if not task.done()
+        }
+        if len(self.active) >= self.MAX_ACTIVE_EXECUTIONS:
+            raise RuntimeError(
+                f"AgentForge allows at most {self.MAX_ACTIVE_EXECUTIONS} active executions "
+                "at a time to protect system resources. Stop or wait for an existing run."
+            )
+
     def start(self, req: RunRequest) -> dict:
+        self._ensure_execution_capacity()
         db = SessionLocal()
         try:
             project = db.get(models.Project, req.project_id)
