@@ -51,6 +51,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agentforge")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database at %s", DB_PATH)
@@ -64,8 +65,6 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # Every resource registry must get a cleanup attempt even if one subsystem
-        # fails. Preserve the first exception while allowing later cleanup to run.
         try:
             await manager.shutdown()
         finally:
@@ -77,6 +76,7 @@ async def lifespan(app: FastAPI):
                     await asyncio.to_thread(preview_manager.shutdown)
                 finally:
                     logger.info("AgentForge runtime shutdown complete.")
+
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
@@ -92,6 +92,7 @@ app.include_router(memory_router.router)
 app.include_router(usage_router.router)
 app.include_router(settings.router)
 app.include_router(system.router)
+
 
 @app.get("/files/{relpath:path}", tags=["legacy-files"])
 def get_legacy_file(relpath: str):
@@ -112,6 +113,7 @@ def get_legacy_file(relpath: str):
 
     return FileResponse(path=path, headers=file_response_headers(path))
 
+
 app.add_middleware(TokenAuthMiddleware)
 
 # Add CORS outside authentication so browser preflights are answered correctly.
@@ -131,24 +133,25 @@ def health() -> dict:
 
 
 def _watch_parent_exit(request_shutdown) -> None:
-    """Ask Uvicorn to shut down when Electron closes its ownership pipe.
-
-    Do not call os._exit here: it bypasses FastAPI lifespan cleanup and leaves
-    browser, shell, preview, and other child processes orphaned.
-    """
+    """Ask Uvicorn to shut down when Electron closes its ownership pipe."""
     if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
         return
 
     def watch() -> None:
+        logger.info("Parent watchdog started; waiting for ownership pipe closure.")
         try:
-            while os.read(sys.stdin.fileno(), 4096):
-                pass
+            while True:
+                chunk = os.read(sys.stdin.fileno(), 4096)
+                if not chunk:
+                    logger.info("Parent watchdog detected ownership pipe EOF.")
+                    break
         except OSError:
             logger.exception("Parent watchdog could not read the Electron ownership pipe")
         finally:
             try:
-                logger.info("Parent ownership pipe closed; requesting graceful runtime shutdown.")
+                logger.info("Parent watchdog requesting graceful runtime shutdown.")
                 request_shutdown()
+                logger.info("Parent watchdog shutdown request scheduled.")
             except RuntimeError:
                 logger.exception("Parent watchdog could not request runtime shutdown")
 
@@ -167,8 +170,6 @@ def _requested_port() -> int:
 def main() -> None:
     require_runtime_token()
 
-    # Reserve the loopback port before passing it to uvicorn. Electron starts with
-    # PORT=0 so competing app instances cannot collide on a fixed port.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -176,8 +177,6 @@ def main() -> None:
         sock.listen()
         port = int(sock.getsockname()[1])
         os.environ["AGENTFORGE_PORT"] = str(port)
-        # Do not rely on Uvicorn's auto-detection for application cleanup:
-        # FastAPI lifespan owns the database, executions, browsers and previews.
         config = uvicorn.Config(
             app, host="127.0.0.1", port=port, log_level="info",
             access_log=False, lifespan="on",
@@ -186,9 +185,11 @@ def main() -> None:
 
         async def serve() -> None:
             loop = asyncio.get_running_loop()
-            _watch_parent_exit(
-                lambda: loop.call_soon_threadsafe(setattr, server, "should_exit", True)
-            )
+
+            def request_shutdown() -> None:
+                loop.call_soon_threadsafe(setattr, server, "should_exit", True)
+
+            _watch_parent_exit(request_shutdown)
             task = asyncio.create_task(server.serve(sockets=[sock]))
             while not server.started and not task.done():
                 await asyncio.sleep(0.01)
