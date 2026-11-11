@@ -537,9 +537,6 @@ process.on("unhandledRejection", (reason) => {
   desktopLog("error", "Unhandled main-process promise rejection", errorDetails(reason));
 });
 
-app.on("gpu-process-crashed", (_event, killed) => {
-  desktopLog("fatal", "GPU process crashed", { killed: Boolean(killed) });
-});
 
 if (gotSingleInstanceLock) {
   app.on("second-instance", () => {
