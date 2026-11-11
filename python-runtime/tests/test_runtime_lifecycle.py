@@ -85,7 +85,17 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
 
         assert process.stdin is not None
         process.stdin.close()
-        assert process.wait(timeout=2.5) == 0, "runtime did not exit after parent stdin closed"
+        assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
+        reader.join(timeout=1)
+        while True:
+            try:
+                captured.append(lines.get_nowait())
+            except queue.Empty:
+                break
+        assert "AgentForge runtime shutdown complete." in "".join(captured), (
+            "runtime exited without completing FastAPI lifespan cleanup; output:\\n"
+            + "".join(captured[-40:])
+        )
     finally:
         if process.poll() is None:
             process.kill()
