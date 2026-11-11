@@ -63,6 +63,8 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
     yield
     await manager.shutdown()
+    from app.tools.browser import close_all_browser_sessions
+    await close_all_browser_sessions()
     preview_manager.shutdown()
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
