@@ -4,7 +4,10 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.tools.conversation_memory import ConversationMemoryInput, ConversationMemoryTool
+from app.core.tools.conversation_memory import (
+    ConversationMemoryInput,
+    ConversationMemoryTool,
+)
 
 
 class _Context:

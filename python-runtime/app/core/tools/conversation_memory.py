@@ -6,7 +6,6 @@ and offset, so old conversations never need to be replayed into every prompt.
 from __future__ import annotations
 
 import re
-from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text
