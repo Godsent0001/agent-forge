@@ -12,27 +12,29 @@ down_revision = "0005"
 branch_labels = None
 depends_on = None
 
+_FOREIGN_KEY = "fk_memory_entries_conversation_id_conversations"
+_INDEX = "ix_memory_entries_conversation_id"
+
 
 def upgrade() -> None:
-    print("[migration 0006] adding conversation_id column", flush=True)
-    op.add_column(
-        "memory_entries",
-        sa.Column(
-            "conversation_id",
-            sa.String(),
-            sa.ForeignKey("conversations.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    print("[migration 0006] conversation_id column added; creating index", flush=True)
-    op.create_index(
-        "ix_memory_entries_conversation_id",
-        "memory_entries",
-        ["conversation_id"],
-    )
-    print("[migration 0006] complete", flush=True)
+    # SQLite's direct ALTER TABLE ADD COLUMN path is fragile for a REFERENCES
+    # column across supported SQLite builds. Rebuild the table transactionally
+    # through Alembic's batch implementation so the FK and index are created
+    # consistently while preserving all existing memory rows and indexes.
+    with op.batch_alter_table("memory_entries", recreate="always") as batch_op:
+        batch_op.add_column(sa.Column("conversation_id", sa.String(), nullable=True))
+        batch_op.create_foreign_key(
+            _FOREIGN_KEY,
+            "conversations",
+            ["conversation_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+        batch_op.create_index(_INDEX, ["conversation_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_memory_entries_conversation_id", table_name="memory_entries")
-    op.drop_column("memory_entries", "conversation_id")
+    with op.batch_alter_table("memory_entries", recreate="always") as batch_op:
+        batch_op.drop_index(_INDEX)
+        batch_op.drop_constraint(_FOREIGN_KEY, type_="foreignkey")
+        batch_op.drop_column("conversation_id")
