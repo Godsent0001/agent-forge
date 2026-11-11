@@ -132,41 +132,17 @@ def health() -> dict:
     return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "v2")}
 
 
-@app.post("/internal/shutdown")
-async def shutdown_runtime() -> dict:
-    """Authenticated parent-process shutdown request; let Uvicorn run lifespan cleanup."""
-    request_shutdown = getattr(app.state, "request_shutdown", None)
-    if request_shutdown is None:
-        raise HTTPException(status_code=503, detail="Runtime shutdown is not available")
-    request_shutdown()
-    return {"status": "shutting_down"}
-
-
-def _watch_parent_exit(request_shutdown) -> None:
-    """Ask Uvicorn to shut down when Electron closes its ownership pipe."""
+def _watch_parent_exit() -> None:
+    """Exit the sidecar when its owning Electron process closes the stdin pipe."""
     if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
         return
 
     def watch() -> None:
-        logger.info("Parent watchdog started; waiting for ownership pipe closure.")
         try:
-            while True:
-                chunk = os.read(sys.stdin.fileno(), 4096)
-                if not chunk:
-                    logger.info("Parent watchdog detected ownership pipe EOF.")
-                    break
-                if b"AGENTFORGE_SHUTDOWN" in chunk:
-                    logger.info("Parent watchdog received explicit shutdown signal.")
-                    break
-        except OSError:
-            logger.exception("Parent watchdog could not read the Electron ownership pipe")
+            sys.stdin.buffer.read()
         finally:
-            try:
-                logger.info("Parent watchdog requesting graceful runtime shutdown.")
-                request_shutdown()
-                logger.info("Parent watchdog shutdown request scheduled.")
-            except RuntimeError:
-                logger.exception("Parent watchdog could not request runtime shutdown")
+            # Preserve the established parent-owns-child shutdown contract.
+            os._exit(0)
 
     Thread(target=watch, name="parent-watchdog", daemon=True).start()
 
@@ -182,6 +158,7 @@ def _requested_port() -> int:
 
 def main() -> None:
     require_runtime_token()
+    _watch_parent_exit()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -197,13 +174,6 @@ def main() -> None:
         server = uvicorn.Server(config)
 
         async def serve() -> None:
-            loop = asyncio.get_running_loop()
-
-            def request_shutdown() -> None:
-                loop.call_soon_threadsafe(setattr, server, "should_exit", True)
-
-            app.state.request_shutdown = request_shutdown
-            _watch_parent_exit(request_shutdown)
             task = asyncio.create_task(server.serve(sockets=[sock]))
             while not server.started and not task.done():
                 await asyncio.sleep(0.01)
