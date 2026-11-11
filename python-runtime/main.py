@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
     from app.tools.browser import close_all_browser_sessions
     await close_all_browser_sessions()
     await asyncio.to_thread(preview_manager.shutdown)
+    logger.info("AgentForge runtime shutdown complete.")
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
