@@ -394,9 +394,27 @@ function stopPythonBackend() {
     };
     child.once("exit", finish);
 
-    // EOF on stdin is the runtime's graceful-shutdown signal. Let FastAPI's
-    // lifespan stop active runs and close every managed child process first.
-    try { child.stdin?.end("AGENTFORGE_SHUTDOWN\n"); } catch {}
+    // Prefer an authenticated HTTP shutdown request so the runtime can
+    // deterministically enter Uvicorn's graceful lifespan shutdown path.
+    // Keep stdin EOF as a fallback for startup failures and older runtimes.
+    const shutdownPort = backendPort;
+    if (shutdownPort) {
+      void fetch(\`http://127.0.0.1:\${shutdownPort}/internal/shutdown\`, {
+        method: "POST",
+        headers: {
+          Authorization: \`Bearer \${apiToken}\`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(3000),
+      }).then((response) => {
+        if (!response.ok) throw new Error(\`Runtime shutdown returned HTTP \${response.status}\`);
+      }).catch(() => {
+        try { child.stdin?.end(); } catch {}
+      });
+    } else {
+      try { child.stdin?.end(); } catch {}
+    }
 
     killTimer = setTimeout(() => {
       if (child.exitCode !== null || child.signalCode !== null) return finish();
