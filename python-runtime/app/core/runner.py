@@ -541,7 +541,7 @@ class RunnerCore:
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=history_summary,
+                    history_summary_block=(history_summary or "")[:6000],
                     task_state_block=task_state_block,
                 )
 
@@ -569,8 +569,12 @@ class RunnerCore:
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-                for msg in history:
-                    messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
+                # Keep the transcript bounded; older turns remain in durable storage
+                # and can be retrieved selectively through the memory tools.
+                for msg in history[-8:]:
+                    role = msg.role if hasattr(msg, "role") else msg["role"]
+                    content = msg.content if hasattr(msg, "content") else msg["content"]
+                    messages.append({"role": role, "content": str(content)[:2000]})
                 messages.append({"role": "user", "content": task})
 
                 all_tool_specs, tool_instances = self._assemble_tools(
@@ -1119,6 +1123,15 @@ class RunnerCore:
             },
             end_data=span_end_data,
         ):
+            # Bound oversized text in every turn, including accumulated tool output.
+            # Preserve tool-call structure while preventing raw results bloating prompts.
+            for message in messages:
+                content = message.get("content")
+                if isinstance(content, str):
+                    limit = 3000 if message.get("role") == "tool" else 6000
+                    if len(content) > limit:
+                        message["content"] = content[:limit] + "\\n[Earlier content omitted; retrieve the full result if needed.]"
+            budget.check_request(messages, tools, spec.params.max_tokens or 0)
             if self.fake_llm:
                 turn = await self.fake_llm.complete(
                     messages=messages,

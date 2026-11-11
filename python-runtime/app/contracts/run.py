@@ -24,7 +24,7 @@ class AttachmentRef(BaseModel):
 
 class BudgetSpec(BaseModel):
     max_llm_calls: int = 30
-    max_total_tokens: int = 200_000
+    max_total_tokens: int = 60_000
     max_cost_usd: float | None = 0.50      # None = no cost cap (local models cost 0, so calls/tokens/seconds are the real limits)
     max_seconds: int = 300
 
