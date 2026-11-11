@@ -323,32 +323,52 @@ function startPythonBackend() {
 
 function stopPythonBackend() {
   const child = pythonProcess;
-  if (!child || stoppingBackend) return Promise.resolve();
+  if (!child) return Promise.resolve();
+  if (stoppingBackend) return Promise.resolve();
   stoppingBackend = true;
   return new Promise((resolve) => {
     let finished = false;
     let killTimer;
+    let finalTimer;
     const finish = () => {
       if (finished) return;
       finished = true;
       clearTimeout(killTimer);
+      clearTimeout(finalTimer);
       if (pythonProcess === child) pythonProcess = null;
       stoppingBackend = false;
       resolve();
     };
     child.once("exit", finish);
+
+    // EOF on stdin is the runtime's graceful-shutdown signal. Let FastAPI's
+    // lifespan stop active runs and close every managed child process first.
     try { child.stdin?.end(); } catch {}
-    try { child.kill("SIGTERM"); } catch {}
+
     killTimer = setTimeout(() => {
+      if (child.exitCode !== null || child.signalCode !== null) return finish();
       if (process.platform === "win32" && child.pid) {
-        const treeKill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
-        treeKill.once("exit", finish);
-        treeKill.once("error", finish);
+        const treeKill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+          windowsHide: true,
+          stdio: "ignore",
+        });
+        treeKill.once("exit", () => {
+          if (child.exitCode !== null || child.signalCode !== null) return finish();
+          try { child.kill(); } catch {}
+          finalTimer = setTimeout(finish, 1000);
+          finalTimer.unref?.();
+        });
+        treeKill.once("error", () => {
+          try { child.kill(); } catch {}
+          finalTimer = setTimeout(finish, 1000);
+          finalTimer.unref?.();
+        });
       } else {
         try { child.kill("SIGKILL"); } catch {}
-        finish();
+        finalTimer = setTimeout(finish, 1000);
+        finalTimer.unref?.();
       }
-    }, 2000);
+    }, 10000);
     killTimer.unref?.();
   });
 }
