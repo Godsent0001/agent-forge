@@ -117,7 +117,12 @@ def health() -> dict:
     return {"status": "ok", "runner": os.environ.get("AGENTFORGE_RUNNER", "v2")}
 
 
-def _watch_parent_exit() -> None:
+def _watch_parent_exit(request_shutdown) -> None:
+    """Ask Uvicorn to shut down when Electron closes its ownership pipe.
+
+    Do not call os._exit here: it bypasses FastAPI lifespan cleanup and leaves
+    browser, shell, preview, and other child processes orphaned.
+    """
     if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
         return
 
@@ -125,9 +130,13 @@ def _watch_parent_exit() -> None:
         try:
             while os.read(sys.stdin.fileno(), 4096):
                 pass
+        except OSError:
+            logger.exception("Parent watchdog could not read the Electron ownership pipe")
         finally:
-            # The Electron owner closed its pipe. Never leave a sidecar orphaned.
-            os._exit(0)
+            try:
+                request_shutdown()
+            except RuntimeError:
+                logger.exception("Parent watchdog could not request runtime shutdown")
 
     Thread(target=watch, name="parent-watchdog", daemon=True).start()
 
@@ -143,7 +152,6 @@ def _requested_port() -> int:
 
 def main() -> None:
     require_runtime_token()
-    _watch_parent_exit()
 
     # Reserve the loopback port before passing it to uvicorn. Electron starts with
     # PORT=0 so competing app instances cannot collide on a fixed port.
@@ -158,6 +166,10 @@ def main() -> None:
         server = uvicorn.Server(config)
 
         async def serve() -> None:
+            loop = asyncio.get_running_loop()
+            _watch_parent_exit(
+                lambda: loop.call_soon_threadsafe(setattr, server, "should_exit", True)
+            )
             task = asyncio.create_task(server.serve(sockets=[sock]))
             while not server.started and not task.done():
                 await asyncio.sleep(0.01)
