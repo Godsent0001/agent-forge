@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.tools.shell import _safe_environment, _terminate_process_tree
 
 _MAX_BUFFER_CHARS = 120_000
+_MAX_SESSIONS = 4
 
 
 @dataclass
@@ -92,27 +93,39 @@ class ShellSessionManager:
         self._lock = asyncio.Lock()
 
     async def start(self, *, project_id: str, cwd: Path, command: str) -> ShellSession:
-        if os.name == "nt":
-            shell = os.environ.get("COMSPEC", "cmd.exe")
-            argv = [shell, "/d", "/q"]
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        else:
-            argv = ["/bin/sh"]
-            creationflags = 0
-        process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(cwd),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=_safe_environment(cwd),
-            creationflags=creationflags,
-            start_new_session=(os.name != "nt"),
-        )
-        session = ShellSession(str(uuid4()), project_id, cwd, process)
-        session.reader_task = asyncio.create_task(session.capture())
+        # Serialize capacity checks with process creation so concurrent requests
+        # cannot exceed the per-runtime persistent terminal limit.
         async with self._lock:
+            for session_id, existing in tuple(self._sessions.items()):
+                if existing.process.returncode is not None:
+                    self._sessions.pop(session_id, None)
+            if len(self._sessions) >= _MAX_SESSIONS:
+                raise RuntimeError(
+                    f"AgentForge allows at most {_MAX_SESSIONS} persistent terminal sessions. "
+                    "Stop an existing session before starting another."
+                )
+
+            if os.name == "nt":
+                shell = os.environ.get("COMSPEC", "cmd.exe")
+                argv = [shell, "/d", "/q"]
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            else:
+                argv = ["/bin/sh"]
+                creationflags = 0
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=str(cwd),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=_safe_environment(cwd),
+                creationflags=creationflags,
+                start_new_session=(os.name != "nt"),
+            )
+            session = ShellSession(str(uuid4()), project_id, cwd, process)
+            session.reader_task = asyncio.create_task(session.capture())
             self._sessions[session.session_id] = session
+
         try:
             await session.write(command)
         except Exception:
