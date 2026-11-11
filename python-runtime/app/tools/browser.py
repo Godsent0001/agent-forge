@@ -13,6 +13,45 @@ from app.tools.base import Tool, ToolExecutionError
 
 MAX_PAGE_TEXT_CHARS = 10_000
 NAVIGATION_TIMEOUT_MS = 20_000
+MAX_BROWSER_SESSIONS = 2
+
+# Browser processes are expensive. Share one bounded registry across tool
+# instances and explicitly close a run's session when its execution finishes.
+_BROWSER_SESSIONS: dict[str, tuple[Any, Any, Any]] = {}
+_BROWSER_SESSION_EXPIRY: dict[str, asyncio.Task] = {}
+_BROWSER_SESSION_LOCK = asyncio.Lock()
+
+
+async def close_browser_session(execution_id: str) -> None:
+    async with _BROWSER_SESSION_LOCK:
+        expiry = _BROWSER_SESSION_EXPIRY.pop(execution_id, None)
+        session = _BROWSER_SESSIONS.pop(execution_id, None)
+
+    if expiry is not None and expiry is not asyncio.current_task():
+        expiry.cancel()
+        await asyncio.gather(expiry, return_exceptions=True)
+    if session is None:
+        return
+
+    playwright, browser, _page = session
+    try:
+        await asyncio.wait_for(browser.close(), timeout=3)
+    except Exception:
+        pass
+    try:
+        await asyncio.wait_for(playwright.stop(), timeout=3)
+    except Exception:
+        pass
+
+
+async def close_all_browser_sessions() -> None:
+    async with _BROWSER_SESSION_LOCK:
+        execution_ids = list(_BROWSER_SESSIONS)
+    if execution_ids:
+        await asyncio.gather(
+            *(close_browser_session(execution_id) for execution_id in execution_ids),
+            return_exceptions=True,
+        )
 
 
 async def _navigate_page(page: Any, url: str) -> None:
@@ -94,9 +133,6 @@ class BrowserTool(Tool):
         # Production uses Playwright. An injected adapter remains supported for
         # legacy callers and deterministic tests that supply their own transport.
         self._http_tool = http_tool
-        self._sessions: dict[str, tuple[Any, Any, Any]] = {}
-        self._session_expiry: dict[str, asyncio.Task] = {}
-        self._session_lock = asyncio.Lock()
 
     async def execute(self, input: str, *, context: Any) -> str:
         """Legacy entry point: navigate to one URL and return rendered page text."""
@@ -151,14 +187,32 @@ class BrowserTool(Tool):
                 "Playwright is not installed in this runtime. Reinstall AgentForge with its bundled browser runtime."
             ) from exc
 
-        async with self._session_lock:
-            session = self._sessions.get(execution_id)
+        async with _BROWSER_SESSION_LOCK
+            session = _BROWSER_SESSIONS.get(execution_id)
             if session is None:
+                if len(_BROWSER_SESSIONS) >= MAX_BROWSER_SESSIONS:
+                    raise ToolExecutionError(
+                        f"AgentForge already has {MAX_BROWSER_SESSIONS} active browser sessions. "
+                        "Close an existing run or wait for it to finish before starting another browser task."
+                    )
                 playwright = await async_playwright().start()
-                browser = await playwright.chromium.launch(headless=True)
-                page = await browser.new_page()
-                await page.route("**/*", self._guard_request)
-                self._sessions[execution_id] = (playwright, browser, page)
+                browser = None
+                try:
+                    browser = await playwright.chromium.launch(headless=True)
+                    page = await browser.new_page()
+                    await page.route("**/*", self._guard_request)
+                except BaseException:
+                    if browser is not None:
+                        try:
+                            await browser.close()
+                        except Exception:
+                            pass
+                    try:
+                        await playwright.stop()
+                    except Exception:
+                        pass
+                    raise
+                _BROWSER_SESSIONS[execution_id] = (playwright, browser, page)
                 session = (playwright, browser, page)
             self._schedule_session_expiry(execution_id)
         playwright, browser, page = session
@@ -197,23 +251,25 @@ class BrowserTool(Tool):
             raise ToolExecutionError(f"Playwright browser action '{action}' failed: {type(exc).__name__}: {str(exc)[:400]}") from exc
 
     def _schedule_session_expiry(self, execution_id: str) -> None:
-        previous = self._session_expiry.pop(execution_id, None)
+        previous = _BROWSER_SESSION_EXPIRY.pop(execution_id, None)
         if previous:
             previous.cancel()
-        self._session_expiry[execution_id] = asyncio.create_task(
+        _BROWSER_SESSION_EXPIRY[execution_id] = asyncio.create_task(
             self._expire_session(execution_id), name=f"agentforge-browser-expiry-{execution_id}"
         )
 
     async def _expire_session(self, execution_id: str) -> None:
         try:
             await asyncio.sleep(180)
-            async with self._session_lock:
-                session = self._sessions.pop(execution_id, None)
-                self._session_expiry.pop(execution_id, None)
+            async with _BROWSER_SESSION_LOCK:
+                session = _BROWSER_SESSIONS.pop(execution_id, None)
+                _BROWSER_SESSION_EXPIRY.pop(execution_id, None)
             if session:
                 playwright, browser, _page = session
-                await browser.close()
-                await playwright.stop()
+                try:
+                    await browser.close()
+                finally:
+                    await playwright.stop()
         except asyncio.CancelledError:
             raise
         except Exception:
