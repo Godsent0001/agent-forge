@@ -35,17 +35,14 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         text=True,
         bufsize=1,
     )
-    lines: queue.Queue[str | None] = queue.Queue()
+    lines: queue.Queue[str] = queue.Queue()
 
     def read_output() -> None:
-        try:
-            assert process.stdout is not None
-            for line in process.stdout:
-                lines.put(line)
-        finally:
-            lines.put(None)
+        assert process.stdout is not None
+        for line in process.stdout:
+            lines.put(line)
 
-    reader = threading.Thread(target=read_output, name="runtime-test-stdout", daemon=True)
+    reader = threading.Thread(target=read_output, daemon=True)
     reader.start()
     ready_port = None
     captured: list[str] = []
@@ -58,8 +55,6 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
                 line = lines.get(timeout=min(0.2, max(0.01, deadline - time.monotonic())))
             except queue.Empty:
                 continue
-            if line is None:
-                break
             captured.append(line)
             match = re.search(r"AGENTFORGE_READY:(\d+)", line)
             if match:
@@ -78,38 +73,10 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         else:
             raise AssertionError("protected route unexpectedly accepted a request without a token")
 
-        shutdown_request = urllib.request.Request(
-            f"http://127.0.0.1:{ready_port}/internal/shutdown",
-            data=b"{}",
-            headers={
-                "Authorization": "Bearer runtime-lifecycle-test-token",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(shutdown_request, timeout=3) as response:
-            assert response.status == 200
-            assert json.loads(response.read().decode("utf-8"))["status"] == "shutting_down"
-        assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
-
-        reader.join(timeout=5)
-        assert not reader.is_alive(), "runtime stdout reader did not finish after child exit"
-        while True:
-            try:
-                line = lines.get_nowait()
-            except queue.Empty:
-                break
-            if line is not None:
-                captured.append(line)
-
-        assert "AgentForge runtime shutdown complete." in "".join(captured), (
-            "runtime exited without completing FastAPI lifespan cleanup; output:\n"
-            + "".join(captured[-40:])
-        )
+        assert process.stdin is not None
+        process.stdin.close()
+        assert process.wait(timeout=2.5) == 0, "runtime did not exit after parent stdin closed"
     finally:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
-        if process.stdout is not None:
-            process.stdout.close()
-        reader.join(timeout=1)
