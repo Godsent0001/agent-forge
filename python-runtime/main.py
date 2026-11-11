@@ -145,6 +145,9 @@ def _watch_parent_exit(request_shutdown) -> None:
                 if not chunk:
                     logger.info("Parent watchdog detected ownership pipe EOF.")
                     break
+                if b"AGENTFORGE_SHUTDOWN" in chunk:
+                    logger.info("Parent watchdog received explicit shutdown signal.")
+                    break
         except OSError:
             logger.exception("Parent watchdog could not read the Electron ownership pipe")
         finally:
