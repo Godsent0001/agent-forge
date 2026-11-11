@@ -35,14 +35,19 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         text=True,
         bufsize=1,
     )
-    lines: queue.Queue[str] = queue.Queue()
+    lines: queue.Queue[str | None] = queue.Queue()
 
     def read_output() -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            lines.put(line)
+        try:
+            assert process.stdout is not None
+            for line in process.stdout:
+                lines.put(line)
+        finally:
+            # Explicit EOF notification prevents the test from racing the
+            # reader thread when the child exits immediately after shutdown.
+            lines.put(None)
 
-    reader = threading.Thread(target=read_output, daemon=True)
+    reader = threading.Thread(target=read_output, name="runtime-test-stdout", daemon=True)
     reader.start()
     ready_port = None
     captured: list[str] = []
@@ -55,23 +60,15 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
                 line = lines.get(timeout=min(0.2, max(0.01, deadline - time.monotonic())))
             except queue.Empty:
                 continue
+            if line is None:
+                break
             captured.append(line)
-            match = re.search(r"AGENTFORGE_READY:(\d+)", line)
+            match = re.search(r"AGENTFORGE_READY:(\\d+)", line)
             if match:
                 ready_port = int(match.group(1))
                 break
 
-        # Drain the reader after child exit so its final traceback is not lost
-        # to the race between process.poll() and the stdout reader thread.
-        if process.poll() is not None:
-            reader.join(timeout=1)
-            while True:
-                try:
-                    captured.append(lines.get_nowait())
-                except queue.Empty:
-                    break
-
-        assert ready_port, "runtime never became ready; output:\n" + "".join(captured[-40:])
+        assert ready_port, "runtime never became ready; output:\\n" + "".join(captured[-40:])
         with urllib.request.urlopen(f"http://127.0.0.1:{ready_port}/health", timeout=3) as response:
             assert response.status == 200
             assert json.loads(response.read().decode("utf-8"))["status"] == "ok"
@@ -86,12 +83,20 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         assert process.stdin is not None
         process.stdin.close()
         assert process.wait(timeout=10) == 0, "runtime did not exit after parent stdin closed"
-        reader.join(timeout=1)
+
+        # Wait for the stdout reader's explicit EOF sentinel before draining;
+        # joining for an arbitrary short interval can lose final lifespan logs.
+        reader.join(timeout=5)
+        assert not reader.is_alive(), "runtime stdout reader did not finish after child exit"
         while True:
             try:
-                captured.append(lines.get_nowait())
+                line = lines.get_nowait()
             except queue.Empty:
                 break
+            if line is None:
+                continue
+            captured.append(line)
+
         assert "AgentForge runtime shutdown complete." in "".join(captured), (
             "runtime exited without completing FastAPI lifespan cleanup; output:\\n"
             + "".join(captured[-40:])
@@ -100,3 +105,6 @@ def test_runtime_ready_auth_and_parent_watchdog(tmp_path):
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+        if process.stdout is not None:
+            process.stdout.close()
+        reader.join(timeout=1)
