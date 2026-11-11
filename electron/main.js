@@ -396,7 +396,7 @@ function stopPythonBackend() {
 
     // EOF on stdin is the runtime's graceful-shutdown signal. Let FastAPI's
     // lifespan stop active runs and close every managed child process first.
-    try { child.stdin?.end(); } catch {}
+    try { child.stdin?.end("AGENTFORGE_SHUTDOWN\n"); } catch {}
 
     killTimer = setTimeout(() => {
       if (child.exitCode !== null || child.signalCode !== null) return finish();
