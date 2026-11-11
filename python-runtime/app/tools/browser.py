@@ -267,9 +267,9 @@ class BrowserTool(Tool):
             if session:
                 playwright, browser, _page = session
                 try:
-                    await browser.close()
+                    await asyncio.wait_for(browser.close(), timeout=3)
                 finally:
-                    await playwright.stop()
+                    await asyncio.wait_for(playwright.stop(), timeout=3)
         except asyncio.CancelledError:
             raise
         except Exception:
