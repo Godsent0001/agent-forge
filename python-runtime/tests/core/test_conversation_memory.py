@@ -18,7 +18,11 @@ async def test_conversation_memory_search_and_progressive_read(tmp_path):
         db.exec_driver_sql("CREATE TABLE conversations (id TEXT PRIMARY KEY, project_id TEXT, agent_id TEXT, title TEXT)")
         db.exec_driver_sql("CREATE TABLE conversation_messages (id TEXT PRIMARY KEY, conversation_id TEXT, role TEXT, content TEXT, created_at TEXT)")
         db.exec_driver_sql("INSERT INTO conversations VALUES ('conv-1','project-1','agent-1','Architecture decisions')")
-        db.exec_driver_sql("INSERT INTO conversation_messages VALUES ('msg-1','conv-1','user','We selected SQLite FTS5 BM25 retrieval for long term memory. ' || printf('%0.sx', 1200),'2026-01-01')")
+        db.execute(text("INSERT INTO conversation_messages VALUES (:id,:conversation_id,:role,:content,:created_at)"), {
+            "id": "msg-1", "conversation_id": "conv-1", "role": "user",
+            "content": "We selected SQLite FTS5 BM25 retrieval for long term memory. " + ("x" * 1200),
+            "created_at": "2026-01-01",
+        })
         db.exec_driver_sql("CREATE VIRTUAL TABLE conversation_messages_fts USING fts5(message_id UNINDEXED, conversation_id UNINDEXED, agent_id UNINDEXED, project_id UNINDEXED, role UNINDEXED, content)")
         db.exec_driver_sql("INSERT INTO conversation_messages_fts VALUES ('msg-1','conv-1','agent-1','project-1','user',(SELECT content FROM conversation_messages WHERE id='msg-1'))")
     factory = sessionmaker(bind=engine)
