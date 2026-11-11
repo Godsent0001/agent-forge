@@ -46,6 +46,7 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.read_attachment import ReadAttachmentTool
+from app.core.tools.conversation_memory import ConversationMemoryTool
 from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
@@ -580,6 +581,9 @@ class RunnerCore:
                 all_tool_specs, tool_instances = self._assemble_tools(
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
+                    project_id=req.project_id,
+                    conversation_id=req.conversation_id,
+                    include_other_conversations=cross_conversation_memory_enabled(),
                 )
                 task_state_tool_name = None
                 if depth == 0 and req.task_state_id:
@@ -1407,6 +1411,9 @@ class RunnerCore:
         intents: IntentStore | None = None,
         run_history: RunHistory | None = None,
         include_attachment_reader: bool = False,
+        project_id: str | None = None,
+        conversation_id: str | None = None,
+        include_other_conversations: bool = False,
     ) -> tuple[list[ToolSpec], dict[str, Any]]:
         tool_specs: list[ToolSpec] = []
         tool_instances: dict[str, Any] = {}
@@ -1462,6 +1469,8 @@ class RunnerCore:
             if kind not in existing_kinds
         ]
         raw_names.extend(kind for kind, _ in available_knowledge)
+        if project_id and conversation_id:
+            raw_names.append("conversation_memory")
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
@@ -1524,6 +1533,22 @@ class RunnerCore:
             name = deduped[idx]
             idx += 1
             tool_inst = tool_cls()
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
+
+        if project_id and conversation_id:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = ConversationMemoryTool(
+                project_id=project_id,
+                agent_id=spec.id,
+                conversation_id=conversation_id,
+                include_other_conversations=include_other_conversations,
+            )
             tool_instances[name] = tool_inst
             tool_specs.append(ToolSpec(
                 name=name,
