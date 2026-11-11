@@ -79,7 +79,15 @@ class ShellSession:
 
     async def stop(self) -> None:
         if self.process.returncode is None:
-            await _terminate_process_tree(self.process)
+            # Process-tree termination is a critical cleanup operation. Shield it
+            # from cancellation of the owning execution, then propagate the
+            # cancellation only after the OS process tree has been reaped.
+            cleanup = asyncio.create_task(_terminate_process_tree(self.process))
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+                raise
         if self.reader_task and not self.reader_task.done():
             self.reader_task.cancel()
             await asyncio.gather(self.reader_task, return_exceptions=True)
