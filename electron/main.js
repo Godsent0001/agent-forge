@@ -374,72 +374,33 @@ function startPythonBackend() {
 }
 
 function stopPythonBackend() {
-  if (backendStopPromise) return backendStopPromise;
   const child = pythonProcess;
-  if (!child) return Promise.resolve();
+  if (!child || stoppingBackend) return Promise.resolve();
   stoppingBackend = true;
-  backendStopPromise = new Promise((resolve) => {
+  return new Promise((resolve) => {
     let finished = false;
     let killTimer;
-    let finalTimer;
     const finish = () => {
       if (finished) return;
       finished = true;
       clearTimeout(killTimer);
-      clearTimeout(finalTimer);
       if (pythonProcess === child) pythonProcess = null;
       stoppingBackend = false;
-      backendStopPromise = null;
       resolve();
     };
     child.once("exit", finish);
-
-    // Prefer an authenticated HTTP shutdown request so the runtime can
-    // deterministically enter Uvicorn's graceful lifespan shutdown path.
-    // Keep stdin EOF as a fallback for startup failures and older runtimes.
-    const shutdownPort = backendPort;
-    if (shutdownPort) {
-      void fetch(\`http://127.0.0.1:\${shutdownPort}/internal/shutdown\`, {
-        method: "POST",
-        headers: {
-          Authorization: \`Bearer \${apiToken}\`,
-          "Content-Type": "application/json",
-        },
-        body: "{}",
-        signal: AbortSignal.timeout(3000),
-      }).then((response) => {
-        if (!response.ok) throw new Error(\`Runtime shutdown returned HTTP \${response.status}\`);
-      }).catch(() => {
-        try { child.stdin?.end(); } catch {}
-      });
-    } else {
-      try { child.stdin?.end(); } catch {}
-    }
-
+    try { child.stdin?.end(); } catch {}
+    try { child.kill("SIGTERM"); } catch {}
     killTimer = setTimeout(() => {
-      if (child.exitCode !== null || child.signalCode !== null) return finish();
       if (process.platform === "win32" && child.pid) {
-        const treeKill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
-          windowsHide: true,
-          stdio: "ignore",
-        });
-        treeKill.once("exit", () => {
-          if (child.exitCode !== null || child.signalCode !== null) return finish();
-          try { child.kill(); } catch {}
-          finalTimer = setTimeout(finish, 1000);
-          finalTimer.unref?.();
-        });
-        treeKill.once("error", () => {
-          try { child.kill(); } catch {}
-          finalTimer = setTimeout(finish, 1000);
-          finalTimer.unref?.();
-        });
+        const treeKill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+        treeKill.once("exit", finish);
+        treeKill.once("error", finish);
       } else {
         try { child.kill("SIGKILL"); } catch {}
-        finalTimer = setTimeout(finish, 1000);
-        finalTimer.unref?.();
+        finish();
       }
-    }, 45000);
+    }, 2000);
     killTimer.unref?.();
   });
 }
