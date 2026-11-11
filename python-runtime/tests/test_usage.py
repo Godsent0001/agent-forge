@@ -32,6 +32,14 @@ def test_usage_aggregates_project_cost_tokens_and_groups(client, db_session):
             }
         },
     }
+    # Anchor both records to the same past UTC calendar day. Subtracting
+    # relative hours from "now" can straddle midnight in CI and split the
+    # expected single daily bucket into two.
+    now = datetime.now(timezone.utc)
+    usage_day = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    if usage_day > now:
+        usage_day -= timedelta(days=1)
+
     db_session.add_all([
         models.Execution(
             id=str(uuid4()),
@@ -39,7 +47,7 @@ def test_usage_aggregates_project_cost_tokens_and_groups(client, db_session):
             root_agent_id=agent.id,
             input_task="one",
             status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(hours=3),
+            started_at=usage_day - timedelta(hours=3),
             totals={"llm_calls": 3, "tool_calls": 2, "input_tokens": 100, "output_tokens": 25, "cost_usd": 0.12},
             agent_graph_snapshot=snapshot,
         ),
@@ -49,7 +57,7 @@ def test_usage_aggregates_project_cost_tokens_and_groups(client, db_session):
             root_agent_id=agent.id,
             input_task="two",
             status="error",
-            started_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            started_at=usage_day - timedelta(hours=1),
             totals={"llm_calls": 1, "tool_calls": 1, "input_tokens": 20, "output_tokens": 5, "cost_usd": 0.03},
             agent_graph_snapshot=snapshot,
         ),
@@ -70,6 +78,7 @@ def test_usage_aggregates_project_cost_tokens_and_groups(client, db_session):
     assert report["by_agent"][0]["agent_name"] == "Usage Agent"
     assert report["by_model"][0]["model"] == "openai/gpt-test"
     assert len(report["by_day"]) == 1
+    assert report["by_day"][0]["date"] == usage_day.date().isoformat()
 
 
 def test_usage_preserves_unknown_cost_as_null(client, db_session):
