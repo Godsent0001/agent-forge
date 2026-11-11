@@ -65,7 +65,11 @@ async def recall_memories(
 
     # 1. Include pinned items first
     for item in pinned_items:
+        if len(selected) >= 12:
+            break
         item_tokens = len(item.text) // 4 + 1
+        if used_tokens + item_tokens > max_tokens:
+            continue
         selected.append(item)
         used_tokens += item_tokens
 
@@ -76,7 +80,7 @@ async def recall_memories(
         item = hit.item
         item_tokens = len(item.text) // 4 + 1
         if used_tokens + item_tokens > max_tokens:
-            break
+            continue
         selected.append(item)
         used_tokens += item_tokens
 

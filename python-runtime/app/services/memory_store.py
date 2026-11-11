@@ -77,14 +77,14 @@ def _fts_memory_candidate_ids(
     conversation_id: str | None,
     include_other_conversations: bool,
     limit: int,
-) -> list[str] | None:
-    """Return bounded FTS5 candidates, or None when the optional index is unavailable."""
+) -> dict[str, float] | None:
+    """Return bounded FTS5 candidates with their raw BM25 ranks."""
     terms = sorted(set(re.findall(r"[\w'-]{2,}", query.casefold())))
     if not terms:
         return None
     match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
     sql = (
-        "SELECT memory_id FROM memory_entries_fts "
+        "SELECT memory_id, bm25(memory_entries_fts) AS rank FROM memory_entries_fts "
         "WHERE memory_entries_fts MATCH :match_query AND agent_id = :agent_id"
     )
     params: dict[str, object] = {
@@ -102,7 +102,7 @@ def _fts_memory_candidate_ids(
         return None
     # Empty FTS results fall back to the existing lexical scorer to tolerate tokenizer
     # differences and databases created before the FTS migration was applied.
-    return [row[0] for row in rows] or None
+    return {row[0]: float(row[1]) for row in rows} or None
 
 
 class SqlMemoryStore:
@@ -138,7 +138,7 @@ class SqlMemoryStore:
             return []
         now = datetime.now(timezone.utc)
         with self._session_factory() as db:
-            candidate_ids = None if query_embedding else _fts_memory_candidate_ids(
+            candidate_scores = None if query_embedding else _fts_memory_candidate_ids(
                 db, agent_id, query,
                 conversation_id=conversation_id,
                 include_other_conversations=include_other_conversations,
@@ -150,15 +150,19 @@ class SqlMemoryStore:
             )
             if not include_other_conversations:
                 query_rows = query_rows.filter(models.MemoryEntry.conversation_id == conversation_id)
-            if candidate_ids:
-                query_rows = query_rows.filter(models.MemoryEntry.id.in_(candidate_ids))
+            if candidate_scores:
+                query_rows = query_rows.filter(models.MemoryEntry.id.in_(candidate_scores.keys()))
             rows = query_rows.order_by(models.MemoryEntry.created_at.desc()).all()
+            max_fts_score = max((max(0.0, -rank) for rank in (candidate_scores or {}).values()), default=0.0)
             hits = []
             for row in rows:
                 if not _not_expired(row, now):
                     continue
                 item = _memory_item(row)
-                keyword = _keyword_score(item.text, query)
+                if candidate_scores and row.id in candidate_scores and max_fts_score > 0:
+                    keyword = max(0.0, -candidate_scores[row.id]) / max_fts_score
+                else:
+                    keyword = _keyword_score(item.text, query)
                 vector = 0.0
                 if query_embedding and item.embedding and item.embedding_model == embedding_model:
                     pairs = list(zip(query_embedding, item.embedding))
@@ -174,7 +178,7 @@ class SqlMemoryStore:
 
     async def related(self, agent_id: str, text: str, limit: int, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         with self._session_factory() as db:
-            candidate_ids = _fts_memory_candidate_ids(
+            candidate_scores = _fts_memory_candidate_ids(
                 db, agent_id, text,
                 conversation_id=conversation_id,
                 include_other_conversations=include_other_conversations,
@@ -186,8 +190,8 @@ class SqlMemoryStore:
             )
             if not include_other_conversations:
                 query = query.filter(models.MemoryEntry.conversation_id == conversation_id)
-            if candidate_ids:
-                query = query.filter(models.MemoryEntry.id.in_(candidate_ids))
+            if candidate_scores:
+                query = query.filter(models.MemoryEntry.id.in_(candidate_scores.keys()))
             rows = query.order_by(models.MemoryEntry.created_at.desc()).all()
             matched = [row for row in rows if _keyword_score(row.content, text) > 0]
             return [_memory_item(row) for row in matched[:max(0, limit)]]

@@ -30,7 +30,7 @@ def upgrade() -> None:
         CREATE TRIGGER conversation_messages_fts_ai AFTER INSERT ON conversation_messages BEGIN
             INSERT INTO conversation_messages_fts(message_id, conversation_id, agent_id, project_id, role, content)
             SELECT new.id, c.id, c.agent_id, c.project_id, new.role, new.content
-            FROM conversations c WHERE c.id = new.conversation_id;
+            FROM conversations c WHERE c.id = new.conversation_id AND new.role IN ('user','assistant');
         END
     """)
     bind.exec_driver_sql("""

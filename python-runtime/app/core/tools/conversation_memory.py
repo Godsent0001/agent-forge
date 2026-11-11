@@ -72,7 +72,7 @@ class ConversationMemoryTool(Tool):
             ))
 
         query = (args.query or "").strip()
-        terms = sorted(set(re.findall(r"[\\w'-]{2,}", query.casefold())))
+        terms = sorted(set(re.findall(r"[\w'-]{2,}", query.casefold())))
         if not terms:
             return ToolResult(content="No searchable terms found in the query.")
         match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
