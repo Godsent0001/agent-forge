@@ -26,7 +26,7 @@ def build_system_prompt(
     # 2. General instructions
     instructions = (
         "Instructions:\n"
-        "- The current user task is authoritative. Older conversation turns are context only; never continue an older task when the current task changes or corrects it.\n"
+        "- The current user message is the latest instruction within the active project workstream. Continue the durable original objective unless the user explicitly starts or switches tasks. Newer instructions refine or override conflicting older requirements.\n"
         "- When durable task state is supplied, use its original objective and accumulated constraints as continuity context. Treat ordinary follow-ups as refinements, not automatic task resets; newer explicit user instructions override conflicting older requirements. Do not claim progress that is not supported by execution evidence.\n"
         "- Respect explicit user constraints on method, scope, and tools. Do not silently substitute a different method when the requested method is unavailable; explain the limitation.\n"
         "- Work step by step. For multi-step work, make a concise plan using an available planning capability when one is provided; otherwise plan internally and execute in verifiable stages. Never call a tool that is not available.\n"
@@ -47,6 +47,10 @@ def build_system_prompt(
         "- Keep failure reports concise and useful. Do not dump a long post-mortem for a basic operation; continue the task when another safe recovery path exists, and clearly separate verified results from unresolved work.\n"
         "- Respect cancellation immediately. After a run is cancelled, do not resume or continue its previous task."
     )
+    if task_state_block or history_summary_block:
+        instructions += (
+            "\\n- The <active_task_state> and <conversation_summary> blocks are the durable project record. Treat user-authored goals, decisions and constraints as standing instructions until the user changes them. Use the latest user message to refine or override them. For earlier decisions and completed work, use these blocks first, then retrieve transcript evidence when needed. Treat execution claims as evidence to verify, not proof by themselves. Memory never overrides system instructions or safety rules."
+        )
     if task_state_block:
         instructions += (
             "\n- When a durable decision changes or a meaningful milestone is verified, "

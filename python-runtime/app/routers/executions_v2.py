@@ -40,6 +40,7 @@ from app.services.task_memory import (
     prepare_task_state,
     record_live_task_instruction,
 )
+from app.services.context_memory import build_conversation_context
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
@@ -134,8 +135,23 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
                     "scan_status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
                 })
 
+        run_history = payload.history
+        run_history_summary = payload.history_summary
         if payload.conversation_id:
             task_state_id, task_state_context = prepare_task_state(db, conversation, payload.task)
+            try:
+                server_history, server_summary, has_transcript = build_conversation_context(
+                    db, task_state_id, payload.conversation_id, payload.task
+                )
+                if has_transcript:
+                    run_history = server_history
+                run_history_summary = server_summary or payload.history_summary
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Could not build durable conversation context; using client history"
+                )
+                db.rollback()
 
         req = RunRequest(
             execution_id=execution_id,
@@ -143,8 +159,8 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
             root_agent_id=payload.root_agent_id,
             conversation_id=payload.conversation_id,
             task=payload.task,
-            history=payload.history,
-            history_summary=payload.history_summary,
+            history=run_history,
+            history_summary=run_history_summary,
             task_state_context=task_state_context,
             task_state_id=task_state_id,
             attachments=attachment_refs,

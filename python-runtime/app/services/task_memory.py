@@ -358,6 +358,7 @@ def prepare_task_state(
         .first()
     )
     resume_prefix = _resume_task_prefix(message)
+    implicit_resume = False
     if (
         not resume_prefix
         and row is None
@@ -369,19 +370,19 @@ def prepare_task_state(
         # instruction instead of silently creating a disconnected task whose
         # "original objective" is only the latest sub-step. Never guess when
         # multiple workstreams are active; explicit task switches always win.
-        candidates = (
+        candidate = (
             db.query(models.TaskState)
             .filter(
                 models.TaskState.project_id == conversation.project_id,
                 models.TaskState.agent_id == conversation.agent_id,
                 models.TaskState.status == "active",
             )
-            .order_by(models.TaskState.updated_at.desc())
-            .limit(2)
-            .all()
+            .order_by(models.TaskState.updated_at.desc(), models.TaskState.id.desc())
+            .first()
         )
-        if len(candidates) == 1:
-            resume_prefix = candidates[0].id[:8]
+        if candidate is not None:
+            resume_prefix = candidate.id[:8]
+            implicit_resume = True
     if resume_prefix:
         matches = (
             db.query(models.TaskState)
@@ -416,24 +417,38 @@ def prepare_task_state(
             # A task is a project workstream, not a single chat. Rebind it to
             # the conversation that is now continuing the work.
             target.conversation_id = conversation.id
-            target.current_instruction = (
-                _short((target.state_json or {}).get("next_action") or "", 300)
-                or target.original_objective
-            )
+            carries_instruction = implicit_resume and not _is_resume_latest_task(message)
+            if carries_instruction:
+                target.current_instruction = message
+            else:
+                target.current_instruction = (
+                    _short((target.state_json or {}).get("next_action") or "", 300)
+                    or target.original_objective
+                )
             target.updated_at = now
             target.version += 1
             db.add(models.TaskStateEvent(
                 id=models._uuid(),
                 task_state_id=target.id,
                 event_type="task_resumed",
-                content=f"Resumed by user instruction: {_short(message, 300)}",
+                content=f"Resumed in conversation {conversation.id}.",
                 payload={
                     "resumed_by_prefix": resume_prefix,
+                    "implicit": implicit_resume,
                     "previous_conversation_id": previous_conversation_id,
                     "resumed_in_conversation_id": conversation.id,
                 },
                 created_at=now,
             ))
+            if carries_instruction:
+                db.add(models.TaskStateEvent(
+                    id=models._uuid(),
+                    task_state_id=target.id,
+                    event_type="user_instruction",
+                    content=_short(message, 4000),
+                    payload={"message_length": len(message), "conversation_id": conversation.id},
+                    created_at=now,
+                ))
             db.commit()
             db.refresh(target)
             context = _render_context(db, target)
