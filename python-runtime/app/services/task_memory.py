@@ -25,7 +25,7 @@ _NEW_TASK_PATTERNS = (
     re.compile(r"^\s*(?:new task|start a new task|switch task|new topic)\s*[:\-]", re.I),
     re.compile(r"\b(?:forget that|start over with a different task|switch to a different task)\b", re.I),
 )
-_MAX_HEADER_CHARS = 1600
+_MAX_HEADER_CHARS = 8000
 _RESUME_TASK_PATTERN = re.compile(
     r"^\s*(?:resume|continue)\s+(?:the\s+)?task\s*[:#]?\s*([0-9a-f-]{6,36})\s*$",
     re.I,
@@ -108,7 +108,7 @@ def _render_context(db: Session, row: models.TaskState) -> str:
         f"Task ID: {row.id}",
         f"Status: {row.status}",
         f"State file: .agentforge/memory/tasks/{row.id}/STATE.md",
-        f"Original objective: {_short(row.original_objective, 520)}",
+        f"Original objective: {_short(row.original_objective, 4000)}" + (" [truncated; full objective remains in the task record and STATE.md]" if len(row.original_objective or "") > 4000 else ""),
     ]
     if row.current_instruction and row.current_instruction != row.original_objective:
         lines.append(f"Latest instruction: {_short(row.current_instruction, 300)}")
@@ -162,7 +162,7 @@ def _render_context(db: Session, row: models.TaskState) -> str:
     ):
         values = state.get(key)
         if isinstance(values, list) and values:
-            compact = "; ".join(_short(value, 110) for value in values[-2:] if isinstance(value, str))
+            compact = "; ".join(_short(value, 240) for value in values[-10:] if isinstance(value, str))
             if compact:
                 lines.append(f"{label}: {compact}")
     if state.get("next_action"):

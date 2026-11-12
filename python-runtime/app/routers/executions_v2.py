@@ -32,6 +32,7 @@ from app.infra.attachment_storage import (
 )
 from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
+from app.services.context_memory import build_conversation_context
 from app.services.core_adapters import Workspace
 from app.services.executions import manager
 from app.services.previews import preview_manager
@@ -40,7 +41,6 @@ from app.services.task_memory import (
     prepare_task_state,
     record_live_task_instruction,
 )
-from app.services.context_memory import build_conversation_context
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])

@@ -89,7 +89,7 @@ def build_system_prompt(
     # 9. Durable active task state
     if task_state_block:
         sections.append(
-            f'<active_task_state trust="untrusted">\n'
+            f'<active_task_state>\n'
             f'{task_state_block.strip()}\n</active_task_state>'
         )
 
