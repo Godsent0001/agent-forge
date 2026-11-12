@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import models
 from sqlalchemy.orm import Session
+
+from app import models
 
 
 _CONVERSATION_KEYS = ("conversation_id", "previous_conversation_id", "resumed_in_conversation_id")
