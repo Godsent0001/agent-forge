@@ -365,11 +365,10 @@ def prepare_task_state(
         and not _is_explicit_task_switch(message)
         and not _is_greeting(message)
     ):
-        # A project workstream must survive a new chat. If exactly one workstream
-        # is active for this project+agent, treat the new message as its next
-        # instruction instead of silently creating a disconnected task whose
-        # "original objective" is only the latest sub-step. Never guess when
-        # multiple workstreams are active; explicit task switches always win.
+        # Continue the most recently updated active workstream when a new chat
+        # starts without an explicit task switch. Preserve the incoming message
+        # as a user instruction; users can disambiguate with "New task:" or
+        # explicitly resume another workstream by ID.
         candidate = (
             db.query(models.TaskState)
             .filter(
