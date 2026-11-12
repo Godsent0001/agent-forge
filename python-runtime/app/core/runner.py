@@ -529,7 +529,7 @@ class RunnerCore:
                             compile_plan_context, req.task_state_id
                         )
                         if plan_context:
-                            task_state_block = "\\n\\n".join(
+                            task_state_block = "\n\n".join(
                                 part for part in (task_state_block, plan_context) if part
                             )
                     except Exception:

@@ -36,7 +36,7 @@ def test_build_system_prompt_stable_and_volatile_order():
     assert "<memory>" in prompt
     assert "<recent_runs trust=\"untrusted\">" in prompt
     assert "<conversation_summary>" in prompt
-    assert '<active_task_state trust="untrusted">' in prompt
+    assert '<active_task_state source="durable_task_record">' in prompt
     assert "Original objective: Build a payment reconciliation engine." in prompt
     assert "task-memory update tool" in prompt
 
