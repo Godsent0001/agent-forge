@@ -358,19 +358,28 @@ def prepare_task_state(
         .first()
     )
     resume_prefix = _resume_task_prefix(message)
-    if not resume_prefix and row is None and _is_resume_latest_task(message):
+    if (
+        not resume_prefix
+        and row is None
+        and not _is_explicit_task_switch(message)
+        and not _is_greeting(message)
+    ):
+        # A project workstream must survive a new chat. If exactly one workstream
+        # is active for this project+agent, treat the new message as its next
+        # instruction instead of silently creating a disconnected task whose
+        # "original objective" is only the latest sub-step. Never guess when
+        # multiple workstreams are active; explicit task switches always win.
         candidates = (
             db.query(models.TaskState)
             .filter(
                 models.TaskState.project_id == conversation.project_id,
                 models.TaskState.agent_id == conversation.agent_id,
-                models.TaskState.status.in_(["active", "paused"]),
+                models.TaskState.status == "active",
             )
             .order_by(models.TaskState.updated_at.desc())
             .limit(2)
             .all()
         )
-        # Only auto-resume when there is exactly one possible workstream.
         if len(candidates) == 1:
             resume_prefix = candidates[0].id[:8]
     if resume_prefix:
