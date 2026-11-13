@@ -24,7 +24,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "memory" | "system" | "usage">("keys");
   const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
   const [crossConversationMemory, setCrossConversationMemory] = useState(false);
-  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(false);
+  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(true);
+  const [planMemoryUsesAgentModel, setPlanMemoryUsesAgentModel] = useState(true);
   const [planMemoryProvider, setPlanMemoryProvider] = useState("gemini");
   const [planMemoryModel, setPlanMemoryModel] = useState("gemini-2.5-flash-lite");
 
@@ -46,7 +47,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       .then((value) => setCrossConversationMemory(value.cross_conversation_enabled))
       .catch(() => setStatus({ tone: "error", text: "Could not load memory settings." }));
     void api.settings.getPlanMemorySettings()
-      .then((value) => { setPlanMemoryEnabled(value.enabled); setPlanMemoryProvider(value.provider); setPlanMemoryModel(value.model); })
+      .then((value) => { setPlanMemoryEnabled(value.enabled); setPlanMemoryUsesAgentModel(value.use_agent_model); setPlanMemoryProvider(value.provider); setPlanMemoryModel(value.model); })
       .catch(() => setStatus({ tone: "error", text: "Could not load hierarchical plan-memory settings." }));
   }, [refresh]);
 
@@ -130,10 +131,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     try {
       const result = await api.settings.setPlanMemorySettings({
         enabled: planMemoryEnabled,
+        use_agent_model: planMemoryUsesAgentModel,
         provider: planMemoryProvider,
         model: planMemoryModel.trim(),
       });
       setPlanMemoryEnabled(result.enabled);
+      setPlanMemoryUsesAgentModel(result.use_agent_model);
       setPlanMemoryProvider(result.provider);
       setPlanMemoryModel(result.model);
       setStatus({ tone: "ok", text: result.enabled
@@ -302,12 +305,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     className="mt-0.5 h-4 w-4 shrink-0 rounded accent-accent-500"
                   />
                 </div>
+                <label className="flex items-center gap-2 text-2xs text-studio-300">
+                  <input
+                    aria-label="Use each agent's own model for plan memory"
+                    type="checkbox"
+                    checked={planMemoryUsesAgentModel}
+                    onChange={(event) => setPlanMemoryUsesAgentModel(event.target.checked)}
+                    className="h-3.5 w-3.5 rounded accent-accent-500"
+                  />
+                  Use each agent's own model (untick to choose a cheaper dedicated model)
+                </label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label htmlFor="plan-memory-provider" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Provider</label>
                     <select
                       id="plan-memory-provider"
                       value={planMemoryProvider}
+                      disabled={planMemoryUsesAgentModel}
                       onChange={(event) => {
                         const provider = PROVIDERS.find((item) => item.id === event.target.value);
                         setPlanMemoryProvider(event.target.value);
@@ -323,6 +337,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     <input
                       id="plan-memory-model"
                       value={planMemoryModel}
+                      disabled={planMemoryUsesAgentModel}
                       onChange={(event) => setPlanMemoryModel(event.target.value)}
                       spellCheck={false}
                       placeholder="gemini-2.5-flash-lite"
@@ -330,10 +345,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     />
                   </div>
                 </div>
-                <p className="text-2xs leading-relaxed text-studio-500">Default suggestion: Gemini 2.5 Flash-Lite. You can choose any supported provider and enter a custom model ID. The selected provider's key must be saved under Provider keys; Ollama can run locally. The feature is off until you enable it.</p>
+                <p className="text-2xs leading-relaxed text-studio-500">On by default, using each agent's own model and provider key. A dedicated low-cost model such as Gemini 2.5 Flash-Lite cuts cost; its provider's key must be saved under Provider keys, and Ollama can run locally. The same model also writes the rolling conversation summary.</p>
                 <div className="flex justify-end">
                   <Button size="xs" variant="outline" onClick={() => void handleSavePlanMemorySettings()} disabled={isBusy || !planMemoryModel.trim()}>
-                    Save plan-memory model
+                    Save plan-memory settings
                   </Button>
                 </div>
               </div>

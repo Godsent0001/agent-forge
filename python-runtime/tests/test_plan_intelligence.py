@@ -200,6 +200,7 @@ def test_plan_memory_settings_validate_and_persist_custom_model(tmp_path, monkey
     })
     assert saved == {
         "enabled": True,
+        "use_agent_model": True,
         "provider": "openrouter",
         "model": "anthropic/claude-3.5-haiku",
     }
@@ -226,7 +227,8 @@ def test_plan_memory_settings_api(client, monkeypatch, tmp_path):
     monkeypatch.setattr(plan_intelligence, "_config_path", lambda: tmp_path / "plan_memory_settings.json")
     initial = client.get("/settings/plan-memory")
     assert initial.status_code == 200
-    assert initial.json()["enabled"] is False
+    assert initial.json()["enabled"] is True  # on by default
+    assert initial.json()["use_agent_model"] is True
 
     response = client.post(
         "/settings/plan-memory",
@@ -417,6 +419,10 @@ def test_integrity_audit_is_append_only_and_rejects_unknown_node_references(db_s
 
 def test_integrity_audit_is_due_initially_and_after_five_plan_updates(db_session, monkeypatch):
     task = _task(db_session)
+    # An empty plan has nothing to audit; spending tokens on it would be waste.
+    assert plan_intelligence._integrity_audit_due(db_session, task) is False
+    task.state_json = {**task.state_json, "plan": {"nodes": [{"id": f"n{i}"} for i in range(3)]}}
+    db_session.commit()
     assert plan_intelligence._integrity_audit_due(db_session, task) is True
     now = plan_intelligence._now()
     db_session.add(models.TaskStateEvent(
@@ -439,3 +445,108 @@ def test_integrity_audit_is_due_initially_and_after_five_plan_updates(db_session
     ))
     db_session.flush()
     assert plan_intelligence._integrity_audit_due(db_session, task) is True
+
+
+def test_settings_saved_before_use_agent_model_existed_keep_their_explicit_model(tmp_path, monkeypatch):
+    path = tmp_path / "plan_memory_settings.json"
+    path.write_text(json.dumps({"enabled": True, "provider": "gemini", "model": "gemini-2.5-flash-lite"}))
+    monkeypatch.setattr(plan_intelligence, "_config_path", lambda: path)
+    config = plan_intelligence.load_plan_memory_settings()
+    assert config["use_agent_model"] is False
+    assert plan_intelligence.resolve_memory_model(config, "anthropic", "claude-x") == (
+        "gemini", "gemini-2.5-flash-lite"
+    )
+
+
+def test_default_settings_use_the_agents_own_model(tmp_path, monkeypatch):
+    monkeypatch.setattr(plan_intelligence, "_config_path", lambda: tmp_path / "missing.json")
+    config = plan_intelligence.load_plan_memory_settings()
+    assert config["enabled"] is True
+    assert plan_intelligence.resolve_memory_model(config, "anthropic", "claude-x") == ("anthropic", "claude-x")
+
+
+def _decision(db_session, monkeypatch, statement, evidence, user_text, history=""):
+    task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+    plan_intelligence._apply_interpretation(
+        task.id,
+        {"decisions": [{"text": statement, "authority": "user", "evidence": evidence}]},
+        user_text,
+        user_text + "\n" + history,
+    )
+    db_session.expire_all()
+    return db_session.get(models.TaskState, task.id).state_json["plan"]["decisions"][0]["status"]
+
+
+def test_paraphrased_user_decision_is_accepted(db_session, monkeypatch):
+    status = _decision(
+        db_session, monkeypatch,
+        "Use PostgreSQL as the primary database",
+        "let's use postgresql for the primary database",
+        "Ok so,  let's use PostgreSQL for the\nprimary database please.",
+    )
+    assert status == "accepted"
+
+
+def test_user_approval_accepts_the_assistants_proposal(db_session, monkeypatch):
+    status = _decision(
+        db_session, monkeypatch,
+        "Cache stock counts in Redis with a 300 second TTL",
+        "ok go with that",
+        "ok go with that",
+        history="user: what about caching?\nassistant: I suggest caching stock counts in Redis with a 300 second TTL.",
+    )
+    assert status == "accepted"
+
+
+def test_real_quote_cannot_launder_an_unrelated_decision(db_session, monkeypatch):
+    status = _decision(
+        db_session, monkeypatch,
+        "Delete the production database every night",
+        "ok go with that",
+        "ok go with that",
+        history="assistant: I suggest caching stock counts in Redis.",
+    )
+    assert status == "proposed"
+
+
+def test_invented_quote_is_never_accepted(db_session, monkeypatch):
+    status = _decision(
+        db_session, monkeypatch,
+        "Use MongoDB",
+        "Use MongoDB",
+        "Use PostgreSQL for everything.",
+    )
+    assert status == "proposed"
+
+
+def test_concurrent_writers_do_not_lose_each_others_changes(db_session, monkeypatch):
+    import threading
+
+    task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+    errors = []
+
+    def add(index):
+        try:
+            plan_intelligence._apply_interpretation(
+                task.id,
+                {"nodes": [{"type": "task", "title": f"Task {index}", "parent_ref": "root", "source": "agent"}]},
+                "plan the work",
+            )
+        except Exception as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=add, args=(index,)) for index in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    db_session.expire_all()
+    titles = {node["title"] for node in db_session.get(models.TaskState, task.id).state_json["plan"]["nodes"]}
+    assert not errors
+    assert titles == {f"Task {index}" for index in range(8)}

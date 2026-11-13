@@ -69,6 +69,7 @@ from app.services.plan_intelligence import (
     _budget_allows_memory_call,
     compile_plan_context,
     load_plan_memory_settings,
+    resolve_memory_model,
     update_plan_memory,
 )
 from app.tools.python_project import PythonProjectTool
@@ -314,11 +315,15 @@ class RunnerCore:
             return
         try:
             combined = "\n\n".join(live_messages)
+            await self._await_plan_update(req.execution_id)
+            root_spec = getattr(self, "_root_specs", {}).get(req.execution_id)
             await update_plan_memory(
                 req.task_state_id,
                 combined,
                 messages[1:] + [{"role": "user", "content": combined}],
                 budget=budget,
+                agent_provider=getattr(root_spec, "provider", None),
+                agent_model=getattr(root_spec, "model", None),
             )
             plan_context = await asyncio.to_thread(
                 compile_plan_context, req.task_state_id
@@ -395,6 +400,7 @@ class RunnerCore:
                 active_agent_ids=active_agent_ids,
             )
 
+            await self._await_plan_update(req.execution_id)
             if root_spec.memory_enabled and memory:
                 await self._extract_memories(
                     root_spec=root_spec,
@@ -431,6 +437,7 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
+            await self._await_plan_update(req.execution_id)
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
@@ -449,6 +456,9 @@ class RunnerCore:
                 error=str(exc),
                 totals=budget.totals,
             )
+        finally:
+            # A cancelled or failed run must not leave an orphaned plan update behind.
+            self._forget_plan_update(req.execution_id)
 
     async def _run_agent(
         self,
@@ -537,13 +547,11 @@ class RunnerCore:
 
                 task_state_block = req.task_state_context if depth == 0 else ""
                 if depth == 0 and req.task_state_id:
+                    # The interpreter runs alongside the agent instead of in front of it.
+                    # This turn's message is already in the prompt verbatim, so the agent
+                    # loses nothing; the reconciled plan is ready for the next turn.
+                    self._start_plan_update(req, spec, history, budget)
                     try:
-                        await update_plan_memory(
-                            req.task_state_id,
-                            req.task,
-                            history,
-                            budget=budget,
-                        )
                         plan_context = await asyncio.to_thread(
                             compile_plan_context, req.task_state_id
                         )
@@ -1663,6 +1671,39 @@ class RunnerCore:
         turn = await self._execute_llm_turn(spec, messages, [], parent_span_id, emit, budget)
         return turn.text or ""
 
+    def _start_plan_update(self, req: RunRequest, spec: AgentSpec, history: list[Any], budget: BudgetTracker) -> None:
+        pending = self.__dict__.setdefault("_plan_updates", {})
+        self.__dict__.setdefault("_root_specs", {})[req.execution_id] = spec
+        if req.execution_id in pending:
+            return
+        pending[req.execution_id] = asyncio.create_task(update_plan_memory(
+            req.task_state_id,
+            req.task,
+            list(history),
+            budget=budget,
+            agent_provider=spec.provider,
+            agent_model=spec.model,
+        ))
+
+    async def _await_plan_update(self, execution_id: str, timeout_s: float = 45.0) -> None:
+        """Let a pending plan update finish so its usage is counted; never raise."""
+        task = self.__dict__.get("_plan_updates", {}).pop(execution_id, None)
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(task, timeout_s)
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        except Exception:
+            logger.exception("Hierarchical plan-memory update failed")
+
+    def _forget_plan_update(self, execution_id: str) -> None:
+        task = self.__dict__.get("_plan_updates", {}).pop(execution_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+        self.__dict__.get("_root_specs", {}).pop(execution_id, None)
+
     async def _prepare_conversation_context(
         self,
         spec: AgentSpec,
@@ -1704,7 +1745,8 @@ class RunnerCore:
         """Summary calls use the configured low-cost memory model, else the agent's own."""
         config = load_plan_memory_settings()
         provider, model = (
-            (config["provider"], config["model"]) if config.get("enabled") else (spec.provider, spec.model)
+            resolve_memory_model(config, spec.provider, spec.model)
+            if config.get("enabled") else (spec.provider, spec.model)
         )
 
         async def summarize(messages: list[dict[str, str]]) -> str:

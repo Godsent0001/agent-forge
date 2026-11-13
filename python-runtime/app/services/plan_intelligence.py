@@ -21,11 +21,16 @@ from app.core.llm.model_names import litellm_model
 from app.core.llm.types import LLMParams
 from app.db import SessionLocal
 from app.infra.paths import data_dir
+from app.services.evidence import grounded_in_user, is_verbatim
+from app.services.task_locks import task_state_lock
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
-    "enabled": False,
+    # On by default. Until the user picks a dedicated low-cost model, each agent's
+    # own provider/model is used, so it works with whatever key is already set up.
+    "enabled": True,
+    "use_agent_model": True,
     "provider": "gemini",
     "model": "gemini-2.5-flash-lite",
     "max_tokens": 1800,
@@ -65,6 +70,8 @@ def load_plan_memory_settings() -> dict[str, Any]:
                 config["model"] = stored["model"]
             if isinstance(stored.get("enabled"), bool):
                 config["enabled"] = stored["enabled"]
+            # Files saved before this option existed always named an explicit model.
+            config["use_agent_model"] = stored.get("use_agent_model") is True
     except (OSError, ValueError, TypeError):
         pass
     return config
@@ -75,9 +82,14 @@ def save_plan_memory_settings(payload: dict[str, Any]) -> dict[str, Any]:
     enabled = payload.get("enabled", current["enabled"])
     provider = payload.get("provider", current["provider"])
     model = payload.get("model", current["model"])
-    if not isinstance(enabled, bool) or not _valid_model_config(provider, model):
+    use_agent_model = payload.get("use_agent_model", current["use_agent_model"])
+    if (
+        not isinstance(enabled, bool)
+        or not isinstance(use_agent_model, bool)
+        or not _valid_model_config(provider, model)
+    ):
         raise ValueError("Choose a supported provider and a valid model identifier.")
-    result = {"enabled": enabled, "provider": provider, "model": model}
+    result = {"enabled": enabled, "use_agent_model": use_agent_model, "provider": provider, "model": model}
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")
@@ -110,7 +122,10 @@ def _normal_text(value: Any, limit: int = 280) -> str:
 
 
 def _integrity_audit_due(db: Any, row: models.TaskState) -> bool:
-    """Run the semantic integrity audit initially and every five plan updates."""
+    """Audit once the plan has some structure, then again every five plan updates."""
+    nodes = ((row.state_json or {}).get("plan") or {}).get("nodes") or []
+    if len(nodes) < 3:
+        return False
     events = (
         db.query(models.TaskStateEvent)
         .filter(models.TaskStateEvent.task_state_id == row.id,
@@ -132,7 +147,7 @@ def _record_integrity_audit(task_state_id: str, audit: Any, model_name: str) -> 
                   "decision_conflict", "stale_subgoal", "goal_alignment"}
     severities = {"info", "warning", "critical"}
     now = _now()
-    with SessionLocal() as db:
+    with task_state_lock(task_state_id), SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
         if row is None:
             return {"recorded": False, "reason": "task_missing"}
@@ -178,7 +193,17 @@ def _record_integrity_audit(task_state_id: str, audit: Any, model_name: str) -> 
 
 
 def _user_evidence_is_exact(evidence: str, user_text: str) -> bool:
-    return bool(evidence and evidence.casefold() in user_text.casefold())
+    # Evidence is whitespace-normalised before this check, so the source must be too.
+    return is_verbatim(evidence, user_text)
+
+
+def _last_assistant_text(evidence_text: str | None) -> str:
+    """The most recent assistant turn in the interpreter's recent-history excerpt."""
+    lines = (evidence_text or "").splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].startswith("assistant: "):
+            return lines[index][len("assistant: "):]
+    return ""
 
 
 def _would_create_dependency_cycle(
@@ -220,7 +245,7 @@ def _apply_interpretation(
     evidence_text: str | None = None,
 ) -> dict[str, Any]:
     now = _now()
-    with SessionLocal() as db:
+    with task_state_lock(task_state_id), SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
         if row is None:
             return {"applied": False, "reason": "task_missing"}
@@ -348,10 +373,8 @@ def _apply_interpretation(
             evidence = _normal_text(item.get("evidence"), 500)
             if not statement:
                 continue
-            user_confirmed = (
-                item.get("authority") == "user"
-                and _user_evidence_is_exact(evidence, user_text)
-                and statement.casefold() in evidence.casefold()
+            user_confirmed = item.get("authority") == "user" and grounded_in_user(
+                statement, evidence, user_text, _last_assistant_text(evidence_text)
             )
             status = "accepted" if user_confirmed else "proposed"
             supersedes = _normal_text(item.get("supersedes"), 80)
@@ -381,7 +404,7 @@ def _apply_interpretation(
                 continue
             statement = _normal_text(item.get("text"), 300)
             evidence = _normal_text(item.get("evidence"), 500)
-            if statement and _user_evidence_is_exact(evidence, user_text) and statement.casefold() in evidence.casefold() and not any(
+            if statement and grounded_in_user(statement, evidence, user_text) and not any(
                 c.get("text", "").casefold() == statement.casefold()
                 for c in constraints if isinstance(c, dict)
             ):
@@ -472,11 +495,20 @@ def _should_interpret(message: str) -> bool:
     return len(text) >= 70 or bool(signal)
 
 
+def resolve_memory_model(config: dict[str, Any], agent_provider: str | None, agent_model: str | None) -> tuple[str, str]:
+    """The provider/model memory calls use: the agent's own unless a dedicated one is chosen."""
+    if config.get("use_agent_model") and agent_provider and agent_model:
+        return agent_provider, agent_model
+    return config["provider"], config["model"]
+
+
 async def update_plan_memory(
     task_state_id: str | None,
     user_message: str,
     history: list[Any] | None = None,
     budget: Any = None,
+    agent_provider: str | None = None,
+    agent_model: str | None = None,
 ) -> dict[str, Any]:
     """Interpret one meaningful user turn and apply only reconciled, evidence-backed changes."""
     if not task_state_id or not _should_interpret(user_message):
@@ -484,6 +516,7 @@ async def update_plan_memory(
     config = load_plan_memory_settings()
     if not config["enabled"]:
         return {"applied": False, "reason": "disabled"}
+    provider, model = resolve_memory_model(config, agent_provider, agent_model)
 
     with SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
@@ -559,18 +592,22 @@ async def update_plan_memory(
            "must be existing node IDs or root. Limit to 8. Return integrity_audit:{overall,findings}. "
            if audit_due else "\nINTEGRITY AUDIT NOT DUE; return integrity_audit:{overall,findings:[]}.")
     )
-    if not _budget_allows_memory_call(budget, prompt, config["max_tokens"]):
+    # The audit shares this call; give it room so a long reply is not cut off
+    # mid-JSON, which would lose both the plan update and the audit.
+    max_tokens = config["max_tokens"] + (1500 if audit_due else 0)
+    if not _budget_allows_memory_call(budget, prompt, max_tokens):
         return {"applied": False, "reason": "run_budget_reserved_for_execution"}
     try:
-        model_name = litellm_model(config["provider"], config["model"])
+        model_name = litellm_model(provider, model)
         turn = await complete(
             messages=[
                 {"role": "system", "content": "Extract structured plan-memory deltas. Output valid JSON only."},
                 {"role": "user", "content": prompt},
             ],
-            params=LLMParams(timeout_s=12, temperature=0, max_tokens=config["max_tokens"]),
+            # Runs alongside the main agent, so it can afford a normal model's latency.
+            params=LLMParams(timeout_s=40, temperature=0, max_tokens=max_tokens),
             model=model_name,
-            provider=config["provider"],
+            provider=provider,
             max_retries=0,
         )
         if budget is not None:
@@ -599,7 +636,7 @@ async def update_plan_memory(
 
 def rebuild_plan_from_history(task_state_id: str) -> dict[str, Any]:
     """Reconstruct the current hierarchy from its append-only task events."""
-    with SessionLocal() as db:
+    with task_state_lock(task_state_id), SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
         if row is None:
             return {"rebuilt": False, "reason": "task_missing"}

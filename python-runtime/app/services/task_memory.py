@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.infra.paths import project_dir
+from app.services.evidence import is_verbatim, overlaps
 from app.services.recall_chain import build_recall_chain
+from app.services.task_locks import task_state_lock
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +156,12 @@ def _render_context(db: Session, row: models.TaskState) -> str:
                 lines.append(
                     f"- {item.get('status', 'unknown')}: {_short(item.get('summary', ''), 180)}"
                 )
+    plan = state.get("plan") if isinstance(state.get("plan"), dict) else {}
+    # Once the plan holds decisions/constraints it is their single source in the
+    # prompt (compile_plan_context); listing them here as well only duplicates them.
+    plan_owns_rules = bool(plan.get("decisions") or plan.get("constraints"))
     for label, key in (
-        ("Constraints", "constraints"),
-        ("Decisions", "decisions"),
+        *(() if plan_owns_rules else (("Constraints", "constraints"), ("Decisions", "decisions"))),
         ("Completed", "completed"),
         ("Remaining", "remaining"),
         ("Blockers", "blockers"),
@@ -716,7 +721,7 @@ def record_task_execution_result(
     from app.db import SessionLocal
 
     now = _now()
-    with SessionLocal() as db:
+    with task_state_lock(task_state_id), SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
         if row is None:
             return
@@ -809,7 +814,7 @@ def apply_task_state_update(
     from app.db import SessionLocal
 
     now = _now()
-    with SessionLocal() as db:
+    with task_state_lock(task_state_id), SessionLocal() as db:
         row = db.get(models.TaskState, task_state_id)
         if row is None:
             raise ValueError("The task state no longer exists.")
@@ -839,10 +844,14 @@ def apply_task_state_update(
             .order_by(models.TaskStateEvent.created_at.asc())
             .all()
         )
-        user_corpus = "\\n".join(
-            [row.original_objective or "", row.current_instruction or ""]
-            + [event.content for event in user_events if isinstance(event.content, str)]
-        ).casefold()
+        user_texts = [row.original_objective or "", row.current_instruction or ""] + [
+            event.content for event in user_events if isinstance(event.content, str)
+        ]
+
+        def user_said(item: str) -> bool:
+            # The agent paraphrases; accept a close restatement of one real user message.
+            return any(is_verbatim(item, text) or overlaps(item, text) for text in user_texts if text)
+
         accepted_constraints: list[str] = []
         accepted_decisions: list[str] = []
         ignored_constraints: list[str] = []
@@ -854,8 +863,8 @@ def apply_task_state_update(
 
         for key in ("constraints", "decisions"):
             incoming = _normalized_items(patch.get(f"{key}_add"), limit=5)
-            accepted = [item for item in incoming if item.casefold() in user_corpus]
-            ignored = [item for item in incoming if item.casefold() not in user_corpus]
+            accepted = [item for item in incoming if user_said(item)]
+            ignored = [item for item in incoming if not user_said(item)]
             if accepted:
                 state[key] = _append_unique(state.get(key), accepted)
                 changed.append(key)

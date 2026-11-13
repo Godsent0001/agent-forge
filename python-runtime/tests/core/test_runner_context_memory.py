@@ -106,3 +106,49 @@ async def test_client_supplied_history_is_trimmed_to_the_model_not_to_eight_mess
     assert 8 < len(history) < 60
     assert history[-1]["content"].startswith("m59")
     assert sum(len(m["content"]) for m in history) <= 32_000
+
+
+@pytest.mark.asyncio
+async def test_plan_interpreter_runs_alongside_the_agent_not_in_front_of_it(monkeypatch):
+    import asyncio
+
+    order = []
+    release = asyncio.Event()
+
+    async def slow_plan_update(*_args, **kwargs):
+        order.append(("plan_started", kwargs.get("agent_provider"), kwargs.get("agent_model")))
+        await release.wait()
+        order.append("plan_finished")
+        return {"applied": False}
+
+    monkeypatch.setattr("app.core.runner.update_plan_memory", slow_plan_update)
+    runner = RunnerCore(fake_llm=FakeLLM([]))
+    request = SimpleNamespace(execution_id="exec-1", task_state_id="task-1", task="Use Postgres")
+    runner._start_plan_update(request, _spec(), [], BudgetTracker(BudgetSpec()))
+    await asyncio.sleep(0)
+    order.append("agent_turn")  # the agent proceeds while the interpreter is still working
+    release.set()
+    await runner._await_plan_update("exec-1")
+
+    assert order == [("plan_started", "fake", "fake/demo"), "agent_turn", "plan_finished"]
+
+
+@pytest.mark.asyncio
+async def test_a_finished_run_cancels_an_unfinished_plan_update(monkeypatch):
+    import asyncio
+
+    started = asyncio.Event()
+
+    async def never_finishes(*_args, **_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("app.core.runner.update_plan_memory", never_finishes)
+    runner = RunnerCore(fake_llm=FakeLLM([]))
+    request = SimpleNamespace(execution_id="exec-2", task_state_id="task-1", task="Use Postgres")
+    runner._start_plan_update(request, _spec(), [], BudgetTracker(BudgetSpec()))
+    await started.wait()
+    task = runner._plan_updates["exec-2"]
+    runner._forget_plan_update("exec-2")
+    await asyncio.sleep(0)
+    assert task.cancelled()

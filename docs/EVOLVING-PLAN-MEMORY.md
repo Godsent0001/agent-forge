@@ -18,12 +18,14 @@ The task is rebound to the new conversation while preserving its original object
 
 ## Cheap model configuration
 
-Open **Settings → Memory → Evolving hierarchical plan memory** to enable the interpreter and choose a provider and model ID. The default suggestion is `gemini/gemini-2.5-flash-lite`, but the feature is disabled until explicitly enabled. Any supported AgentForge provider and a custom LiteLLM model ID can be selected. Provider credentials are configured separately under **Provider keys**; Ollama can be used locally.
+The interpreter is **on by default** and uses each agent's own provider and model, so it works with whatever key is already configured. Under **Settings → Memory → Evolving hierarchical plan memory** you can turn it off, or untick *Use each agent's own model* and choose a cheaper dedicated model such as `gemini/gemini-2.5-flash-lite`. A dedicated model's credentials are configured under **Provider keys**; Ollama can be used locally. The same model writes the rolling conversation summary.
 
 The interpreter is deliberately small and bounded:
 - It runs only for meaningful user messages, not greetings or trivial acknowledgements. Live instructions received during a running task are also reconciled before the agent resumes.
 - It receives the immutable root objective, a compact projection of the current plan, and recent conversation context.
-- It uses a short timeout, a small output budget, and no retry loop.
+- It runs concurrently with the main agent rather than before it, so it adds no latency to the reply. The current message is already in the agent's prompt verbatim; the reconciled plan is used from the next turn. The run waits for it to finish before reporting usage, and cancels it if the run is cancelled or fails.
+- It uses a 40-second timeout, a bounded output budget (raised when an audit is due, so the audit cannot truncate the JSON), and no retry loop.
+- Every writer of a task's state (interpreter, audit, task-memory tool, execution results, conversation summary) holds a per-task lock, so concurrent updates cannot overwrite each other.
 - Its LLM call is included in the run's usage totals.
 - If it fails or is disabled, the main execution continues normally.
 
@@ -32,8 +34,8 @@ The interpreter is deliberately small and bounded:
 The cheap model proposes structured deltas; it never writes directly to SQLite.
 
 - The root objective is immutable.
-- A user-authored goal or constraint is accepted only when the supplied evidence is an exact substring of a stored user-authored message for that workstream. The main task-memory tool applies the same exact-match rule before a decision or constraint enters the binding user state.
-- A user decision is marked accepted only when its text appears verbatim in exact user-message evidence. Other decisions remain proposals and are explicitly labelled non-binding.
+- The quoted evidence must occur in a real user message (ignoring case, whitespace and typographic quotes). A model's paraphrase of that quote is not accepted as evidence.
+- A user decision or constraint is accepted when that quote supports it: the statement appears in the quote, or most of its content words do, or the quote is a short approval ("ok, go with that") and the statement matches the assistant's immediately preceding proposal. A real quote attached to an unrelated statement stays a proposal. The task-memory tool applies the same overlap rule against stored user messages. Other decisions remain proposals and are explicitly labelled non-binding.
 - Agent-generated phases/tasks are stored as agent-owned execution-plan nodes, separate from user goals. The main agent can add its own execution-plan nodes and prerequisite edges through the existing execution-bound task-memory tool at meaningful checkpoints; the cheap interpreter continuously reconciles later user and execution evidence into that same hierarchy.
 - A user-owned plan node can be paused, blocked, reactivated, or superseded only with exact evidence from a user-authored message. Agent-owned execution nodes can be updated using exact evidence from recent tool results or conversation history, but cannot be marked complete by the interpreter.
 - The interpreter cannot mark work complete. The execution-bound task-state update tool may complete a matching hierarchy node only when it records a verified milestone; it stores the execution ID on that node and in the append-only event payload.
@@ -45,7 +47,7 @@ This is an initial, evidence-gated implementation. It does not yet provide a vis
 
 ## Periodic plan-integrity auditing
 
-When the low-cost plan-memory interpreter is enabled, AgentForge performs a semantic integrity audit during the initial meaningful plan reconciliation and then every five reconciliations. The audit shares that reconciliation's model call rather than introducing a separate call on every message. It checks:
+AgentForge performs a semantic integrity audit once the plan has at least three nodes, and then after every five plan updates that changed something. The audit shares that reconciliation's model call rather than introducing a separate call on every message. It checks:
 
 - Whether the immutable original objective is still represented by the current plan.
 - Whether accepted requirements, constraints, or decisions have disappeared from the current hierarchy.

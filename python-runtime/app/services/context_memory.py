@@ -21,6 +21,7 @@ from app.core.memory.compaction import (
     split_for_budget,
     summarize_evicted,
 )
+from app.services.task_locks import task_state_lock
 
 SUMMARY_KEY = "context_summary"
 # Upper bound on what the request path loads before the runner compacts it.
@@ -128,7 +129,7 @@ def _load(session_factory, task_state_id: str | None, conversation_id: str, curr
 
 
 def _save(session_factory, task_state_id: str, summary: str, last_id: str, count: int) -> None:
-    with session_factory() as db:
+    with task_state_lock(task_state_id), session_factory() as db:
         task = db.get(models.TaskState, task_state_id)
         if task is None:
             return
