@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from app import models
 from app.infra.paths import project_dir
 from app.services.evidence import is_verbatim, overlaps
-from app.services.recall_chain import build_recall_chain
 from app.services.task_locks import task_state_lock
 
 logger = logging.getLogger(__name__)
@@ -297,13 +296,6 @@ def _write_projection(db: Session, row: models.TaskState) -> None:
             lines.extend(["", _short(last["summary"], 1200)])
         if last.get("error"):
             lines.extend(["", f"Error: {_short(last['error'], 500)}"])
-    recall_chain = build_recall_chain(db, row.id, limit=40)
-    lines.extend(["", "## Recall references", ""])
-    lines.append("- Task: " + recall_chain["task_id"])
-    for key, label in (("conversations", "Conversations"), ("executions", "Executions"), ("messages", "Source messages"), ("artifacts", "Artifacts")):
-        values = recall_chain.get(key) or []
-        if values:
-            lines.append("- " + label + ": " + ", ".join("`" + value + "`" for value in values))
     lines.extend(["", "## Recent task events", ""])
     for event in reversed(events):
         stamp = event.created_at.isoformat() if event.created_at else ""

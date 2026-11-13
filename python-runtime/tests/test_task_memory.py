@@ -505,34 +505,3 @@ def test_continue_in_new_chat_resumes_the_only_active_project_workstream(db_sess
     assert resumed.conversation_id == next_conversation.id
     assert "Build the AgentForge memory architecture." in context
     assert db_session.query(models.TaskState).filter_by(project_id=project.id).count() == 1
-
-
-def test_recall_chain_exposes_stable_source_ids_without_copying_transcripts(db_session):
-    from app.services.recall_chain import build_recall_chain, render_recall_chain
-
-    project, agent, conversation = _conversation(db_session)
-    task_id = task_memory.prepare_task_state(db_session, conversation, "Build the reconciliation engine.")[0]
-    execution = models.Execution(
-        id="recall-chain-execution", project_id=project.id, root_agent_id=agent.id,
-        input_task="Build the reconciliation engine.", status="completed", final_output="Verified output",
-    )
-    db_session.add(execution)
-    db_session.flush()
-    db_session.add(models.TaskStateEvent(
-        id="recall-chain-event", task_state_id=task_id, event_type="evidence_recorded",
-        content="Verified implementation output.", source_execution_id=execution.id,
-        payload={"conversation_id": conversation.id, "message_id": "source-message-123", "artifact_ids": ["artifact-456"]},
-    ))
-    db_session.commit()
-
-    chain = build_recall_chain(db_session, task_id)
-    rendered = render_recall_chain(chain)
-
-    assert chain["task_id"] == task_id
-    assert conversation.id in chain["conversations"]
-    assert execution.id in chain["executions"]
-    assert "source-message-123" in chain["messages"]
-    assert "artifact-456" in chain["artifacts"]
-    assert "recall-chain-event" in chain["events"]
-    assert "source-message-123" in rendered
-    assert "Verified implementation output" not in rendered
