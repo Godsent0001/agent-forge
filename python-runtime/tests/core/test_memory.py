@@ -2,8 +2,6 @@
 import pytest
 
 from app.contracts.memory import MemoryCandidate
-from app.core.llm.types import LLMTurn
-from app.core.memory.compaction import compact_conversation, should_compact_conversation
 from app.core.memory.inmemory import (
     InMemoryStore,
 )
@@ -50,13 +48,51 @@ def test_memory_safety_filters():
 
 
 @pytest.mark.asyncio
-async def test_conversation_compaction():
-    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i} " * 500} for i in range(10)]
-    assert should_compact_conversation(history, context_window=8000) is True
+async def test_memory_is_conversation_scoped_unless_user_opts_in():
+    store = InMemoryStore()
+    await store.add(
+        "agent_1",
+        [MemoryCandidate(text="User is building the Orion platform", evidence="I am building Orion")],
+        conversation_id="conversation_a",
+    )
 
-    async def fake_complete(msgs):
-        return LLMTurn(text="Summarized conversation history.")
+    same_conversation, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_a",
+    )
+    other_conversation_private, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_b",
+    )
+    other_conversation_shared, _ = await recall_memories(
+        store, "agent_1", "Orion platform", conversation_id="conversation_b",
+        include_other_conversations=True,
+    )
 
-    summary, count = await compact_conversation(history, context_window=8000, llm_complete_fn=fake_complete)
-    assert summary == "Summarized conversation history."
-    assert count == 4
+    assert len(same_conversation) == 1
+    assert other_conversation_private == []
+    assert len(other_conversation_shared) == 1
+
+
+@pytest.mark.asyncio
+async def test_extraction_accepts_json_wrapped_in_a_code_fence():
+    from types import SimpleNamespace
+
+    from app.contracts.graph import AgentSpec
+    from app.core.memory.extractor import extract_and_store_memories
+
+    store = InMemoryStore()
+
+    async def fenced(_messages):
+        return SimpleNamespace(text=(
+            "Here you go:\n```json\n{\"memories\": [{\"text\": \"User prefers dark mode\", "
+            "\"kind\": \"preference\", \"evidence\": \"I prefer dark mode\"}]}\n```"
+        ))
+
+    added = await extract_and_store_memories(
+        spec=AgentSpec(id="agent_1", name="A", provider="fake", model="fake/demo", memory_enabled=True),
+        user_messages=["I prefer dark mode"],
+        final_output="ok",
+        execution_id="run-1",
+        store=store,
+        llm_complete_fn=fenced,
+    )
+    assert len(added) == 1

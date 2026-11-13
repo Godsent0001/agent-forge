@@ -215,7 +215,41 @@ class KnowledgeIndex:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(knowledge_chunks)")}
             if "embedding" not in columns:
                 db.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding TEXT")
+            self._fts5_available = self._ensure_fts5(db)
         self.last_ingest_embedded = False
+
+    @staticmethod
+    def _ensure_fts5(db: sqlite3.Connection) -> bool:
+        """Create a transactionally maintained FTS5 index; return False on unsupported SQLite."""
+        try:
+            created = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_chunks_fts'"
+            ).fetchone() is None
+            db.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts "
+                "USING fts5(chunk_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2')"
+            )
+            db.executescript("""
+                CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ai AFTER INSERT ON knowledge_chunks BEGIN
+                    INSERT INTO knowledge_chunks_fts(chunk_id, text) VALUES (new.chunk_id, new.text);
+                END;
+                CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ad AFTER DELETE ON knowledge_chunks BEGIN
+                    DELETE FROM knowledge_chunks_fts WHERE chunk_id = old.chunk_id;
+                END;
+                CREATE TRIGGER IF NOT EXISTS knowledge_chunks_au AFTER UPDATE OF chunk_id, text ON knowledge_chunks BEGIN
+                    DELETE FROM knowledge_chunks_fts WHERE chunk_id = old.chunk_id;
+                    INSERT INTO knowledge_chunks_fts(chunk_id, text) VALUES (new.chunk_id, new.text);
+                END;
+            """)
+            if created:
+                db.execute(
+                    "INSERT INTO knowledge_chunks_fts(chunk_id, text) "
+                    "SELECT chunk_id, text FROM knowledge_chunks"
+                )
+            return True
+        except sqlite3.OperationalError:
+            # Some bundled SQLite builds omit FTS5. The existing lexical path remains usable.
+            return False
 
     def has_embeddings(self) -> bool:
         """Return whether this index has any persisted vectors without loading the model."""
@@ -299,13 +333,51 @@ class KnowledgeIndex:
             return []
         if not 0 <= semantic_weight <= 1:
             raise ValueError("semantic_weight must be between 0 and 1")
-        with self._connect() as db:
-            rows = db.execute(
-                "SELECT c.*, s.name AS source_name FROM knowledge_chunks c JOIN knowledge_sources s USING(source_id)"
-            ).fetchall()
         qtokens = set(_tokens(query))
         if not qtokens and not query_embedding:
             return []
+        with self._connect() as db:
+            rows = []
+            fts_ranks: dict[str, float] = {}
+            if self._fts5_available and qtokens:
+                # Quote each token independently; user query syntax is never passed to MATCH.
+                match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in sorted(qtokens))
+                try:
+                    candidates = db.execute(
+                        "SELECT chunk_id, bm25(knowledge_chunks_fts) AS rank "
+                        "FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH ? "
+                        "ORDER BY rank LIMIT ?",
+                        (match_query, max(50, min(limit * 12, 240))),
+                    ).fetchall()
+                    ids = [row["chunk_id"] for row in candidates]
+                    fts_ranks = {row["chunk_id"]: float(row["rank"]) for row in candidates}
+                    if ids:
+                        placeholders = ",".join("?" for _ in ids)
+                        rows = db.execute(
+                            f"SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                            f"JOIN knowledge_sources s USING(source_id) WHERE c.chunk_id IN ({placeholders})",
+                            ids,
+                        ).fetchall()
+                    else:
+                        # Tokenizer differences (for example, punctuation-heavy identifiers)
+                        # should degrade to the proven lexical scorer rather than no results.
+                        rows = db.execute(
+                            "SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                            "JOIN knowledge_sources s USING(source_id)"
+                        ).fetchall()
+                except sqlite3.OperationalError:
+                    # Malformed/unsupported FTS state should never make knowledge unavailable.
+                    rows = db.execute(
+                        "SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                        "JOIN knowledge_sources s USING(source_id)"
+                    ).fetchall()
+            # Embedding and callback retrieval retain the broad candidate set so semantic-only
+            # matches remain discoverable. Without FTS5, use the original lexical fallback.
+            if query_embedding or semantic_score or not self._fts5_available:
+                rows = db.execute(
+                    "SELECT c.*, s.name AS source_name FROM knowledge_chunks c "
+                    "JOIN knowledge_sources s USING(source_id)"
+                ).fetchall()
         tokenized = [(row, _tokens(row["text"])) for row in rows]
         document_frequency = {
             term: sum(term in set(tokens) for _, tokens in tokenized)
@@ -327,12 +399,17 @@ class KnowledgeIndex:
             # Semantic retrieval can surface related chunks with no literal term overlap.
             if not overlap and not semantic_score and not (query_embedding and row["embedding"]):
                 continue
-            tf = sum(min(tokens.count(t), 4) for t in qtokens)
-            idf = sum(
-                math.log(1 + (len(rows) + 1) / (1 + document_frequency[t]))
-                for t in qtokens if t in token_set
-            )
-            lexical = (tf * idf) / (tf + 1.2 * (0.25 + 0.75 * len(tokens) / 400)) if overlap else 0.0
+            if row["chunk_id"] in fts_ranks:
+                # SQLite BM25 is lower-is-better and commonly negative; invert its magnitude
+                # into a stable positive score before the existing hybrid normalization.
+                lexical = max(0.0, -fts_ranks[row["chunk_id"]])
+            else:
+                tf = sum(min(tokens.count(t), 4) for t in qtokens)
+                idf = sum(
+                    math.log(1 + (len(rows) + 1) / (1 + document_frequency[t]))
+                    for t in qtokens if t in token_set
+                )
+                lexical = (tf * idf) / (tf + 1.2 * (0.25 + 0.75 * len(tokens) / 400)) if overlap else 0.0
             raw.append((row, lexical, semantic))
         if not raw:
             return []

@@ -7,6 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.infra.paths import data_dir
+from app.services.memory_settings import (
+    cross_conversation_memory_enabled,
+    save_cross_conversation_memory,
+)
+from app.services.plan_intelligence import (
+    load_plan_memory_settings,
+    save_plan_memory_settings,
+)
 
 logger = logging.getLogger("agentforge.settings")
 
@@ -15,6 +23,7 @@ DEFAULT_EMBEDDING_MODEL = "local:BAAI/bge-small-en-v1.5"
 
 def _embedding_settings_path() -> Path:
     return data_dir() / "embedding_settings.json"
+
 
 
 def _valid_embedding_model(value: str) -> bool:
@@ -119,6 +128,25 @@ def set_embedding_model(payload: dict[str, str]):
     return {"status": "ok", "model": value}
 
 
+
+@router.get("/memory")
+def get_memory_settings():
+    return {"cross_conversation_enabled": cross_conversation_memory_enabled()}
+
+
+@router.post("/memory")
+def set_memory_settings(payload: dict):
+    enabled = payload.get("cross_conversation_enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=422, detail="cross_conversation_enabled must be a boolean.")
+    try:
+        save_cross_conversation_memory(enabled)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not persist memory settings.") from exc
+    logger.info("Cross-conversation memory %s", "enabled" if enabled else "disabled")
+    return {"status": "ok", "cross_conversation_enabled": enabled}
+
+
 @router.post("/search/test")
 async def test_search_provider():
     """Perform a real Serper query without returning or logging the API key."""
@@ -138,3 +166,28 @@ async def test_search_provider():
         logger.warning("Serper connection test failed: %s", type(exc).__name__)
         raise HTTPException(status_code=status_code, detail=message[:300]) from exc
     return {"status": "ok", "provider": "serper", "results": len(results)}
+
+
+
+@router.get("/plan-memory")
+def get_plan_memory_settings():
+    """Return cheap-LLM hierarchical plan-memory configuration without credentials."""
+    return load_plan_memory_settings()
+
+
+@router.post("/plan-memory")
+def set_plan_memory_settings(payload: dict):
+    """Configure the optional cheap model used to maintain hierarchical task memory."""
+    try:
+        result = save_plan_memory_settings(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not persist plan-memory settings.") from exc
+    logger.info(
+        "Hierarchical plan memory %s using %s/%s",
+        "enabled" if result["enabled"] else "disabled",
+        result["provider"],
+        result["model"],
+    )
+    return {"status": "ok", **result}

@@ -679,7 +679,17 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
       const historyMessages = editingIndex >= 0 ? agentMessages.slice(0, editingIndex) : agentMessages;
       const history = buildRunHistory(historyMessages);
       let userMsg: ChatMessage;
+      const currentTitle = conversations.find((item) => item.id === activeConversationId)?.title ?? "";
+      const firstUserMessage = agentMessages.find((message) => message.sender === "user");
+      const normalizedFirstMessage = firstUserMessage?.text.replace(/\s+/g, " ").trim() ?? "";
+      const legacyMessageTitle = normalizedFirstMessage.length > 157
+        ? normalizedFirstMessage.slice(0, 157).trimEnd() + "…"
+        : normalizedFirstMessage;
+      const needsTitleRefresh = /^New conversation(?: \(\d+\))?$/i.test(currentTitle)
+        || (!!legacyMessageTitle && currentTitle === legacyMessageTitle);
+      let shouldGenerateConversationTitle = needsTitleRefresh;
       if (editingIndex >= 0 && editingMessageId) {
+        shouldGenerateConversationTitle = needsTitleRefresh || editingIndex === 0;
         const savedUser = await api.conversations.editUserMessage(editingMessageId, userText);
         userMsg = {
           id: savedUser.id,
@@ -700,6 +710,19 @@ export function AgentChat({ onRunExecution }: { onRunExecution: (execId: string)
           timestamp: new Date(savedUser.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         };
         addChatMessage(agent.id, userMsg);
+      }
+
+      if (shouldGenerateConversationTitle) {
+        void api.conversations.generateTitle(activeConversationId)
+          .then((updated) => {
+            if (activeScopeRef.current !== runScope) return;
+            setConversations((current) => current.map((item) =>
+              item.id === updated.id ? updated : item,
+            ));
+          })
+          .catch(() => api.conversations.list(project.id, agent.id).then((items) => {
+            if (activeScopeRef.current === runScope) setConversations(items);
+          }).catch(() => undefined));
       }
 
       const execution = await api.executions.run(

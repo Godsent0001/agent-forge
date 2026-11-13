@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import pytest
+from sqlalchemy import text
+from sqlalchemy.orm import sessionmaker
+
 from app import models
+from app.contracts.memory import MemoryCandidate
+from app.services.memory_store import SqlMemoryStore
 
 
 def _agent(db_session):
@@ -73,3 +79,98 @@ def test_lessons_can_be_archived_restored_and_deleted(client, db_session):
     assert restored.status_code == 200
     assert restored.json()["status"] == "active"
     assert client.delete(f"/v2/agents/{agent.id}/lessons/{lesson['id']}").json() == {"deleted": True}
+
+
+@pytest.mark.asyncio
+async def test_sql_memory_store_enforces_conversation_scope(db_session):
+    project, agent = _agent(db_session)
+    conversation_a = models.Conversation(project_id=project.id, agent_id=agent.id, title="A")
+    conversation_b = models.Conversation(project_id=project.id, agent_id=agent.id, title="B")
+    db_session.add_all([conversation_a, conversation_b])
+    db_session.commit()
+
+    store = SqlMemoryStore(sessionmaker(bind=db_session.get_bind(), expire_on_commit=False))
+    await store.add(
+        agent.id,
+        [MemoryCandidate(text="User is building the Orion platform", evidence="I am building Orion")],
+        conversation_id=conversation_a.id,
+    )
+
+    isolated = await store.candidates(agent.id, "Orion platform", 10, conversation_id=conversation_b.id)
+    shared = await store.candidates(
+        agent.id, "Orion platform", 10,
+        conversation_id=conversation_b.id, include_other_conversations=True,
+    )
+
+    assert isolated == []
+    assert len(shared) == 1
+    assert shared[0].item.conversation_id == conversation_a.id
+
+
+@pytest.mark.asyncio
+async def test_memory_fts_index_tracks_insert_update_and_delete(db_session):
+    project, agent = _agent(db_session)
+    conversation = models.Conversation(project_id=project.id, agent_id=agent.id, title="FTS")
+    db_session.add(conversation)
+    db_session.commit()
+    connection = db_session.connection()
+    try:
+        connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE memory_entries_fts USING fts5("
+            "memory_id UNINDEXED, agent_id UNINDEXED, conversation_id UNINDEXED, content)"
+        )
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_ai AFTER INSERT ON memory_entries BEGIN
+                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+            END
+        """)
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_ad AFTER DELETE ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+            END
+        """)
+        connection.exec_driver_sql("""
+            CREATE TRIGGER memory_entries_fts_au AFTER UPDATE OF content, agent_id, conversation_id ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.id;
+                INSERT INTO memory_entries_fts(memory_id, agent_id, conversation_id, content)
+                VALUES (new.id, new.agent_id, new.conversation_id, new.content);
+            END
+        """)
+    except Exception:
+        pytest.skip("SQLite build does not include FTS5")
+
+    store = SqlMemoryStore(sessionmaker(bind=db_session.get_bind(), expire_on_commit=False))
+    created = await store.add(
+        agent.id,
+        [MemoryCandidate(text="Distinctive Orion memory retrieval phrase", evidence="Orion")],
+        conversation_id=conversation.id,
+    )
+    indexed = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
+    ).fetchall()
+    fts_hits = await store.candidates(
+        agent.id, "Orion memory", 10, conversation_id=conversation.id,
+    )
+    assert len(fts_hits) == 1
+
+    assert [row[0] for row in indexed] == [created[0].id]
+    assert fts_hits[0].item.id == created[0].id
+
+    row = db_session.get(models.MemoryEntry, created[0].id)
+    row.content = "Distinctive Atlas memory retrieval phrase"
+    db_session.commit()
+    old_hits = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Orion'")
+    ).fetchall()
+    new_hits = db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Atlas'")
+    ).fetchall()
+    assert old_hits == []
+    assert [hit[0] for hit in new_hits] == [created[0].id]
+
+    db_session.delete(row)
+    db_session.commit()
+    assert db_session.execute(
+        text("SELECT memory_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'Atlas'")
+    ).fetchall() == []

@@ -51,17 +51,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agentforge")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing AgentForge database at %s", DB_PATH)
     init_db()
+    logger.info("Database migrations completed.")
     from app.infra.attachment_storage import cleanup_stale_upload_parts
-    cleanup_stale_upload_parts()
+    removed_parts = cleanup_stale_upload_parts()
+    logger.info("Upload staging cleanup completed; removed %s stale parts.", removed_parts)
     interrupted = manager.mark_running_interrupted()
     logger.info("Database initialized successfully; marked %s stale runs interrupted.", interrupted)
-    yield
-    await manager.shutdown()
-    preview_manager.shutdown()
+    try:
+        yield
+    finally:
+        try:
+            await manager.shutdown()
+        finally:
+            try:
+                from app.tools.browser import close_all_browser_sessions
+                await close_all_browser_sessions()
+            finally:
+                try:
+                    await asyncio.to_thread(preview_manager.shutdown)
+                finally:
+                    logger.info("AgentForge runtime shutdown complete.")
+
 
 app = FastAPI(title="AgentForge Runtime", lifespan=lifespan)
 app.include_router(projects.router)
@@ -77,6 +92,7 @@ app.include_router(memory_router.router)
 app.include_router(usage_router.router)
 app.include_router(settings.router)
 app.include_router(system.router)
+
 
 @app.get("/files/{relpath:path}", tags=["legacy-files"])
 def get_legacy_file(relpath: str):
@@ -97,6 +113,7 @@ def get_legacy_file(relpath: str):
 
     return FileResponse(path=path, headers=file_response_headers(path))
 
+
 app.add_middleware(TokenAuthMiddleware)
 
 # Add CORS outside authentication so browser preflights are answered correctly.
@@ -116,6 +133,7 @@ def health() -> dict:
 
 
 def _watch_parent_exit() -> None:
+    """Exit the sidecar when its owning Electron process closes the stdin pipe."""
     if os.environ.get("AGENTFORGE_WATCH_PARENT") != "1":
         return
 
@@ -123,7 +141,7 @@ def _watch_parent_exit() -> None:
         try:
             sys.stdin.buffer.read()
         finally:
-            # The Electron owner closed its pipe. Never leave a sidecar orphaned.
+            # Preserve the established parent-owns-child shutdown contract.
             os._exit(0)
 
     Thread(target=watch, name="parent-watchdog", daemon=True).start()
@@ -142,8 +160,6 @@ def main() -> None:
     require_runtime_token()
     _watch_parent_exit()
 
-    # Reserve the loopback port before passing it to uvicorn. Electron starts with
-    # PORT=0 so competing app instances cannot collide on a fixed port.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -151,7 +167,10 @@ def main() -> None:
         sock.listen()
         port = int(sock.getsockname()[1])
         os.environ["AGENTFORGE_PORT"] = str(port)
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", access_log=False)
+        config = uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="info",
+            access_log=False, lifespan="on",
+        )
         server = uvicorn.Server(config)
 
         async def serve() -> None:

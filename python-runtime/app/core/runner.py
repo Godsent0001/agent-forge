@@ -26,17 +26,24 @@ from app.contracts.tools import (
 from app.core.budget import BudgetExceededError, BudgetTracker
 from app.core.capability_intelligence import build_runtime_capability_manifest
 from app.core.durable_scheduler import SQLiteTaskPlanStore
-from app.core.embeddings import embed_text
 from app.core.execution_artifacts import ExecutionArtifactLifecycle
 from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
 from app.core.llm.model_names import litellm_model
+from app.core.llm.pricing import get_context_window
 from app.core.llm.types import (
     LLMContextTooLong,
+    LLMParams,
     LLMTurn,
     ToolCall,
     ToolSpec,
+)
+from app.core.memory.compaction import (
+    clip_middle,
+    history_budget_chars,
+    merge_history,
+    split_for_budget,
 )
 from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
@@ -46,7 +53,9 @@ from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
+from app.core.tools.conversation_memory import ConversationMemoryTool
 from app.core.tools.read_attachment import ReadAttachmentTool
+from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
     KnowledgeIngestTool,
     KnowledgeSearchTool,
@@ -54,6 +63,15 @@ from app.core.tools.workspace_capabilities import (
     WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
+from app.services.context_memory import compact_conversation_context
+from app.services.memory_settings import cross_conversation_memory_enabled
+from app.services.plan_intelligence import (
+    _budget_allows_memory_call,
+    compile_plan_context,
+    load_plan_memory_settings,
+    resolve_memory_model,
+    update_plan_memory,
+)
 from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
@@ -284,6 +302,52 @@ class RunnerCore:
     def __init__(self, fake_llm: FakeLLM | None = None):
         self.fake_llm = fake_llm
 
+    async def _refresh_plan_after_live_messages(
+        self,
+        req: RunRequest,
+        messages: list[dict[str, Any]],
+        live_messages: list[str],
+        depth: int,
+        budget: BudgetTracker,
+    ) -> None:
+        """Reconcile live user changes before the agent resumes its existing run."""
+        if depth != 0 or not req.task_state_id or not live_messages:
+            return
+        try:
+            combined = "\n\n".join(live_messages)
+            await self._await_plan_update(req.execution_id)
+            root_spec = getattr(self, "_root_specs", {}).get(req.execution_id)
+            await update_plan_memory(
+                req.task_state_id,
+                combined,
+                messages[1:] + [{"role": "user", "content": combined}],
+                budget=budget,
+                agent_provider=getattr(root_spec, "provider", None),
+                agent_model=getattr(root_spec, "model", None),
+            )
+            plan_context = await asyncio.to_thread(
+                compile_plan_context, req.task_state_id
+            )
+            if plan_context and messages:
+                current = str(messages[0].get("content") or "")
+                marker = "[AgentForge evolving project plan]"
+                active_state_end = current.find("</active_task_state>")
+                marker_start = current.find(marker)
+                if marker_start >= 0 and active_state_end > marker_start:
+                    current = current[:marker_start] + plan_context + "\n" + current[active_state_end:]
+                elif active_state_end >= 0:
+                    current = current[:active_state_end] + "\n" + plan_context + "\n" + current[active_state_end:]
+                else:
+                    current += (
+                        '\n\n<active_task_state trust="untrusted">\n'
+                        + plan_context
+                        + "\n</active_task_state>"
+                    )
+                messages[0]["content"] = current
+        except Exception:
+            # The active task must continue even if the optional memory model fails.
+            logger.exception("Could not reconcile live instruction into hierarchical plan memory")
+
     async def run(
         self,
         req: RunRequest,
@@ -336,6 +400,7 @@ class RunnerCore:
                 active_agent_ids=active_agent_ids,
             )
 
+            await self._await_plan_update(req.execution_id)
             if root_spec.memory_enabled and memory:
                 await self._extract_memories(
                     root_spec=root_spec,
@@ -372,6 +437,7 @@ class RunnerCore:
             )
 
         except BudgetExceededError as exc:
+            await self._await_plan_update(req.execution_id)
             return RunResult(
                 status="budget_exceeded",
                 error=str(exc),
@@ -390,6 +456,9 @@ class RunnerCore:
                 error=str(exc),
                 totals=budget.totals,
             )
+        finally:
+            # A cancelled or failed run must not leave an orphaned plan update behind.
+            self._forget_plan_update(req.execution_id)
 
     async def _run_agent(
         self,
@@ -442,30 +511,15 @@ class RunnerCore:
                 memory_block = ""
                 if spec.memory_enabled and memory:
                     try:
-                        embedding_model = req.options.memory.embedding_model
-                        query_embedding = None
-                        if embedding_model:
-                            try:
-                                query_embedding = await asyncio.to_thread(embed_text, task, embedding_model)
-                                missing = await memory.missing_embeddings(spec.id, embedding_model, limit=50)
-                                if missing:
-                                    pairs = []
-                                    for item in missing:
-                                        vector = await asyncio.to_thread(embed_text, item.text, embedding_model)
-                                        if vector:
-                                            pairs.append((item.id, vector, embedding_model))
-                                    if pairs:
-                                        await memory.set_embeddings(pairs)
-                            except Exception as embedding_error:
-                                logger.warning("Local embedding unavailable; using keyword memory recall: %s", embedding_error)
-                                query_embedding = None
+                        # Basic memory recall must never wait for embedding generation or
+                        # backfill. Semantic indexing is an optional background optimization.
                         _, memory_block = await recall_memories(
                             store=memory,
                             agent_id=spec.id,
                             query=task,
                             recall_budget_tokens=req.options.memory.recall_budget_tokens,
-                            query_embedding=query_embedding,
-                            embedding_model=embedding_model,
+                            conversation_id=req.conversation_id,
+                            include_other_conversations=cross_conversation_memory_enabled(),
                         )
                     except Exception as e:
                         logger.warning(f"Memory recall error: {e}")
@@ -486,13 +540,37 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
+                if depth == 0:
+                    history, history_summary = await self._prepare_conversation_context(
+                        spec, req, history, history_summary, emit, agent_span_id, budget
+                    )
+
+                task_state_block = req.task_state_context if depth == 0 else ""
+                if depth == 0 and req.task_state_id:
+                    # The interpreter runs alongside the agent instead of in front of it.
+                    # This turn's message is already in the prompt verbatim, so the agent
+                    # loses nothing; the reconciled plan is ready for the next turn.
+                    self._start_plan_update(req, spec, history, budget)
+                    try:
+                        plan_context = await asyncio.to_thread(
+                            compile_plan_context, req.task_state_id
+                        )
+                        if plan_context:
+                            task_state_block = "\n\n".join(
+                                part for part in (task_state_block, plan_context) if part
+                            )
+                    except Exception:
+                        # Plan maintenance is advisory and must never block the main run.
+                        logger.exception("Hierarchical plan-memory update failed")
+
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=history_summary,
+                    history_summary_block=(history_summary or "")[:8000],
+                    task_state_block=task_state_block,
                 )
 
                 # Keep the workspace contract explicit in every agent context so the
@@ -519,20 +597,55 @@ class RunnerCore:
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-                for msg in history:
-                    messages.append({"role": msg.role if hasattr(msg, "role") else msg["role"], "content": msg.content if hasattr(msg, "content") else msg["content"]})
+                # History was already fitted to this model's context window; turns that
+                # no longer fit are covered by <conversation_summary> and remain
+                # retrievable through the transcript-search tool.
+                messages.extend(merge_history(list(history)))
                 messages.append({"role": "user", "content": task})
 
                 all_tool_specs, tool_instances = self._assemble_tools(
                     spec, graph, tools_factory, memory, intents, run_history,
                     include_attachment_reader=bool(req.attachments),
+                    project_id=req.project_id,
+                    conversation_id=req.conversation_id,
+                    include_other_conversations=cross_conversation_memory_enabled(),
                 )
+                task_state_tool_name = None
+                if depth == 0 and req.task_state_id:
+                    task_state_tool = TaskStateUpdateTool(req.task_state_id)
+                    task_state_tool_name = "agentforge_task_state_update"
+                    suffix = 2
+                    while any(item.name == task_state_tool_name for item in all_tool_specs):
+                        task_state_tool_name = f"agentforge_task_state_update_{suffix}"
+                        suffix += 1
+                    tool_instances[task_state_tool_name] = task_state_tool
+                    all_tool_specs.append(ToolSpec(
+                        name=task_state_tool_name,
+                        description=task_state_tool.default_description,
+                        parameters=task_state_tool.Input.model_json_schema(),
+                    ))
                 native_tool_specs, requested_tool = constrain_tools_for_task(task, all_tool_specs)
                 # Keep the internal reply control available even when task-aware
                 # selection narrows ordinary tools to a smaller subset.
                 reply_user_spec = next((item for item in all_tool_specs if item.name == "agentforge_reply_user"), None)
                 if reply_user_spec and all(item.name != "agentforge_reply_user" for item in native_tool_specs):
                     native_tool_specs.append(reply_user_spec)
+                # Transcript retrieval is a core memory capability, not an optional
+                # task-selected tool: keep it available when the model needs older context.
+                conversation_memory_spec = next(
+                    (item for item in all_tool_specs if item.name.startswith("conversation_memory")),
+                    None,
+                )
+                if conversation_memory_spec and all(
+                    item.name != conversation_memory_spec.name for item in native_tool_specs
+                ):
+                    native_tool_specs.append(conversation_memory_spec)
+                task_state_spec = next(
+                    (item for item in all_tool_specs if item.name == task_state_tool_name),
+                    None,
+                ) if task_state_tool_name else None
+                if task_state_spec and all(item.name != task_state_spec.name for item in native_tool_specs):
+                    native_tool_specs.append(task_state_spec)
                 allowed_tool_names = {tool.name for tool in native_tool_specs}
                 tool_instances = {
                     name: instance for name, instance in tool_instances.items()
@@ -583,6 +696,9 @@ class RunnerCore:
                     # ask the model again with the latest instruction in context.
                     live_messages = _drain_live_instructions(cancel)
                     if live_messages:
+                        await self._refresh_plan_after_live_messages(
+                            req, messages, live_messages, depth, budget
+                        )
                         for live_message in live_messages:
                             messages.append({
                                 "role": "user",
@@ -597,6 +713,9 @@ class RunnerCore:
                         # response completed; never finish on a stale answer.
                         live_messages = _drain_live_instructions(cancel)
                         if live_messages:
+                            await self._refresh_plan_after_live_messages(
+                                req, messages, live_messages, depth, budget
+                            )
                             for live_message in live_messages:
                                 messages.append({
                                     "role": "user",
@@ -695,9 +814,15 @@ class RunnerCore:
                         ))
                     try:
                         if req.options.parallel_tools and len(tool_call_tuples) > 1:
-                            results = await asyncio.gather(
-                                *[
-                                    self._execute_single_tool(
+                            # Parallel mode means overlap, not unlimited process fan-out.
+                            # A model can return many tool calls in one turn; cap the
+                            # number actively executing so browser/shell/Python tools
+                            # cannot exhaust a desktop's CPU and memory.
+                            tool_semaphore = asyncio.Semaphore(2)
+
+                            async def execute_parallel_tool(tc):
+                                async with tool_semaphore:
+                                    return await self._execute_single_tool(
                                         tc=tc,
                                         spec=spec,
                                         graph=graph,
@@ -717,8 +842,9 @@ class RunnerCore:
                                         budget=budget,
                                         active_agent_ids=active_agent_ids,
                                     )
-                                    for tc in tool_call_tuples
-                                ],
+
+                            results = await asyncio.gather(
+                                *(execute_parallel_tool(tc) for tc in tool_call_tuples),
                                 return_exceptions=True,
                             )
                             for tc, res in zip(tool_call_tuples, results):
@@ -796,6 +922,10 @@ class RunnerCore:
                     # Deliver messages received while tools were running. Explicit stop
                     # instructions cancel the in-flight process; other updates are applied here.
                     live_instructions = _drain_live_instructions(cancel)
+                    if live_instructions:
+                        await self._refresh_plan_after_live_messages(
+                            req, messages, live_instructions, depth, budget
+                        )
                     for live_message in live_instructions:
                         messages.append({
                             "role": "user",
@@ -1032,6 +1162,22 @@ class RunnerCore:
             },
             end_data=span_end_data,
         ):
+            # Bound oversized text in every turn, including accumulated tool output.
+            # Preserve tool-call structure while preventing raw results bloating prompts.
+            # The system prompt and user turns are never clipped: the system prompt
+            # carries the durable task state and conversation summary at its end.
+            # Clipping keeps the tail, where a truncated tool result names its saved file.
+            for message in messages:
+                content = message.get("content")
+                role = message.get("role")
+                if isinstance(content, str) and role in {"tool", "assistant"}:
+                    limit = 3000 if role == "tool" else 12000
+                    if len(content) > limit:
+                        message["content"] = clip_middle(content, limit)
+            budget.check_request(
+                messages, tools, spec.params.max_tokens or 0,
+                context_window=get_context_window(litellm_model(spec.provider, spec.model)),
+            )
             if self.fake_llm:
                 turn = await self.fake_llm.complete(
                     messages=messages,
@@ -1307,6 +1453,9 @@ class RunnerCore:
         intents: IntentStore | None = None,
         run_history: RunHistory | None = None,
         include_attachment_reader: bool = False,
+        project_id: str | None = None,
+        conversation_id: str | None = None,
+        include_other_conversations: bool = False,
     ) -> tuple[list[ToolSpec], dict[str, Any]]:
         tool_specs: list[ToolSpec] = []
         tool_instances: dict[str, Any] = {}
@@ -1362,6 +1511,8 @@ class RunnerCore:
             if kind not in existing_kinds
         ]
         raw_names.extend(kind for kind, _ in available_knowledge)
+        if project_id and conversation_id:
+            raw_names.append("conversation_memory")
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
@@ -1424,6 +1575,22 @@ class RunnerCore:
             name = deduped[idx]
             idx += 1
             tool_inst = tool_cls()
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
+
+        if project_id and conversation_id:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = ConversationMemoryTool(
+                project_id=project_id,
+                agent_id=spec.id,
+                conversation_id=conversation_id,
+                include_other_conversations=include_other_conversations,
+            )
             tool_instances[name] = tool_inst
             tool_specs.append(ToolSpec(
                 name=name,
@@ -1504,6 +1671,112 @@ class RunnerCore:
         turn = await self._execute_llm_turn(spec, messages, [], parent_span_id, emit, budget)
         return turn.text or ""
 
+    def _start_plan_update(self, req: RunRequest, spec: AgentSpec, history: list[Any], budget: BudgetTracker) -> None:
+        pending = self.__dict__.setdefault("_plan_updates", {})
+        self.__dict__.setdefault("_root_specs", {})[req.execution_id] = spec
+        if req.execution_id in pending:
+            return
+        pending[req.execution_id] = asyncio.create_task(update_plan_memory(
+            req.task_state_id,
+            req.task,
+            list(history),
+            budget=budget,
+            agent_provider=spec.provider,
+            agent_model=spec.model,
+        ))
+
+    async def _await_plan_update(self, execution_id: str, timeout_s: float = 45.0) -> None:
+        """Let a pending plan update finish so its usage is counted; never raise."""
+        task = self.__dict__.get("_plan_updates", {}).pop(execution_id, None)
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(task, timeout_s)
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        except Exception:
+            logger.exception("Hierarchical plan-memory update failed")
+
+    def _forget_plan_update(self, execution_id: str) -> None:
+        task = self.__dict__.get("_plan_updates", {}).pop(execution_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+        self.__dict__.get("_root_specs", {}).pop(execution_id, None)
+
+    async def _prepare_conversation_context(
+        self,
+        spec: AgentSpec,
+        req: RunRequest,
+        history: list[Any],
+        history_summary: str,
+        emit: Emit,
+        parent_span_id: str | None,
+        budget: BudgetTracker,
+    ) -> tuple[list[Any], str]:
+        """Fit the transcript to this model and fold what no longer fits into the summary."""
+        budget_chars = history_budget_chars(get_context_window(litellm_model(spec.provider, spec.model)))
+        if req.conversation_id and req.task_state_id:
+            try:
+                result = await compact_conversation_context(
+                    req.task_state_id,
+                    req.conversation_id,
+                    req.task,
+                    budget_chars=budget_chars,
+                    summarize_fn=None if self.fake_llm else self._conversation_summarizer(
+                        spec, emit, parent_span_id, budget
+                    ),
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                # Memory maintenance must never block the run; fall back to supplied history.
+                logger.exception("Could not compact durable conversation context")
+        _, kept = split_for_budget(list(history), budget_chars)
+        return kept, history_summary
+
+    def _conversation_summarizer(
+        self,
+        spec: AgentSpec,
+        emit: Emit,
+        parent_span_id: str | None,
+        budget: BudgetTracker,
+    ):
+        """Summary calls use the configured low-cost memory model, else the agent's own."""
+        config = load_plan_memory_settings()
+        provider, model = (
+            resolve_memory_model(config, spec.provider, spec.model)
+            if config.get("enabled") else (spec.provider, spec.model)
+        )
+
+        async def summarize(messages: list[dict[str, str]]) -> str:
+            prompt = "".join(message["content"] for message in messages)
+            if not _budget_allows_memory_call(budget, prompt, 2000):
+                raise RuntimeError("run budget reserved for execution")
+            async with span(
+                emit,
+                kind="llm_call",
+                name="conversation_summary",
+                parent_span_id=parent_span_id,
+                data={"provider": provider, "model": model},
+            ):
+                turn = await adapter_complete(
+                    messages=messages,
+                    params=LLMParams(timeout_s=45, temperature=0, max_tokens=2000),
+                    model=litellm_model(provider, model),
+                    provider=provider,
+                    max_retries=1,
+                )
+                budget.record_llm_call(
+                    input_tokens=turn.usage.input_tokens,
+                    output_tokens=turn.usage.output_tokens,
+                    cache_read_tokens=turn.usage.cache_read_tokens,
+                    cost_usd=turn.cost_usd,
+                )
+                return turn.text or ""
+
+        return summarize
+
     async def _extract_memories(
         self,
         root_spec: AgentSpec,
@@ -1523,11 +1796,12 @@ class RunnerCore:
             parent_span_id=parent_span_id,
             data={"provider": root_spec.provider, "model": "fast"},
         ):
+            # req.history can now hold a long transcript; extraction only needs recent user turns.
             user_msgs = [req.task] + [
-                m.content if hasattr(m, "content") else m.get("content", "")
+                str(m.content if hasattr(m, "content") else m.get("content", ""))[:2000]
                 for m in req.history
                 if (getattr(m, "role", None) or m.get("role")) == "user"
-            ]
+            ][-10:]
 
             if self.fake_llm:
                 llm_fn = self.fake_llm.complete
@@ -1559,6 +1833,8 @@ class RunnerCore:
                 execution_id=req.execution_id,
                 store=memory,
                 llm_complete_fn=llm_fn,
+                conversation_id=getattr(req, "conversation_id", None),
+                include_other_conversations=cross_conversation_memory_enabled(),
             )
 
 
