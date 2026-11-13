@@ -1,87 +1,34 @@
-"""Server-owned rolling context for durable project conversations."""
+"""Server-owned conversation context for durable project workstreams.
+
+A workstream (task) can span several conversations. Its message stream is the
+user/assistant messages of every conversation linked to it, in time order. The
+workstream stores one rolling summary plus a cursor marking the last message the
+summary covers; everything after the cursor is sent to the model verbatim, up to
+a token budget derived from the model's context window (see core.memory.compaction).
+"""
 from __future__ import annotations
 
+import asyncio
 import copy
-import re
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app import models
+from app.core.memory.compaction import (
+    SummarizeFn,
+    merge_history,
+    split_for_budget,
+    summarize_evicted,
+)
 
-KEEP_RECENT = 8
-PINNED_CHARS = 4200
-PROGRESS_CHARS = 1300
 SUMMARY_KEY = "context_summary"
-
-_PIN = re.compile(r"\b(decision|decided|must|never|always|prefer|constraint|requirement|do not|don't|cannot|can't|instead|goal|objective|plan|phase|milestone|deadline|from now on|remember|correction|actually|only|not allowed)\b", re.I)
-_HARD = re.compile(r"\b(must|never|always|constraint|requirement|decided|decision|goal|objective|do not|don't|cannot|can't|from now on)\b", re.I)
-_PROGRESS = re.compile(r"\b(implemented|fixed|failed|error|blocked|completed|remaining|next|tested|changed|added|removed|running|passed|commit|branch|pull request)\b", re.I)
-_PATH_OR_REF = re.compile(r"(?:[A-Za-z]:\\|/)[^\s]{3,}|\b(?:PR|#)\s*\d+", re.I)
+# Upper bound on what the request path loads before the runner compacts it.
+_LOAD_MAX_CHARS = 200_000
 
 
-def _sentences(text: str) -> list[str]:
-    return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text or "") if part.strip()]
-
-
-def _clip(text: str, limit: int = 500) -> str:
-    value = " ".join(text.split())
-    return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
-
-
-def _key(line: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", line.casefold()).strip()
-
-
-def _empty_summary() -> dict[str, Any]:
-    return {"pinned": [], "progress": [], "cursors": {}, "archived": 0}
-
-
-def _merge(existing: list[str], new: list[str], budget: int) -> tuple[list[str], int]:
-    seen = {_key(line) for line in existing}
-    merged = list(existing)
-    for line in new:
-        key = _key(line)
-        if key and key not in seen:
-            seen.add(key)
-            merged.append(line)
-    dropped = 0
-    while merged and sum(len(line) + 1 for line in merged) > budget:
-        victim = next((i for i, line in enumerate(merged) if not _HARD.search(line)), 0)
-        merged.pop(victim)
-        dropped += 1
-    return merged, dropped
-
-
-def _extract_lines(role: str, content: str) -> tuple[list[str], list[str]]:
-    sentences = _sentences(content)
-    pinned: list[str] = []
-    progress: list[str] = []
-    if role == "user":
-        for sentence in sentences:
-            clipped = _clip(sentence)
-            if _PIN.search(sentence):
-                pinned.append("- " + clipped)
-            elif _PROGRESS.search(sentence) or _PATH_OR_REF.search(sentence):
-                progress.append("- user: " + clipped)
-        pinned = pinned[:12]
-        if not pinned and not progress and sentences:
-            progress.append("- user asked: " + _clip(sentences[0]))
-    else:
-        for sentence in sentences:
-            if _PROGRESS.search(sentence) or _PATH_OR_REF.search(sentence):
-                progress.append("- assistant: " + _clip(sentence))
-    return pinned, progress[:3]
-
-
-def _messages(db: Session, conversation_id: str) -> list[models.ConversationMessage]:
-    return (db.query(models.ConversationMessage)
-            .filter(models.ConversationMessage.conversation_id == conversation_id)
-            .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id).all())
-
-
-def _linked_conversation_ids(db: Session, task: models.TaskState) -> set[str]:
-    ids = {task.conversation_id}
+def _linked_conversation_ids(db: Session, task: models.TaskState, conversation_id: str) -> set[str]:
+    ids = {task.conversation_id, conversation_id}
     events = db.query(models.TaskStateEvent).filter(models.TaskStateEvent.task_state_id == task.id).all()
     for event in events:
         payload = event.payload if isinstance(event.payload, dict) else {}
@@ -92,63 +39,135 @@ def _linked_conversation_ids(db: Session, task: models.TaskState) -> set[str]:
     return ids
 
 
-def _fold(summary: dict[str, Any], conversation_id: str, messages: list[models.ConversationMessage], upto: int) -> bool:
-    cursors = summary.setdefault("cursors", {})
-    cursor = cursors.get(conversation_id) or {}
-    last_id = cursor.get("last_id") if isinstance(cursor, dict) else None
-    start = 0
-    if last_id:
-        for index, message in enumerate(messages):
-            if message.id == last_id:
-                start = index + 1
-                break
-        else:
-            start = min(int(cursor.get("count", 0)), len(messages))
-    if upto <= start:
-        return False
-    pinned: list[str] = []
-    progress: list[str] = []
-    for message in messages[start:upto]:
-        p, g = _extract_lines(message.role, message.content or "")
-        pinned.extend(p)
-        progress.extend(g)
-    summary["pinned"], a = _merge(summary.get("pinned", []), pinned, PINNED_CHARS)
-    summary["progress"], b = _merge(summary.get("progress", []), progress, PROGRESS_CHARS)
-    summary["archived"] = int(summary.get("archived", 0)) + a + b
-    last = messages[upto - 1]
-    cursors[conversation_id] = {"last_id": last.id, "count": upto}
-    return True
+def _stream(db: Session, conversation_ids: set[str], current_task: str) -> list[models.ConversationMessage]:
+    messages = (
+        db.query(models.ConversationMessage)
+        .filter(
+            models.ConversationMessage.conversation_id.in_(sorted(conversation_ids)),
+            models.ConversationMessage.role.in_(["user", "assistant"]),
+        )
+        .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id)
+        .all()
+    )
+    # The message being answered is sent separately as the current task.
+    if messages and messages[-1].role == "user" and (messages[-1].content or "").strip() == current_task.strip():
+        messages = messages[:-1]
+    return messages
 
 
-def render_summary(summary: dict[str, Any]) -> str:
-    lines = ["Pinned goals, decisions and constraints:", *summary.get("pinned", []),
-             "", "Recent progress:", *summary.get("progress", []),
-             "", f"Older summary lines archived: {int(summary.get('archived', 0))}"]
+def _legacy_summary(stored: dict[str, Any]) -> str:
+    """Carry over the keyword-extract summary written by the first implementation."""
+    lines: list[str] = []
+    for label, key in (("Goals, decisions and constraints:", "pinned"), ("Progress:", "progress")):
+        values = [value for value in stored.get(key) or [] if isinstance(value, str) and value.strip()]
+        if values:
+            lines.extend([label, *values])
     return "\n".join(lines)
 
 
+def _resume_point(stored: Any, stream: list[models.ConversationMessage]) -> tuple[str, int]:
+    """Return (summary, index of the first message the summary does not cover).
+
+    The cursor is trusted only if the stream before it is unchanged. If a covered
+    message was edited away or deleted, the summary is discarded and rebuilt.
+    """
+    if not isinstance(stored, dict):
+        return "", 0
+    if "cursors" in stored:  # format written before the rolling summary existed
+        covered = {
+            cursor.get("last_id") for cursor in (stored.get("cursors") or {}).values()
+            if isinstance(cursor, dict)
+        }
+        last = max((index for index, message in enumerate(stream) if message.id in covered), default=-1)
+        return _legacy_summary(stored), last + 1
+    last_id = stored.get("last_id")
+    count = stored.get("count")
+    summary = stored.get("summary")
+    if not isinstance(last_id, str) or not isinstance(count, int) or not isinstance(summary, str):
+        return "", 0
+    if 0 < count <= len(stream) and stream[count - 1].id == last_id:
+        return summary, count
+    return "", 0
+
+
+def _bounded_tail(messages: list[models.ConversationMessage], max_chars: int) -> list[models.ConversationMessage]:
+    used = 0
+    start = len(messages)
+    for index in range(len(messages) - 1, -1, -1):
+        used += len(messages[index].content or "")
+        if used > max_chars and start < len(messages):
+            break
+        start = index
+    return messages[start:]
+
+
 def build_conversation_context(db: Session, task_state_id: str | None, conversation_id: str, current_task: str):
-    messages = _messages(db, conversation_id)
-    available = bool(messages)
-    if messages and messages[-1].role == "user" and (messages[-1].content or "").strip() == current_task.strip():
-        messages = messages[:-1]
-    recent = messages[-KEEP_RECENT:]
-    older_upto = len(messages) - len(recent)
-    history = [{"role": m.role, "content": m.content or ""} for m in recent]
-    summary_text = ""
+    """Read-only view for the request path: (history, summary, transcript_available).
+
+    History is every message the stored summary does not cover. It is not trimmed
+    to the model here; the runner compacts it against the model's context window.
+    """
     task = db.get(models.TaskState, task_state_id) if task_state_id else None
-    if task is not None:
+    ids = _linked_conversation_ids(db, task, conversation_id) if task is not None else {conversation_id}
+    stream = _stream(db, ids, current_task)
+    summary, start = _resume_point((task.state_json or {}).get(SUMMARY_KEY) if task is not None else None, stream)
+    pending = _bounded_tail(stream[start:], _LOAD_MAX_CHARS)
+    return merge_history(pending), summary, bool(stream)
+
+
+def _load(session_factory, task_state_id: str | None, conversation_id: str, current_task: str):
+    with session_factory() as db:
+        task = db.get(models.TaskState, task_state_id) if task_state_id else None
+        ids = _linked_conversation_ids(db, task, conversation_id) if task is not None else {conversation_id}
+        stream = _stream(db, ids, current_task)
+        summary, start = _resume_point(
+            (task.state_json or {}).get(SUMMARY_KEY) if task is not None else None, stream
+        )
+        rows = [{"id": m.id, "role": m.role, "content": m.content or ""} for m in stream]
+        return task is not None, rows, summary, start
+
+
+def _save(session_factory, task_state_id: str, summary: str, last_id: str, count: int) -> None:
+    with session_factory() as db:
+        task = db.get(models.TaskState, task_state_id)
+        if task is None:
+            return
+        # Re-read inside this transaction: other writers update the same JSON document.
         state = copy.deepcopy(dict(task.state_json or {}))
-        summary = state.get(SUMMARY_KEY)
-        if not isinstance(summary, dict):
-            summary = _empty_summary()
-        changed = _fold(summary, conversation_id, messages, older_upto)
-        for other_id in sorted(_linked_conversation_ids(db, task) - {conversation_id}):
-            other = _messages(db, other_id)
-            changed = _fold(summary, other_id, other, len(other)) or changed
-        if changed:
-            state[SUMMARY_KEY] = summary
-            task.state_json = state
-            db.commit()
-        summary_text = render_summary(summary)
-    return history, summary_text, available
+        state[SUMMARY_KEY] = {"summary": summary, "last_id": last_id, "count": count}
+        task.state_json = state
+        db.commit()
+
+
+async def compact_conversation_context(
+    task_state_id: str | None,
+    conversation_id: str,
+    current_task: str,
+    *,
+    budget_chars: int,
+    summarize_fn: SummarizeFn | None = None,
+    session_factory: Any = None,
+) -> tuple[list[dict[str, str]], str] | None:
+    """Return (history, summary) fitted to the budget, folding overflow into the summary.
+
+    Returns None when the conversation has no stored transcript, so the caller
+    can fall back to client-supplied history.
+    """
+    if session_factory is None:
+        from app.db import SessionLocal
+        session_factory = SessionLocal
+    has_task, rows, summary, start = await asyncio.to_thread(
+        _load, session_factory, task_state_id, conversation_id, current_task
+    )
+    if not rows:
+        return None
+    evicted, kept = split_for_budget(rows[start:], budget_chars)
+    if evicted:
+        if has_task:
+            summary, _ = await summarize_evicted(summary, evicted, summarize_fn)
+            await asyncio.to_thread(
+                _save, session_factory, task_state_id, summary, evicted[-1]["id"], start + len(evicted)
+            )
+        # Without a workstream there is nowhere durable to keep a summary; the
+        # evicted messages stay retrievable through transcript search.
+    return merge_history(kept), summary

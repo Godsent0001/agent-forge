@@ -3,7 +3,7 @@
 ## Design goals
 
 - Preserve the original objective and important follow-up instructions across long chats and application restarts.
-- Keep ordinary memory operations deterministic and free of additional LLM calls.
+- Keep task-state bookkeeping deterministic and free of additional LLM calls; spend a model call only where meaning must be preserved (the rolling conversation summary).
 - Keep the existing shared `RunnerCore` as the only execution engine.
 - Keep task memory independent from semantic document indexing and optional embeddings.
 - Make memory inspectable on disk without making Markdown the source of truth.
@@ -41,10 +41,23 @@ The projections are written atomically. If a projection write fails, SQLite rema
 8. Live instructions delivered to a running execution are appended to the task bound to that execution, even if another task has since become active; failed delivery is not recorded.
 9. When the execution ends, AgentForge records the verified run status and a bounded output excerpt without another LLM call.
 
-The header includes the objective, latest instruction, up to three earlier user instructions, structured constraints/decisions/progress, and recent execution outcomes. It is bounded to approximately 1,600 characters. Full history remains available in the database and in the task's Markdown projection.
+The header includes the objective, latest instruction, up to three earlier user instructions, structured constraints/decisions/progress, and recent execution outcomes. It is bounded to 8,000 characters. Full history remains available in the database and in the task's Markdown projection.
+
+## Conversation context
+
+The transcript the model sees is built by the server from stored messages, not from a fixed message count.
+
+- **Stream.** A workstream's stream is every user/assistant message of every conversation linked to it, in time order. Several assistant messages from one run (interim replies plus the final answer) are joined into one turn.
+- **Window.** History is sent verbatim up to a quarter of the agent model's context window, capped at 12,000 tokens (`core/memory/compaction.py`). A short chat is never summarised.
+- **Rolling summary.** When history overflows, the oldest messages are evicted down to 60% of the budget and folded, together with the previous summary, into one updated summary. The summary and a cursor (last covered message ID and count) are stored under `context_summary` in `TaskState.state_json`. Covered messages are never summarised twice.
+- **Who writes the summary.** The low-cost model from Settings → Memory when it is enabled, otherwise the agent's own model. The call is counted in the run's usage and skipped when the run budget cannot afford it. If the call fails or no model is available, a deterministic extract of instruction- and fact-bearing sentences is used instead, so an eviction always leaves a trace.
+- **Invalidation.** If a covered message is edited or deleted, the cursor no longer matches the stream and the summary is rebuilt from the remaining messages.
+- **Exact recall.** The summary is lossy by design. The `conversation_memory` tool searches the full stored transcript and is always available to the root agent.
+- **Delivery.** The system prompt, which carries the task state and summary at its end, and user turns are never clipped. A prompt is rejected only when it cannot fit the model's real context window.
 
 ## Cost and latency policy
 
+- Conversation summary: one bounded model call only when history overflows its budget, typically once every several turns of a long chat; none for short chats.
 - Persisting incoming user instructions: zero additional LLM calls.
 - Recording execution outcomes: zero additional LLM calls.
 - Writing Markdown projections: zero additional LLM calls.

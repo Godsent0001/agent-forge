@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app import models
 
-
 _CONVERSATION_KEYS = ("conversation_id", "previous_conversation_id", "resumed_in_conversation_id")
 _MESSAGE_KEYS = ("message_id", "source_message_id", "evidence_message_id")
 

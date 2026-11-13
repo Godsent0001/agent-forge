@@ -17,14 +17,22 @@ class BudgetTracker:
         self.start_time = time.time()
         self.totals = Totals()
 
-    def check_request(self, messages, tools=None, max_output_tokens: int = 0) -> None:
-        """Reject oversized prompts before sending them to a provider."""
+    def check_request(
+        self,
+        messages,
+        tools=None,
+        max_output_tokens: int = 0,
+        context_window: int | None = None,
+    ) -> None:
+        """Reject a prompt that cannot fit the model's context window before sending it."""
         prompt_chars = len(str(messages)) + len(str(tools or []))
-        estimated_input = (prompt_chars + 2) // 3
-        if estimated_input > 12_000:
+        estimated_input = int(prompt_chars / 3.5) + 1
+        window = int(context_window or 32_000)
+        limit = max(4_000, int(window * 0.92) - max(0, max_output_tokens))
+        if estimated_input > limit:
             raise BudgetExceededError(
-                f"LLM prompt safety limit exceeded (estimated {estimated_input:,} input tokens). "
-                "Reduce retrieved context or conversation history before retrying."
+                f"LLM prompt does not fit the model context window (estimated {estimated_input:,} "
+                f"input tokens; limit {limit:,}). Reduce retrieved context before retrying."
             )
         projected = self.totals.input_tokens + self.totals.output_tokens + estimated_input + max(0, max_output_tokens)
         if self.spec.max_total_tokens is not None and projected > self.spec.max_total_tokens:

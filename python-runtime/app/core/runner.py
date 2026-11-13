@@ -31,11 +31,19 @@ from app.core.lessons import format_lessons_block
 from app.core.llm.adapter import complete as adapter_complete
 from app.core.llm.fake import FakeLLM
 from app.core.llm.model_names import litellm_model
+from app.core.llm.pricing import get_context_window
 from app.core.llm.types import (
     LLMContextTooLong,
+    LLMParams,
     LLMTurn,
     ToolCall,
     ToolSpec,
+)
+from app.core.memory.compaction import (
+    clip_middle,
+    history_budget_chars,
+    merge_history,
+    split_for_budget,
 )
 from app.core.memory.episodic import build_recent_runs_block
 from app.core.memory.extractor import extract_and_store_memories
@@ -55,8 +63,14 @@ from app.core.tools.workspace_capabilities import (
     WorkspaceFilesTool,
 )
 from app.infra.paths import project_dir
+from app.services.context_memory import compact_conversation_context
 from app.services.memory_settings import cross_conversation_memory_enabled
-from app.services.plan_intelligence import compile_plan_context, update_plan_memory
+from app.services.plan_intelligence import (
+    _budget_allows_memory_call,
+    compile_plan_context,
+    load_plan_memory_settings,
+    update_plan_memory,
+)
 from app.tools.python_project import PythonProjectTool
 from app.tools.specs import tool_spec
 
@@ -516,6 +530,11 @@ class RunnerCore:
                 if spec.lessons_enabled and lessons:
                     lessons_block = await format_lessons_block(lessons, spec.id)
 
+                if depth == 0:
+                    history, history_summary = await self._prepare_conversation_context(
+                        spec, req, history, history_summary, emit, agent_span_id, budget
+                    )
+
                 task_state_block = req.task_state_context if depth == 0 else ""
                 if depth == 0 and req.task_state_id:
                     try:
@@ -542,7 +561,7 @@ class RunnerCore:
                     reminders_block=reminders_block,
                     recent_runs_block=recent_runs_block,
                     lessons_block=lessons_block,
-                    history_summary_block=(history_summary or "")[:6000],
+                    history_summary_block=(history_summary or "")[:8000],
                     task_state_block=task_state_block,
                 )
 
@@ -570,12 +589,10 @@ class RunnerCore:
                 )
 
                 messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-                # Keep the transcript bounded; older turns remain in durable storage
-                # and can be retrieved selectively through the memory tools.
-                for msg in history[-8:]:
-                    role = msg.role if hasattr(msg, "role") else msg["role"]
-                    content = msg.content if hasattr(msg, "content") else msg["content"]
-                    messages.append({"role": role, "content": str(content)[:2000]})
+                # History was already fitted to this model's context window; turns that
+                # no longer fit are covered by <conversation_summary> and remain
+                # retrievable through the transcript-search tool.
+                messages.extend(merge_history(list(history)))
                 messages.append({"role": "user", "content": task})
 
                 all_tool_specs, tool_instances = self._assemble_tools(
@@ -1139,13 +1156,20 @@ class RunnerCore:
         ):
             # Bound oversized text in every turn, including accumulated tool output.
             # Preserve tool-call structure while preventing raw results bloating prompts.
+            # The system prompt and user turns are never clipped: the system prompt
+            # carries the durable task state and conversation summary at its end.
+            # Clipping keeps the tail, where a truncated tool result names its saved file.
             for message in messages:
                 content = message.get("content")
-                if isinstance(content, str):
-                    limit = 3000 if message.get("role") == "tool" else 6000
+                role = message.get("role")
+                if isinstance(content, str) and role in {"tool", "assistant"}:
+                    limit = 3000 if role == "tool" else 12000
                     if len(content) > limit:
-                        message["content"] = content[:limit] + "\\n[Earlier content omitted; retrieve the full result if needed.]"
-            budget.check_request(messages, tools, spec.params.max_tokens or 0)
+                        message["content"] = clip_middle(content, limit)
+            budget.check_request(
+                messages, tools, spec.params.max_tokens or 0,
+                context_window=get_context_window(litellm_model(spec.provider, spec.model)),
+            )
             if self.fake_llm:
                 turn = await self.fake_llm.complete(
                     messages=messages,
@@ -1639,6 +1663,78 @@ class RunnerCore:
         turn = await self._execute_llm_turn(spec, messages, [], parent_span_id, emit, budget)
         return turn.text or ""
 
+    async def _prepare_conversation_context(
+        self,
+        spec: AgentSpec,
+        req: RunRequest,
+        history: list[Any],
+        history_summary: str,
+        emit: Emit,
+        parent_span_id: str | None,
+        budget: BudgetTracker,
+    ) -> tuple[list[Any], str]:
+        """Fit the transcript to this model and fold what no longer fits into the summary."""
+        budget_chars = history_budget_chars(get_context_window(litellm_model(spec.provider, spec.model)))
+        if req.conversation_id and req.task_state_id:
+            try:
+                result = await compact_conversation_context(
+                    req.task_state_id,
+                    req.conversation_id,
+                    req.task,
+                    budget_chars=budget_chars,
+                    summarize_fn=None if self.fake_llm else self._conversation_summarizer(
+                        spec, emit, parent_span_id, budget
+                    ),
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                # Memory maintenance must never block the run; fall back to supplied history.
+                logger.exception("Could not compact durable conversation context")
+        _, kept = split_for_budget(list(history), budget_chars)
+        return kept, history_summary
+
+    def _conversation_summarizer(
+        self,
+        spec: AgentSpec,
+        emit: Emit,
+        parent_span_id: str | None,
+        budget: BudgetTracker,
+    ):
+        """Summary calls use the configured low-cost memory model, else the agent's own."""
+        config = load_plan_memory_settings()
+        provider, model = (
+            (config["provider"], config["model"]) if config.get("enabled") else (spec.provider, spec.model)
+        )
+
+        async def summarize(messages: list[dict[str, str]]) -> str:
+            prompt = "".join(message["content"] for message in messages)
+            if not _budget_allows_memory_call(budget, prompt, 2000):
+                raise RuntimeError("run budget reserved for execution")
+            async with span(
+                emit,
+                kind="llm_call",
+                name="conversation_summary",
+                parent_span_id=parent_span_id,
+                data={"provider": provider, "model": model},
+            ):
+                turn = await adapter_complete(
+                    messages=messages,
+                    params=LLMParams(timeout_s=45, temperature=0, max_tokens=2000),
+                    model=litellm_model(provider, model),
+                    provider=provider,
+                    max_retries=1,
+                )
+                budget.record_llm_call(
+                    input_tokens=turn.usage.input_tokens,
+                    output_tokens=turn.usage.output_tokens,
+                    cache_read_tokens=turn.usage.cache_read_tokens,
+                    cost_usd=turn.cost_usd,
+                )
+                return turn.text or ""
+
+        return summarize
+
     async def _extract_memories(
         self,
         root_spec: AgentSpec,
@@ -1658,11 +1754,12 @@ class RunnerCore:
             parent_span_id=parent_span_id,
             data={"provider": root_spec.provider, "model": "fast"},
         ):
+            # req.history can now hold a long transcript; extraction only needs recent user turns.
             user_msgs = [req.task] + [
-                m.content if hasattr(m, "content") else m.get("content", "")
+                str(m.content if hasattr(m, "content") else m.get("content", ""))[:2000]
                 for m in req.history
                 if (getattr(m, "role", None) or m.get("role")) == "user"
-            ]
+            ][-10:]
 
             if self.fake_llm:
                 llm_fn = self.fake_llm.complete

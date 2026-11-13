@@ -2,7 +2,6 @@
 import pytest
 
 from app.contracts.memory import MemoryCandidate
-from app.core.memory.compaction import compact_conversation, should_compact_conversation
 from app.core.memory.inmemory import (
     InMemoryStore,
 )
@@ -49,48 +48,6 @@ def test_memory_safety_filters():
 
 
 @pytest.mark.asyncio
-async def test_conversation_compaction_is_deterministic_and_keeps_recent_messages():
-    history = [
-        {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}. " * 500}
-        for i in range(10)
-    ]
-    history[0]["content"] = "We decided to use SQLite for durable task memory. " * 20
-    assert should_compact_conversation(history, context_window=8000) is True
-
-    async def unexpected_llm_call(_messages):
-        raise AssertionError("routine compaction must not call the LLM")
-
-    summary, count = await compact_conversation(
-        history, context_window=8000, llm_complete_fn=unexpected_llm_call
-    )
-    assert "SQLite" in summary
-    assert count == 4
-    assert len(history[-6:]) == 6
-
-
-@pytest.mark.asyncio
-async def test_incremental_compaction_deduplicates_and_keeps_newer_correction():
-    first_history = [
-        {"role": "user", "content": "The project uses Python 3.10. " * 300}
-        for _ in range(7)
-    ]
-    first, _ = await compact_conversation(first_history, context_window=8000)
-
-    second_history = [
-        {"role": "user", "content": "Correction: the project now requires Python 3.12. " * 300}
-        for _ in range(7)
-    ]
-    second, _ = await compact_conversation(
-        second_history, history_summary=first, context_window=8000
-    )
-
-    assert "Python 3.10" in second
-    assert "Python 3.12" in second
-    assert second.rfind("Python 3.12") > second.rfind("Python 3.10")
-    assert len(second) <= 3200
-
-
-@pytest.mark.asyncio
 async def test_memory_is_conversation_scoped_unless_user_opts_in():
     store = InMemoryStore()
     await store.add(
@@ -113,3 +70,29 @@ async def test_memory_is_conversation_scoped_unless_user_opts_in():
     assert len(same_conversation) == 1
     assert other_conversation_private == []
     assert len(other_conversation_shared) == 1
+
+
+@pytest.mark.asyncio
+async def test_extraction_accepts_json_wrapped_in_a_code_fence():
+    from types import SimpleNamespace
+
+    from app.contracts.graph import AgentSpec
+    from app.core.memory.extractor import extract_and_store_memories
+
+    store = InMemoryStore()
+
+    async def fenced(_messages):
+        return SimpleNamespace(text=(
+            "Here you go:\n```json\n{\"memories\": [{\"text\": \"User prefers dark mode\", "
+            "\"kind\": \"preference\", \"evidence\": \"I prefer dark mode\"}]}\n```"
+        ))
+
+    added = await extract_and_store_memories(
+        spec=AgentSpec(id="agent_1", name="A", provider="fake", model="fake/demo", memory_enabled=True),
+        user_messages=["I prefer dark mode"],
+        final_output="ok",
+        execution_id="run-1",
+        store=store,
+        llm_complete_fn=fenced,
+    )
+    assert len(added) == 1

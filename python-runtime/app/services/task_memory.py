@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.infra.paths import project_dir
-from app.services.recall_chain import build_recall_chain, render_recall_chain
+from app.services.recall_chain import build_recall_chain
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +174,8 @@ def _render_context(db: Session, row: models.TaskState) -> str:
             + str(last.get("status", "unknown"))
             + (f" — {_short(last.get('summary', ''), 260)}" if last.get("summary") else "")
         )
-    recall_chain = build_recall_chain(db, row.id, limit=8)
-    lines.extend(["", "Recall references (stable IDs; originals remain in history):", render_recall_chain(recall_chain)])
+    # Raw conversation/execution IDs are not shown to the model: it cannot act on
+    # them, and they spend context. They remain in the STATE.md projection.
     rendered = "\n".join(lines)
     return rendered[:_MAX_HEADER_CHARS]
 

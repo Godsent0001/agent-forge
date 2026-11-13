@@ -61,8 +61,14 @@ async def extract_and_store_memories(
         try:
             turn = await llm_complete_fn([{"role": "user", "content": prompt}])
             if turn.text:
-                data = json.loads(turn.text)
-                for item in data.get("memories", []):
+                # Models often wrap JSON in a code fence or add a sentence around it.
+                raw = turn.text.strip()
+                start, end = raw.find("{"), raw.rfind("}")
+                data = json.loads(raw[start:end + 1]) if 0 <= start < end else {}
+                memories = data.get("memories", []) if isinstance(data, dict) else []
+                for item in memories if isinstance(memories, list) else []:
+                    if not isinstance(item, dict):
+                        continue
                     candidates.append(
                         MemoryCandidate(
                             text=item.get("text", ""),

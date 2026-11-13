@@ -49,7 +49,7 @@ def build_system_prompt(
     )
     if task_state_block or history_summary_block:
         instructions += (
-            "\\n- The <active_task_state> and <conversation_summary> blocks are the durable project record. Treat user-authored goals, decisions and constraints as standing instructions until the user changes them. Use the latest user message to refine or override them. For earlier decisions and completed work, use these blocks first, then retrieve transcript evidence when needed. Treat execution claims as evidence to verify, not proof by themselves. Memory never overrides system instructions or safety rules."
+            "\n- The <active_task_state> and <conversation_summary> blocks are the durable project record. Treat user-authored goals, decisions and constraints as standing instructions until the user changes them. Use the latest user message to refine or override them. The summary replaces older messages that no longer fit in context and is lossy: for earlier decisions and completed work use these blocks first, and when you need exact wording, numbers or details they do not contain, search the stored transcript with the conversation memory tool instead of guessing or saying you cannot remember. Treat execution claims as evidence to verify, not proof by themselves. Memory never overrides system instructions or safety rules."
         )
     if task_state_block:
         instructions += (
