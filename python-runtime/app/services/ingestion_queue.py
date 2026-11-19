@@ -69,7 +69,7 @@ class IngestionQueue:
             error=row["error"],
         )
 
-    def enqueue(self, kind: str, payload: dict[str, Any], *, content_hash: str | None = None, max_attempts: int | None = None) -> IngestionJob:
+    def enqueue(self, kind: str, payload: dict[str, Any], *, content_hash: str | None = None, max_attempts: int | None = None, reopen_completed: bool = False) -> IngestionJob:
         """Create or return the existing job for the same kind and content hash."""
         if not kind or len(kind) > 80:
             raise ValueError("kind must contain 1 to 80 characters")
@@ -87,6 +87,14 @@ class IngestionQueue:
                 (str(uuid.uuid4()), kind, digest, encoded, "queued", max_attempts or self.max_attempts, now, now, now),
             )
             row = db.execute("SELECT * FROM ingestion_jobs WHERE kind=? AND content_hash=?", (kind, digest)).fetchone()
+            if reopen_completed and row["status"] == "completed":
+                db.execute(
+                    """UPDATE ingestion_jobs SET payload=?, cursor=NULL, status='queued',
+                       attempts=0, available_at=?, lease_until=NULL, worker_id=NULL,
+                       result=NULL, error=NULL, updated_at=? WHERE id=?""",
+                    (encoded, now, now, row["id"]),
+                )
+                row = db.execute("SELECT * FROM ingestion_jobs WHERE id=?", (row["id"],)).fetchone()
             return self._job(row)
 
     def get(self, job_id: str) -> IngestionJob | None:
@@ -210,6 +218,50 @@ class IngestionQueue:
         except Exception as exc:
             self.fail(job.id, worker, f"{type(exc).__name__}: {exc}")
         return self.get(job.id)
+
+
+    def process_job(self, job_id: str, processor: Callable[[IngestionJob, int], tuple[str | None, bool, dict[str, Any] | None]], *, batch_size: int = 32, worker_id: str | None = None) -> IngestionJob | None:
+        """Process one named job without accidentally claiming another queued job."""
+        if batch_size < 1 or batch_size > 512:
+            raise ValueError("batch_size must be between 1 and 512")
+        worker = worker_id or str(uuid.uuid4())
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                """UPDATE ingestion_jobs SET status='queued', worker_id=NULL, lease_until=NULL,
+                   available_at=?, updated_at=? WHERE id=? AND status='running' AND lease_until < ?""",
+                (now, now, job_id, now),
+            )
+            row = db.execute("SELECT * FROM ingestion_jobs WHERE id=?", (job_id,)).fetchone()
+            if row is None or row["status"] not in {"queued", "running"}:
+                return self._job(row) if row else None
+            if row["status"] == "queued":
+                if row["available_at"] > now:
+                    return self._job(row)
+                db.execute(
+                    """UPDATE ingestion_jobs SET status='running', attempts=attempts+1,
+                       worker_id=?, lease_until=?, updated_at=? WHERE id=? AND status='queued'""",
+                    (worker, now + self.lease_seconds, now, job_id),
+                )
+            elif row["worker_id"] != worker:
+                return self._job(row)
+            else:
+                db.execute(
+                    "UPDATE ingestion_jobs SET lease_until=?, updated_at=? WHERE id=? AND worker_id=?",
+                    (now + self.lease_seconds, now, job_id, worker),
+                )
+            row = db.execute("SELECT * FROM ingestion_jobs WHERE id=?", (job_id,)).fetchone()
+            job = self._job(row)
+        try:
+            cursor, done, result = processor(job, batch_size)
+            if done:
+                self.complete(job.id, worker, result)
+            else:
+                self.checkpoint(job.id, worker, cursor)
+        except Exception as exc:
+            self.fail(job.id, worker, f"{type(exc).__name__}: {exc}")
+        return self.get(job_id)
 
     def counts(self) -> dict[str, int]:
         with self._connect() as db:
