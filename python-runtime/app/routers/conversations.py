@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, selectinload
 
@@ -237,6 +237,7 @@ def list_messages(
 def append_message(
     conversation_id: str,
     payload: MessageCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> MessageOut:
     conversation = _get_conversation(db, conversation_id)
@@ -266,6 +267,20 @@ def append_message(
         )
     db.commit()
     db.refresh(message)
+
+    # Backfill is deliberately triggered only by a newly persisted user message.
+    # Merely opening/listing a conversation never schedules LLM work.
+    if payload.role == "user":
+        try:
+            from app.services.conversation_backfill import enqueue_backfill, run_backfill_job
+
+            job_id = enqueue_backfill(conversation.id, message.id)
+            if job_id:
+                background_tasks.add_task(run_backfill_job, job_id)
+        except Exception:
+            # Backfill is advisory and must never prevent the user-facing run.
+            logger.exception("Could not schedule lazy conversation backfill for %s", conversation.id)
+
     return _message_out(message, execution.status if payload.execution_id else None)
 
 
