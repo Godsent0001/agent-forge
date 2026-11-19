@@ -570,7 +570,7 @@ class RunnerCore:
                         descriptions = await asyncio.to_thread(
                             list_fact_descriptions, req.project_id, req.conversation_id
                         )
-                        conversation_facts_block = "\\n".join(
+                        conversation_facts_block = "\n".join(
                             f"- {item['id']}: {item['title']} — {item['description']}"
                             for item in descriptions
                         )
