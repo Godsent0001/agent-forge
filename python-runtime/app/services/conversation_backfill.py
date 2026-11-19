@@ -194,7 +194,7 @@ def _process_batch(job: IngestionJob, batch_size: int) -> tuple[str | None, bool
     written = _store_groups(str(payload["project_id"]), conversation_id, groups, valid_ids)
     next_offset = offset + len(batch)
     done = next_offset >= len(ordered)
-    return (None if done else str(next_offset), done, {
+    return (str(next_offset), done, {
         "messages_processed": next_offset, "fact_files_written": written,
     })
 
