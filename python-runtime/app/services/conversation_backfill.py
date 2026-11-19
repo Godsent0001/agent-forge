@@ -10,6 +10,8 @@ import hashlib
 import json
 import logging
 import re
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +201,7 @@ def _process_batch(job: IngestionJob, batch_size: int) -> tuple[str | None, bool
 
 def run_backfill_job(job_id: str) -> None:
     """Drain only this job in bounded batches; the API response is already returned."""
-    worker_id = f"conversation-backfill-{job_id}"
+    worker_id = f"conversation-backfill-{uuid.uuid4()}"
     try:
         while True:
             current = _QUEUE.get(job_id)
@@ -212,6 +214,10 @@ def run_backfill_job(job_id: str) -> None:
                 return
             if result.status in {"completed", "failed", "cancelled"}:
                 return
+            if result.status == "queued":
+                # A transient failure is backed off by the durable queue. Keep the
+                # background task alive so retries do not require another user turn.
+                time.sleep(1)
     except Exception:
         logger.exception("Conversation backfill failed for job %s", job_id)
 
