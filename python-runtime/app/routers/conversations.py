@@ -272,7 +272,10 @@ def append_message(
     # Merely opening/listing a conversation never schedules LLM work.
     if payload.role == "user":
         try:
-            from app.services.conversation_backfill import enqueue_backfill, run_backfill_job
+            from app.services.conversation_backfill import (
+                enqueue_backfill,
+                run_backfill_job,
+            )
 
             job_id = enqueue_backfill(conversation.id, message.id)
             if job_id:
