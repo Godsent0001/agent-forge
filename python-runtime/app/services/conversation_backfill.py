@@ -75,7 +75,7 @@ def enqueue_backfill(conversation_id: str, trigger_message_id: str) -> str | Non
 
 def _parse_json(raw: str) -> dict[str, Any]:
     text = (raw or "").strip()
-    text = re.sub(r"^\`\`\`(?:json)?\\s*|\\s*\`\`\`$", "", text, flags=re.I)
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I)
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("Backfill model did not return a JSON object")
@@ -133,7 +133,7 @@ def _store_groups(project_id: str, conversation_id: str, groups: list[Any], vali
             "facts": stored[-1000:],
         }
         temp = path.with_suffix(".json.tmp")
-        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temp.replace(path)
         written += 1
     return written
