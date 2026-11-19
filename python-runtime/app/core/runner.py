@@ -565,7 +565,10 @@ class RunnerCore:
                         logger.exception("Hierarchical plan-memory update failed")
 
                 conversation_facts_block = ""
-                if depth == 0 and req.conversation_id:
+                # Rebuild the full catalogue for every root-agent invocation (i.e. each
+                # user turn). Do not cache it across turns: a lazy backfill may have
+                # created or updated factual files since the previous message.
+                if depth == 0 and req.project_id and req.conversation_id:
                     try:
                         descriptions = await asyncio.to_thread(
                             list_fact_descriptions, req.project_id, req.conversation_id
