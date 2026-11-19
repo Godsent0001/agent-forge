@@ -87,9 +87,9 @@ class IngestionQueue:
                 (str(uuid.uuid4()), kind, digest, encoded, "queued", max_attempts or self.max_attempts, now, now, now),
             )
             row = db.execute("SELECT * FROM ingestion_jobs WHERE kind=? AND content_hash=?", (kind, digest)).fetchone()
-            if reopen_completed and row["status"] == "completed":
+            if reopen_completed and row["status"] in {"completed", "failed"}:
                 db.execute(
-                    """UPDATE ingestion_jobs SET payload=?, cursor=NULL, status='queued',
+                    """UPDATE ingestion_jobs SET payload=?, status='queued',
                        attempts=0, available_at=?, lease_until=NULL, worker_id=NULL,
                        result=NULL, error=NULL, updated_at=? WHERE id=?""",
                     (encoded, now, now, row["id"]),
@@ -256,6 +256,8 @@ class IngestionQueue:
         try:
             cursor, done, result = processor(job, batch_size)
             if done:
+                if cursor is not None:
+                    self.checkpoint(job.id, worker, cursor)
                 self.complete(job.id, worker, result)
             else:
                 self.checkpoint(job.id, worker, cursor)
