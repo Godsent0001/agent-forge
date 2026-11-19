@@ -54,6 +54,7 @@ from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
 from app.core.tools.conversation_memory import ConversationFactsTool, ConversationMemoryTool
+from app.services.conversation_backfill import list_fact_descriptions
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
@@ -563,6 +564,20 @@ class RunnerCore:
                         # Plan maintenance is advisory and must never block the main run.
                         logger.exception("Hierarchical plan-memory update failed")
 
+                conversation_facts_block = ""
+                if depth == 0 and req.conversation_id:
+                    try:
+                        descriptions = await asyncio.to_thread(
+                            list_fact_descriptions, req.project_id, req.conversation_id
+                        )
+                        conversation_facts_block = "\\n".join(
+                            f"- {item['id']}: {item['title']} — {item['description']}"
+                            for item in descriptions
+                        )
+                    except Exception:
+                        # Historical fact discovery is optional and must not block a run.
+                        logger.exception("Could not load conversation factual-file catalogue")
+
                 system_prompt = build_system_prompt(
                     spec=spec,
                     memory_block=memory_block,
@@ -571,6 +586,7 @@ class RunnerCore:
                     lessons_block=lessons_block,
                     history_summary_block=(history_summary or "")[:8000],
                     task_state_block=task_state_block,
+                    conversation_facts_block=conversation_facts_block,
                 )
 
                 # Keep the workspace contract explicit in every agent context so the
