@@ -75,3 +75,17 @@ def test_conversation_facts_input_accepts_batch_and_legacy_single_id():
 
     assert batch.file_ids == ["one", "two"]
     assert legacy.file_id == "one"
+
+
+@pytest.mark.asyncio
+async def test_conversation_facts_rejects_more_than_three_files():
+    from types import SimpleNamespace
+
+    from app.core.tools.conversation_memory import ConversationFactsInput, ConversationFactsTool
+
+    tool = ConversationFactsTool(project_id="project-1", conversation_id="conv-1")
+    args = ConversationFactsInput(action="load", file_ids=["one", "two", "three"])
+    args.file_ids.append("four")
+    result = await tool.run(args, SimpleNamespace())
+
+    assert "maximum of 3 factual files" in result.content
