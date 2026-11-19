@@ -95,3 +95,53 @@ def test_process_one_validates_batch_size(tmp_path):
     queue = IngestionQueue(tmp_path / "queue.sqlite3")
     with pytest.raises(ValueError):
         queue.process_one(lambda _job, _size: (None, True, None), batch_size=0)
+
+
+
+def test_process_job_targets_only_the_requested_job(tmp_path):
+    queue = IngestionQueue(tmp_path / "queue.sqlite3")
+    first = queue.enqueue("conversation", {"id": "first"})
+    second = queue.enqueue("conversation", {"id": "second"})
+    seen = []
+
+    def processor(job, _batch_size):
+        seen.append(job.id)
+        return "1", True, {"processed": job.id}
+
+    result = queue.process_job(second.id, processor, worker_id="worker-second")
+    assert result and result.id == second.id and result.status == "completed"
+    assert seen == [second.id]
+    assert queue.get(first.id).status == "queued"
+
+
+def test_process_job_rejects_a_second_worker_for_an_active_lease(tmp_path):
+    queue = IngestionQueue(tmp_path / "queue.sqlite3")
+    job = queue.enqueue("conversation", {"id": "chat"})
+    first = queue.process_job(
+        job.id, lambda _job, _size: ("1", False, None), worker_id="worker-a"
+    )
+    assert first and first.status == "running" and first.cursor == "1"
+
+    second = queue.process_job(
+        job.id, lambda _job, _size: ("2", True, None), worker_id="worker-b"
+    )
+    assert second is None
+    assert queue.get(job.id).cursor == "1"
+
+
+def test_reopening_completed_job_preserves_incremental_cursor(tmp_path):
+    queue = IngestionQueue(tmp_path / "queue.sqlite3")
+    job = queue.enqueue("conversation", {"trigger": "first"})
+    completed = queue.process_job(
+        job.id, lambda _job, _size: ("24", True, {"processed": 24}), worker_id="worker"
+    )
+    assert completed and completed.status == "completed" and completed.cursor == "24"
+
+    reopened = queue.enqueue(
+        "conversation", {"trigger": "second"},
+        content_hash=job.content_hash, reopen_completed=True,
+    )
+    assert reopened.id == job.id
+    assert reopened.status == "queued"
+    assert reopened.cursor == "24"
+    assert reopened.payload == {"trigger": "second"}
