@@ -53,7 +53,7 @@ from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
-from app.core.tools.conversation_memory import ConversationMemoryTool
+from app.core.tools.conversation_memory import ConversationFactsTool, ConversationMemoryTool
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
@@ -1512,7 +1512,7 @@ class RunnerCore:
         ]
         raw_names.extend(kind for kind, _ in available_knowledge)
         if project_id and conversation_id:
-            raw_names.append("conversation_memory")
+            raw_names.extend(["conversation_memory", "conversation_facts"])
         if include_attachment_reader:
             raw_names.append("read_attachment")
         for child in spec.children:
@@ -1590,6 +1590,20 @@ class RunnerCore:
                 agent_id=spec.id,
                 conversation_id=conversation_id,
                 include_other_conversations=include_other_conversations,
+            )
+            tool_instances[name] = tool_inst
+            tool_specs.append(ToolSpec(
+                name=name,
+                description=tool_inst.default_description,
+                parameters=tool_inst.Input.model_json_schema(),
+            ))
+
+        if project_id and conversation_id:
+            name = deduped[idx]
+            idx += 1
+            tool_inst = ConversationFactsTool(
+                project_id=project_id,
+                conversation_id=conversation_id,
             )
             tool_instances[name] = tool_inst
             tool_specs.append(ToolSpec(
