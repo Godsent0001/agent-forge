@@ -53,8 +53,10 @@ from app.core.scheduler import ScheduledTask, TaskPlan
 from app.core.spans import span
 from app.core.tool_constraints import constrain_tools_for_task
 from app.core.tool_outcomes import classify_tool_outcome
-from app.core.tools.conversation_memory import ConversationFactsTool, ConversationMemoryTool
-from app.services.conversation_backfill import list_fact_descriptions
+from app.core.tools.conversation_memory import (
+    ConversationFactsTool,
+    ConversationMemoryTool,
+)
 from app.core.tools.read_attachment import ReadAttachmentTool
 from app.core.tools.task_state import TaskStateUpdateTool
 from app.core.tools.workspace_capabilities import (
@@ -65,6 +67,7 @@ from app.core.tools.workspace_capabilities import (
 )
 from app.infra.paths import project_dir
 from app.services.context_memory import compact_conversation_context
+from app.services.conversation_backfill import list_fact_descriptions
 from app.services.memory_settings import cross_conversation_memory_enabled
 from app.services.plan_intelligence import (
     _budget_allows_memory_call,
