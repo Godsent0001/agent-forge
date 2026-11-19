@@ -101,9 +101,9 @@ def build_system_prompt(
     # 11. Factual-detail discovery catalogue (descriptions only; file contents stay unloaded).
     if conversation_facts_block:
         sections.append(
-            "<conversation_factual_files>\\n"
+            "<conversation_factual_files>\n"
             + conversation_facts_block.strip()
-            + "\\n</conversation_factual_files>"
+            + "\n</conversation_factual_files>"
         )
 
     return "\n\n".join(sections)
