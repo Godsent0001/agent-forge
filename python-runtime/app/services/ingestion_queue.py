@@ -245,7 +245,7 @@ class IngestionQueue:
                     (worker, now + self.lease_seconds, now, job_id),
                 )
             elif row["worker_id"] != worker:
-                return self._job(row)
+                return None
             else:
                 db.execute(
                     "UPDATE ingestion_jobs SET lease_until=?, updated_at=? WHERE id=? AND worker_id=?",
