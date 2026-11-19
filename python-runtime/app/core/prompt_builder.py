@@ -11,6 +11,7 @@ def build_system_prompt(
     lessons_block: str = "",
     history_summary_block: str = "",
     task_state_block: str = "",
+    conversation_facts_block: str = "",
 ) -> str:
     """Build a structured system prompt with stable content first and volatile content last."""
     sections: list[str] = []
@@ -96,5 +97,13 @@ def build_system_prompt(
     # 10. History summary
     if history_summary_block:
         sections.append(f"<conversation_summary>\n{history_summary_block.strip()}\n</conversation_summary>")
+
+    # 11. Factual-detail discovery catalogue (descriptions only; file contents stay unloaded).
+    if conversation_facts_block:
+        sections.append(
+            "<conversation_factual_files>\\n"
+            + conversation_facts_block.strip()
+            + "\\n</conversation_factual_files>"
+        )
 
     return "\n\n".join(sections)
