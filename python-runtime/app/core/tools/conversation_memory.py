@@ -136,8 +136,12 @@ class ConversationFactsTool(Tool):
         self.conversation_id = conversation_id
 
     async def run(self, args: ConversationFactsInput, ctx: ToolContext) -> ToolResult:
-        from app.services.conversation_backfill import list_fact_descriptions, load_fact_file
         import json
+
+        from app.services.conversation_backfill import (
+            list_fact_descriptions,
+            load_fact_file,
+        )
 
         if args.action == "list":
             return ToolResult(content=json.dumps({
