@@ -25,8 +25,8 @@ from app.services.ingestion_queue import IngestionJob, IngestionQueue
 
 logger = logging.getLogger(__name__)
 _QUEUE = IngestionQueue(data_dir() / "queues" / "conversation_backfill.sqlite3", lease_seconds=180)
-_BATCH_MESSAGES = 18
-_MAX_MESSAGE_CHARS = 7000
+_BATCH_MESSAGES = 10
+_MAX_MESSAGE_CHARS = 6000
 
 
 def _facts_dir(project_id: str, conversation_id: str) -> Path:
