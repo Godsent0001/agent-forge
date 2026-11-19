@@ -66,10 +66,12 @@ def enqueue_backfill(conversation_id: str, trigger_message_id: str) -> str | Non
             "model": agent.model,
             "trigger_message_id": trigger_message_id,
         }
-    digest = hashlib.sha256(
-        f"{conversation_id}:{trigger_message_id}".encode("utf-8")
-    ).hexdigest()
-    job = _QUEUE.enqueue("conversation_backfill", payload, content_hash=digest)
+    digest = hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()
+    # One resumable job per conversation. A later user message reopens a completed
+    # job so only conversations the user returns to incur further extraction cost.
+    job = _QUEUE.enqueue(
+        "conversation_backfill", payload, content_hash=digest, reopen_completed=True
+    )
     return job.id
 
 
@@ -151,7 +153,6 @@ def _process_batch(job: IngestionJob, batch_size: int) -> tuple[str | None, bool
             .filter(
                 models.ConversationMessage.conversation_id == conversation_id,
                 models.ConversationMessage.role.in_(["user", "assistant"]),
-                models.ConversationMessage.created_at <= trigger.created_at,
             )
             .order_by(models.ConversationMessage.created_at, models.ConversationMessage.id)
             .all()
@@ -204,8 +205,8 @@ def run_backfill_job(job_id: str) -> None:
             current = _QUEUE.get(job_id)
             if current is None or current.status in {"completed", "failed", "cancelled"}:
                 return
-            result = _QUEUE.process_one(
-                _process_batch, batch_size=_BATCH_MESSAGES, worker_id=worker_id,
+            result = _QUEUE.process_job(
+                job_id, _process_batch, batch_size=_BATCH_MESSAGES, worker_id=worker_id,
             )
             if result is None or result.id != job_id:
                 return
