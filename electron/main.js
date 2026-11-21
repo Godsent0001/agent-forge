@@ -7,6 +7,53 @@ import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Keep a small, persistent diagnostic trail so native Electron crashes can be
+// investigated even when the renderer disappears before the user can copy it.
+const DESKTOP_LOG_MAX_BYTES = 2 * 1024 * 1024;
+const DESKTOP_LOG_BACKUPS = 2;
+let desktopLogPath = null;
+
+function desktopLog(level, message, details = undefined) {
+  try {
+    if (!desktopLogPath) {
+      desktopLogPath = path.join(app.getPath("userData"), "logs", "desktop.log");
+      fs.mkdirSync(path.dirname(desktopLogPath), { recursive: true });
+    }
+    let line = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level,
+      message: String(message).slice(0, 1000),
+      ...(details === undefined ? {} : { details }),
+    }) + "\n";
+    if (Buffer.byteLength(line, "utf8") > 12 * 1024) {
+      line = JSON.stringify({ timestamp: new Date().toISOString(), level, message: "Diagnostic entry truncated" }) + "\n";
+    }
+    try {
+      if (fs.existsSync(desktopLogPath) && fs.statSync(desktopLogPath).size + Buffer.byteLength(line, "utf8") > DESKTOP_LOG_MAX_BYTES) {
+        const oldest = desktopLogPath + "." + DESKTOP_LOG_BACKUPS;
+        try { fs.rmSync(oldest, { force: true }); } catch {}
+        for (let index = DESKTOP_LOG_BACKUPS - 1; index >= 1; index--) {
+          const source = desktopLogPath + "." + index;
+          if (fs.existsSync(source)) fs.renameSync(source, desktopLogPath + "." + (index + 1));
+        }
+        fs.renameSync(desktopLogPath, desktopLogPath + ".1");
+      }
+      fs.appendFileSync(desktopLogPath, line, { encoding: "utf8", mode: 0o600 });
+    } catch (error) {
+      console.error("[main] Could not write desktop diagnostic log.", error);
+    }
+  } catch (error) {
+    console.error("[main] Diagnostic logging failed.", error);
+  }
+}
+
+function errorDetails(error) {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message, stack: error.stack?.slice(0, 8000) };
+  }
+  return { message: String(error).slice(0, 2000) };
+}
 const KEY_SLOTS = new Set(["anthropic", "openai", "google", "deepseek", "mistral", "groq", "xai", "openrouter", "venice", "serper"]);
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 // Only unpackaged builds are dev builds. An inherited NODE_ENV must never make an
@@ -17,6 +64,7 @@ let mainWindow = null;
 let pythonProcess = null;
 let backendPort = null;
 let stoppingBackend = false;
+let backendStopPromise = null;
 let appQuitting = false;
 let restartTimer = null;
 const restartHistory = [];
@@ -305,18 +353,22 @@ function startPythonBackend() {
     pythonProcess.stdout?.on("data", handleOutput);
     pythonProcess.stderr?.on("data", handleOutput);
     const child = pythonProcess;
-    child.once("error", () => {
+    desktopLog("info", "Python runtime process spawned", { pid: child.pid, packaged: !isDev });
+    child.once("error", (error) => {
+      desktopLog("error", "Python runtime process error", errorDetails(error));
       if (pythonProcess === child) pythonProcess = null;
       scheduleBackendRestart();
     });
     child.once("exit", (code) => {
       console.log(`[main] Local runtime exited (${code ?? "unknown"}).`);
+      desktopLog("warn", "Python runtime process exited", { code, signal: child.signalCode });
       if (pythonProcess === child) pythonProcess = null;
       backendPort = null;
       if (!stoppingBackend && !appQuitting) scheduleBackendRestart();
     });
-  } catch {
-    console.error("[main] Failed to start local runtime.");
+  } catch (error) {
+    console.error("[main] Failed to start local runtime.", error);
+    desktopLog("fatal", "Failed to start Python runtime", errorDetails(error));
     scheduleBackendRestart();
   }
 }
@@ -371,6 +423,36 @@ async function createWindow() {
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
   const allowedDevOrigin = new URL(devServerUrl).origin;
+  mainWindow.on("unresponsive", () => {
+    desktopLog("error", "Application window became unresponsive", { url: mainWindow?.webContents.getURL() });
+  });
+  mainWindow.on("responsive", () => desktopLog("info", "Application window became responsive"));
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    desktopLog("fatal", "Renderer process exited unexpectedly", {
+      reason: details?.reason,
+      exitCode: details?.exitCode,
+      url: mainWindow?.webContents.getURL(),
+    });
+  });
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (errorCode === -3) return; // Expected when navigation is cancelled.
+    desktopLog("error", "Window navigation failed", {
+      errorCode,
+      errorDescription: String(errorDescription).slice(0, 500),
+      url: String(validatedURL).slice(0, 1000),
+      isMainFrame,
+    });
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    desktopLog("info", "Renderer finished loading", { url: mainWindow?.webContents.getURL() });
+  });
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    desktopLog("fatal", "Electron preload script failed", {
+      preloadPath,
+      error: errorDetails(error),
+    });
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       if (new URL(url).protocol === "https:") void shell.openExternal(url);
@@ -398,14 +480,42 @@ async function createWindow() {
     if (!allowed) event.preventDefault();
   });
 
-  if (isDev) await mainWindow.loadURL(devServerUrl);
-  else await mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
-  mainWindow.on("closed", () => { mainWindow = null; });
+  desktopLog("info", "Creating application window", {
+    packaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
+    gpuFeatureStatus: app.getGPUFeatureStatus?.(),
+  });
+  try {
+    if (isDev) await mainWindow.loadURL(devServerUrl);
+    else await mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+  } catch (error) {
+    desktopLog("fatal", "Application document failed to load", {
+      error: errorDetails(error),
+      packaged: app.isPackaged,
+      document: isDev ? devServerUrl : path.join(__dirname, "../dist/index.html"),
+    });
+    throw error;
+  }
+  mainWindow.on("closed", () => { desktopLog("info", "Application window closed"); mainWindow = null; });
 }
 
 function trustedIpc(event) {
   return mainWindow && event.sender === mainWindow.webContents;
 }
+
+
+// Record fatal main-process failures before Electron exits. Do not attempt to
+// continue after an uncaught exception: the main process may be inconsistent.
+process.on("uncaughtException", (error) => {
+  desktopLog("fatal", "Uncaught main-process exception", errorDetails(error));
+  app.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  desktopLog("error", "Unhandled main-process promise rejection", errorDetails(reason));
+});
+
 
 if (gotSingleInstanceLock) {
   app.on("second-instance", () => {
@@ -415,6 +525,15 @@ if (gotSingleInstanceLock) {
     mainWindow.focus();
   });
 }
+
+ipcMain.handle("log-renderer-error", (event, message, componentStack) => {
+  if (!trustedIpc(event)) throw new Error("Untrusted IPC sender");
+  desktopLog("error", "React renderer error", {
+    message: String(message ?? "Unknown renderer error").slice(0, 2000),
+    componentStack: String(componentStack ?? "").slice(0, 6000),
+  });
+  return true;
+});
 
 ipcMain.handle("get-api-token", (event) => trustedIpc(event) ? apiToken : "");
 ipcMain.handle("get-backend-port", async (event) => {
@@ -439,11 +558,21 @@ ipcMain.handle("sync-api-keys", async (event) => {
   catch { throw new Error("Saved keys could not be applied to the local runtime"); }
 });
 
+app.on("child-process-gone", (_event, details) => {
+  desktopLog("fatal", "Electron child process exited unexpectedly", {
+    type: details?.type,
+    reason: details?.reason,
+    exitCode: details?.exitCode,
+    serviceName: details?.serviceName,
+  });
+});
+
 app.on("before-quit", (event) => {
+  desktopLog("info", "Application shutdown requested");
   appQuitting = true;
   if (restartTimer) clearTimeout(restartTimer);
   restartTimer = null;
-  if (!gotSingleInstanceLock || !pythonProcess || stoppingBackend) return;
+  if (!gotSingleInstanceLock || !pythonProcess) return;
   event.preventDefault();
   void stopPythonBackend().finally(() => app.exit(0));
 });
@@ -460,8 +589,9 @@ if (!gotSingleInstanceLock) {
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) void createWindow();
     });
-  }).catch(() => {
-    console.error("[main] Application startup failed.");
+  }).catch((error) => {
+    console.error("[main] Application startup failed.", error);
+    desktopLog("fatal", "Application startup failed", errorDetails(error));
     app.quit();
   });
 }

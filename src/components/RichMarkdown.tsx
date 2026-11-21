@@ -1,6 +1,77 @@
-import { Children, isValidElement, useId, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useEffect, useId, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+
+
+function blockText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(blockText).join("");
+  if (!isValidElement(node)) return "";
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  const value = blockText(element.props.children);
+  if (element.type === "tr") return value.trimEnd() + "\n";
+  if (element.type === "th" || element.type === "td") return value + "\t";
+  return value;
+}
+
+function CopyablePre({ source }: { source: string }) {
+  return (
+    <div className="group relative my-3">
+      <CopyBlockButton text={source} />
+      <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 pr-12 text-xs text-studio-300">{source}</pre>
+    </div>
+  );
+}
+
+function CopyBlockButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!copied && !failed) return;
+    const timeout = window.setTimeout(() => {
+      setCopied(false);
+      setFailed(false);
+    }, 1800);
+    return () => window.clearTimeout(timeout);
+  }, [copied, failed]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setFailed(false);
+    } catch {
+      setCopied(false);
+      setFailed(true);
+    }
+  };
+
+  return (
+    <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+      {(copied || failed) && (
+        <span role="status" aria-live="polite" className={`rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg backdrop-blur ${copied ? "border-emerald-700/60 bg-emerald-950/90 text-emerald-300" : "border-red-700/60 bg-red-950/90 text-red-300"}`}>
+          {copied ? "Copied" : "Copy failed"}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={copied ? "Copied to clipboard" : "Copy block"}
+        title={copied ? "Copied" : "Copy"}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border shadow-lg backdrop-blur transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${copied ? "border-emerald-700/70 bg-emerald-950/90 text-emerald-300" : "border-studio-600/70 bg-studio-850/95 text-studio-300 hover:border-accent-500/60 hover:bg-studio-700 hover:text-white"}`}
+      >
+        {copied ? (
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+        ) : (
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
+        )}
+      </button>
+    </div>
+  );
+}
 
 type DiagramNode = { id: string; label: string };
 type DiagramEdge = { from: string; to: string; label?: string };
@@ -57,13 +128,13 @@ function SequenceDiagram({ source }: { source: string }) {
   }
   const participants = [...names.keys()];
   if (!participants.length || !messages.length) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const width = Math.max(420, participants.length * 180 + 40);
   const height = 72 + messages.length * 58;
   const xFor = (id: string) => 90 + participants.indexOf(id) * 180;
   return (
-    <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid sequence diagram">
+    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label="Rendered Mermaid sequence diagram"><CopyBlockButton text={source} />
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
         <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {participants.map((id) => <g key={id}><rect x={xFor(id) - 66} y="8" width="132" height="34" rx="7" fill="#202734" stroke="#64748b" /><text x={xFor(id)} y="29" textAnchor="middle" fontSize="11" fill="#f1f5f9">{names.get(id)}</text><line x1={xFor(id)} y1="42" x2={xFor(id)} y2={height - 10} stroke="currentColor" strokeOpacity=".35" strokeDasharray="4 4" /></g>)}
@@ -93,11 +164,11 @@ function MermaidDiagram({ source }: { source: string }) {
   }
   if (/^\s*sequenceDiagram\b/i.test(source)) return <SequenceDiagram source={source} />;
   if (!/^\s*(?:flowchart|graph)\b/i.test(source)) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const { nodes, edges, direction } = mermaidParts(source);
   if (!nodes.length) {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
   const nodeW = 184;
   const nodeH = 54;
@@ -108,7 +179,7 @@ function MermaidDiagram({ source }: { source: string }) {
     ? { x: 24 + index * (nodeW + gap), y: (height - nodeH) / 2 }
     : { x: (width - nodeW) / 2, y: 20 + index * (nodeH + gap) }] as const));
   return (
-    <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label="Rendered Mermaid flowchart">
+    <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label="Rendered Mermaid flowchart"><CopyBlockButton text={source} />
       <svg width={width} height={height} viewBox={"0 0 " + width + " " + height} role="presentation" className="max-w-none">
         <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor" /></marker></defs>
         {edges.map((edge, index) => {
@@ -149,7 +220,7 @@ function DataChart({ source }: { source: string }) {
     const bar = String(parsed.type ?? parsed.chartType ?? "bar").toLowerCase() !== "line";
     const points = values.map((value, index) => ({ x: left + (index + 0.5) * plotW / values.length, y: top + plotH - (value / max) * plotH }));
     return (
-      <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3" role="img" aria-label={String(parsed.title ?? "Data chart")}>
+      <div className="group relative my-3 max-w-full overflow-x-auto rounded-xl border border-line bg-studio-950 p-3 pr-12" role="group" aria-label={String(parsed.title ?? "Data chart")}><CopyBlockButton text={source} />
         {typeof parsed.title === "string" && <p className="mb-2 text-xs font-semibold text-studio-100">{parsed.title}</p>}
         <svg width={width} height={height} viewBox={"0 0 " + width + " " + height}>
           <line x1={left} y1={top + plotH} x2={width - 12} y2={top + plotH} stroke="currentColor" strokeOpacity=".5" />
@@ -163,11 +234,28 @@ function DataChart({ source }: { source: string }) {
       </div>
     );
   } catch {
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-xs text-studio-300">{source}</pre>;
+    return <CopyablePre source={source} />;
   }
 }
 
 const markdownComponents: Components = {
+  table({ children }) {
+    return (
+      <div className="group relative my-3 overflow-x-auto rounded-xl border border-line bg-studio-900 px-2 pb-2 pt-10">
+        <CopyBlockButton text={blockText(children).trim()} />
+        <table>{children}</table>
+      </div>
+    );
+  },
+  blockquote({ children }) {
+    return (
+      <div className="group relative my-3 rounded-xl border border-line bg-studio-900 p-3 pr-12">
+        <CopyBlockButton text={blockText(children).trim()} />
+        <blockquote className="border-l-2 border-accent-500/60 pl-3 text-studio-300">{children}</blockquote>
+      </div>
+    );
+  },
+
   pre({ children }) {
     const child = Children.toArray(children).find(isValidElement);
     if (child && child.type === "code") {
@@ -177,7 +265,15 @@ const markdownComponents: Components = {
       if (language === "mermaid") return <MermaidDiagram source={source} />;
       if (language === "chart" || language === "graph-data" || language === "graph") return <DataChart source={source} />;
     }
-    return <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 text-studio-200">{children}</pre>;
+    const copyText = child && child.type === "code"
+      ? String((child as ReactElement<{ children?: ReactNode }>).props.children ?? "").replace(/\n$/, "")
+      : "";
+    return (
+      <div className="group relative my-3">
+        <CopyBlockButton text={copyText} />
+        <pre className="overflow-x-auto rounded-md border border-line bg-studio-950 p-3 pr-12 text-studio-200">{children}</pre>
+      </div>
+    );
   },
 };
 

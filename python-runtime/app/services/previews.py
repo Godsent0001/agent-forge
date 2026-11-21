@@ -33,6 +33,7 @@ class PreviewProcess:
 class PreviewManager:
     STARTUP_TIMEOUT_SECONDS = 90
     MAX_LOG_CHARS = 8_000
+    MAX_ACTIVE_PREVIEWS = 2
 
     def __init__(self) -> None:
         self._processes: dict[str, PreviewProcess] = {}
@@ -130,6 +131,16 @@ class PreviewManager:
                     return self.status(execution_id)
                 self._terminate(existing)
                 self._processes.pop(execution_id, None)
+
+            active_count = sum(
+                1 for item in self._processes.values()
+                if item.process.poll() is None
+            )
+            if active_count >= self.MAX_ACTIVE_PREVIEWS:
+                raise RuntimeError(
+                    f"AgentForge allows at most {self.MAX_ACTIVE_PREVIEWS} active previews "
+                    "to protect system resources. Stop an existing preview first."
+                )
 
             port = self._port()
             log_path = workspace.resolve(".results/preview-server.log")

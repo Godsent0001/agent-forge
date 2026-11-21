@@ -32,9 +32,15 @@ from app.infra.attachment_storage import (
 )
 from app.infra.file_security import file_response_headers
 from app.infra.paths import project_dir
+from app.services.context_memory import build_conversation_context
 from app.services.core_adapters import Workspace
 from app.services.executions import manager
 from app.services.previews import preview_manager
+from app.services.task_memory import (
+    bind_task_state_to_execution,
+    prepare_task_state,
+    record_live_task_instruction,
+)
 from app.tools.base import ToolExecutionError
 
 router = APIRouter(prefix="/v2/executions", tags=["executions-v2"])
@@ -46,6 +52,7 @@ class CreateExecutionRequest(BaseModel):
     task: str
     conversation_id: str | None = None
     history: list[dict] = Field(default_factory=list)
+    history_summary: str = Field(default="", max_length=12_000)
     options: RunOptions = Field(default_factory=RunOptions)
     attachment_ids: list[str] = Field(default_factory=list, max_length=MAX_RUN_ATTACHMENTS)
 
@@ -80,6 +87,8 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
     execution_id = str(uuid4())
     workspace: Workspace | None = None
     copied_attachment_paths: list[str] = []
+    task_state_id: str | None = None
+    task_state_context = ""
     try:
         if payload.conversation_id:
             conversation = db.get(models.Conversation, payload.conversation_id)
@@ -126,17 +135,39 @@ async def create_execution(payload: CreateExecutionRequest, db: Session = Depend
                     "scan_status": row.status if row.status in {"clean", "unscanned"} else "unscanned",
                 })
 
+        run_history = payload.history
+        run_history_summary = payload.history_summary
+        if payload.conversation_id:
+            task_state_id, task_state_context = prepare_task_state(db, conversation, payload.task)
+            try:
+                server_history, server_summary, has_transcript = build_conversation_context(
+                    db, task_state_id, payload.conversation_id, payload.task
+                )
+                if has_transcript:
+                    run_history = server_history
+                run_history_summary = server_summary or payload.history_summary
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Could not build durable conversation context; using client history"
+                )
+                db.rollback()
+
         req = RunRequest(
             execution_id=execution_id,
             project_id=payload.project_id,
             root_agent_id=payload.root_agent_id,
             conversation_id=payload.conversation_id,
             task=payload.task,
-            history=payload.history,
+            history=run_history,
+            history_summary=run_history_summary,
+            task_state_context=task_state_context,
+            task_state_id=task_state_id,
             attachments=attachment_refs,
             options=payload.options,
         )
         started = manager.start(req)
+        bind_task_state_to_execution(task_state_id, execution_id)
         # The copied attachments now belong to the persistent project workspace.
         copied_attachment_paths.clear()
         return started
@@ -499,6 +530,7 @@ async def send_live_execution_message(
         finally:
             cleanup_db.close()
         raise HTTPException(status_code=409, detail="Execution stopped before the instruction could be delivered")
+    record_live_task_instruction(payload.conversation_id, execution_id, payload.content)
     return {"status": "queued", "message": response}
 
 

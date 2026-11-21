@@ -17,6 +17,7 @@ router = APIRouter(prefix="/v2/agents", tags=["memory"])
 class MemoryOut(BaseModel):
     id: str
     agent_id: str
+    conversation_id: str | None
     text: str
     kind: Literal["fact", "preference", "decision"]
     source_type: Literal["user_stated", "user_edited", "inferred"]
@@ -79,6 +80,7 @@ def _memory_out(row: models.MemoryEntry) -> MemoryOut:
     return MemoryOut(
         id=row.id,
         agent_id=row.agent_id,
+        conversation_id=row.conversation_id,
         text=row.content[:200],
         kind=safe_kind,
         source_type=safe_source,

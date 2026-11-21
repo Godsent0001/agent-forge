@@ -23,6 +23,7 @@ def test_build_system_prompt_stable_and_volatile_order():
         plan_block="1. [done] Search news\n2. [doing] Summarize results",
         lessons_block="- Avoid single word queries in search",
         history_summary_block="User previously discussed AI architectures.",
+        task_state_block="Original objective: Build a payment reconciliation engine.",
     )
 
     assert "<role>" in prompt
@@ -35,6 +36,9 @@ def test_build_system_prompt_stable_and_volatile_order():
     assert "<memory>" in prompt
     assert "<recent_runs trust=\"untrusted\">" in prompt
     assert "<conversation_summary>" in prompt
+    assert '<active_task_state source="durable_task_record">' in prompt
+    assert "Original objective: Build a payment reconciliation engine." in prompt
+    assert "task-memory update tool" in prompt
 
     # Verify stable content comes before volatile content
     lessons_idx = prompt.index("<lessons>")
@@ -43,3 +47,25 @@ def test_build_system_prompt_stable_and_volatile_order():
 
     assert lessons_idx < plan_idx
     assert plan_idx < memory_idx
+
+
+def test_build_system_prompt_includes_entire_factual_file_catalogue():
+    spec = AgentSpec(
+        id="a1",
+        name="Research Assistant",
+        provider="fake",
+        model="fake-model",
+        system_prompt="Be concise and helpful.",
+        memory_enabled=True,
+        lessons_enabled=False,
+    )
+    catalogue = (
+        "- architecture: Architecture decisions — Accepted storage and runtime choices.\\n"
+        "- runtime: Runtime setup — Python runtime, shell and browser configuration."
+    )
+    prompt = build_system_prompt(spec=spec, conversation_facts_block=catalogue)
+
+    assert '<conversation_factual_files trust="untrusted">' in prompt
+    assert "architecture: Architecture decisions — Accepted storage and runtime choices." in prompt
+    assert "runtime: Runtime setup — Python runtime, shell and browser configuration." in prompt
+    assert "file contents stay unloaded" not in prompt

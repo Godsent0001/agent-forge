@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from sqlalchemy.orm import sessionmaker
+
+from app import models
+from app.services import plan_intelligence, task_memory
+
+
+def _task(db_session):
+    project = models.Project(name="Nested plan tests")
+    db_session.add(project)
+    db_session.flush()
+    agent = models.Agent(project_id=project.id, name="Plan agent", provider="fake", model="fake/demo")
+    db_session.add(agent)
+    db_session.flush()
+    conversation = models.Conversation(project_id=project.id, agent_id=agent.id)
+    db_session.add(conversation)
+    db_session.flush()
+    task = models.TaskState(
+        id="nested-plan-task",
+        conversation_id=conversation.id,
+        project_id=project.id,
+        agent_id=agent.id,
+        title="Build platform",
+        original_objective="Build a reliable platform.",
+        current_instruction="Build a reliable platform.",
+        status="active",
+        state_json={},
+        version=1,
+    )
+    db_session.add(task)
+    db_session.commit()
+    return task
+
+
+
+def test_interpreter_can_create_multiple_hierarchy_levels_in_one_update(db_session, monkeypatch):
+    task = _task(db_session)
+    monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
+    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
+
+    plan_intelligence._apply_interpretation(
+        task.id,
+        {
+            "summary": "Created a nested execution plan.",
+            "nodes": [
+                {
+                    "ref": "phase_design",
+                    "type": "phase",
+                    "title": "Design the platform",
+                    "objective": "Establish the architecture.",
+                    "parent_ref": "root",
+                    "source": "agent",
+                },
+                {
+                    "ref": "phase_implement",
+                    "type": "phase",
+                    "title": "Implement the platform",
+                    "objective": "Build the approved architecture.",
+                    "parent_ref": "root",
+                    "source": "agent",
+                },
+                {
+                    "ref": "task_schema",
+                    "type": "task",
+                    "title": "Design the database schema",
+                    "objective": "Define core tables and indexes.",
+                    "parent_ref": "phase_design",
+                    "source": "agent",
+                },
+                {
+                    "ref": "subtask_indexes",
+                    "type": "subgoal",
+                    "title": "Define indexes",
+                    "objective": "Specify query-critical indexes.",
+                    "parent_ref": "task_schema",
+                    "source": "agent",
+                },
+            ],
+            "decisions": [],
+            "constraints": [],
+            "dependencies": [{
+                "node_ref": "phase_implement",
+                "depends_on_ref": "phase_design",
+                "reason": "Implementation follows architecture approval.",
+            }, {
+                "node_ref": "phase_design",
+                "depends_on_ref": "phase_implement",
+                "reason": "This reverse edge would create a cycle.",
+            }],
+        },
+        "Please create a plan for the platform.",
+    )
+
+    db_session.expire_all()
+    plan = db_session.get(models.TaskState, task.id).state_json["plan"]
+    assert len(plan["nodes"]) == 4
+    by_title = {node["title"]: node for node in plan["nodes"]}
+    assert by_title["Design the platform"]["parent_id"] == task.id
+    assert by_title["Design the database schema"]["parent_id"] == by_title["Design the platform"]["id"]
+    assert by_title["Define indexes"]["parent_id"] == by_title["Design the database schema"]["id"]
+    assert len(plan["dependencies"]) == 1
+    assert plan["dependencies"][0]["node_id"] == by_title["Implement the platform"]["id"]
+    assert plan["dependencies"][0]["depends_on_id"] == by_title["Design the platform"]["id"]
+    context = plan_intelligence.compile_plan_context(task.id)
+    assert "Implement the platform depends on Design the platform" in context

@@ -63,6 +63,8 @@ class RunRequest(BaseModel):
     task: str                              # the latest user message
     history: list[ChatMessage] = []        # earlier turns NOT covered by history_summary (oldest first)
     history_summary: str = ""              # summary of older messages that are no longer in `history`
+    task_state_context: str = ""             # compact durable task state, prepared by the platform
+    task_state_id: str | None = None          # durable task-state row associated with this execution
     attachments: list[AttachmentRef] = []  # files attached to `task`
     options: RunOptions = Field(default_factory=RunOptions)
 

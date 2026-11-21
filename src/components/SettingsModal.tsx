@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import { providersNeedingKeys } from "../config/providers";
+import { providersNeedingKeys, PROVIDERS } from "../config/providers";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
@@ -21,8 +21,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [showKeys, setShowKeys] = useState(false);
   const [status, setStatus] = useState<{ tone: "info" | "ok" | "error"; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "system" | "usage">("keys");
+  const [activeSection, setActiveSection] = useState<"keys" | "embeddings" | "memory" | "system" | "usage">("keys");
   const [embeddingModel, setEmbeddingModel] = useState("local:BAAI/bge-small-en-v1.5");
+  const [crossConversationMemory, setCrossConversationMemory] = useState(false);
+  const [planMemoryEnabled, setPlanMemoryEnabled] = useState(true);
+  const [planMemoryUsesAgentModel, setPlanMemoryUsesAgentModel] = useState(true);
+  const [planMemoryProvider, setPlanMemoryProvider] = useState("gemini");
+  const [planMemoryModel, setPlanMemoryModel] = useState("gemini-2.5-flash-lite");
 
   const refresh = useCallback(async () => {
     setSaved(await api.settings.getKeyStatus());
@@ -38,6 +43,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     void api.settings.getEmbeddingModel()
       .then((value) => setEmbeddingModel(value.model))
       .catch(() => setStatus({ tone: "error", text: "Could not load embedding model settings." }));
+    void api.settings.getMemorySettings()
+      .then((value) => setCrossConversationMemory(value.cross_conversation_enabled))
+      .catch(() => setStatus({ tone: "error", text: "Could not load memory settings." }));
+    void api.settings.getPlanMemorySettings()
+      .then((value) => { setPlanMemoryEnabled(value.enabled); setPlanMemoryUsesAgentModel(value.use_agent_model); setPlanMemoryProvider(value.provider); setPlanMemoryModel(value.model); })
+      .catch(() => setStatus({ tone: "error", text: "Could not load hierarchical plan-memory settings." }));
   }, [refresh]);
 
   const pending = Object.entries(drafts).filter(([, value]) => value.trim().length > 0);
@@ -96,6 +107,48 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleSaveMemorySettings = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Saving memory settings…" });
+    try {
+      const result = await api.settings.setMemorySettings(crossConversationMemory);
+      setCrossConversationMemory(result.cross_conversation_enabled);
+      setStatus({ tone: "ok", text: result.cross_conversation_enabled
+        ? "Cross-conversation memory is enabled for this installation."
+        : "Cross-conversation memory is disabled. Memories remain scoped to their source conversation." });
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save memory settings." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSavePlanMemorySettings = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setStatus({ tone: "info", text: "Saving hierarchical memory model settings…" });
+    try {
+      const result = await api.settings.setPlanMemorySettings({
+        enabled: planMemoryEnabled,
+        use_agent_model: planMemoryUsesAgentModel,
+        provider: planMemoryProvider,
+        model: planMemoryModel.trim(),
+      });
+      setPlanMemoryEnabled(result.enabled);
+      setPlanMemoryUsesAgentModel(result.use_agent_model);
+      setPlanMemoryProvider(result.provider);
+      setPlanMemoryModel(result.model);
+      setStatus({ tone: "ok", text: result.enabled
+        ? `Hierarchical plan memory is enabled with ${result.provider}/${result.model}. Ensure that provider's API key is configured.`
+        : "Hierarchical plan memory is disabled. Existing task history is preserved." });
+    } catch (cause) {
+      setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Could not save plan-memory settings." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const handleRemove = async (slot: string, label: string) => {
     if (isBusy) return;
     setIsBusy(true);
@@ -148,6 +201,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-line bg-studio-950 px-4">
           <button type="button" role="tab" aria-selected={activeSection === "keys"} onClick={() => setActiveSection("keys")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "keys" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Provider keys</button>
           <button type="button" role="tab" aria-selected={activeSection === "embeddings"} onClick={() => setActiveSection("embeddings")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "embeddings" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Embeddings</button>
+          <button type="button" role="tab" aria-selected={activeSection === "memory"} onClick={() => setActiveSection("memory")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "memory" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Memory</button>
           <button type="button" role="tab" aria-selected={activeSection === "system"} onClick={() => setActiveSection("system")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "system" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>System check</button>
           <button type="button" role="tab" aria-selected={activeSection === "usage"} onClick={() => setActiveSection("usage")} className={`border-b-2 px-3 py-2 text-xs ${activeSection === "usage" ? "border-accent-500 text-accent-300" : "border-transparent text-studio-400 hover:text-studio-200"}`}>Usage</button>
         </div>
@@ -221,6 +275,85 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <p className="text-2xs leading-relaxed text-studio-500">Changing embedding models does not automatically convert existing vectors. AgentForge keeps vectors tagged by model and only compares compatible embeddings.</p>
               {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
             </div>
+          ) : activeSection === "memory" ? (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4 rounded-md border border-line bg-studio-800/60 p-3">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-medium text-studio-100">Allow memory across conversations</h3>
+                  <p className="text-2xs leading-relaxed text-studio-400">When enabled, this agent can recall its saved memories in other conversations. When disabled, memory is limited to the conversation where it was created. This setting applies to this installation.</p>
+                </div>
+                <input
+                  aria-label="Allow memory across conversations"
+                  type="checkbox"
+                  checked={crossConversationMemory}
+                  onChange={(event) => setCrossConversationMemory(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded accent-accent-500"
+                />
+              </div>
+              <p className="text-2xs text-studio-500">Default: off. Disabling this does not delete saved memories; it only stops retrieving them from other conversations.</p>
+              <div className="space-y-3 rounded-md border border-line bg-studio-800/60 p-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-xs font-medium text-studio-100">Evolving hierarchical plan memory</h3>
+                    <p className="text-2xs leading-relaxed text-studio-400">A low-cost model interprets meaningful updates and proposes changes to the project's goals, nested phases, tasks, constraints, and decisions. AgentForge validates each update and keeps an append-only history. The root objective and accepted user decisions cannot be silently overwritten.</p>
+                  </div>
+                  <input
+                    aria-label="Enable evolving hierarchical plan memory"
+                    type="checkbox"
+                    checked={planMemoryEnabled}
+                    onChange={(event) => setPlanMemoryEnabled(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded accent-accent-500"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-2xs text-studio-300">
+                  <input
+                    aria-label="Use each agent's own model for plan memory"
+                    type="checkbox"
+                    checked={planMemoryUsesAgentModel}
+                    onChange={(event) => setPlanMemoryUsesAgentModel(event.target.checked)}
+                    className="h-3.5 w-3.5 rounded accent-accent-500"
+                  />
+                  Use each agent's own model (untick to choose a cheaper dedicated model)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="plan-memory-provider" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Provider</label>
+                    <select
+                      id="plan-memory-provider"
+                      value={planMemoryProvider}
+                      disabled={planMemoryUsesAgentModel}
+                      onChange={(event) => {
+                        const provider = PROVIDERS.find((item) => item.id === event.target.value);
+                        setPlanMemoryProvider(event.target.value);
+                        if (provider) setPlanMemoryModel(provider.id === "gemini" ? "gemini-2.5-flash-lite" : provider.defaultModel);
+                      }}
+                      className="w-full rounded-md border border-line-strong bg-studio-800 px-2 py-2 text-xs text-studio-100 focus:border-accent-500 focus:outline-none"
+                    >
+                      {PROVIDERS.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="plan-memory-model" className="mb-1 block text-2xs font-mono uppercase tracking-wider text-studio-400">Model ID</label>
+                    <input
+                      id="plan-memory-model"
+                      value={planMemoryModel}
+                      disabled={planMemoryUsesAgentModel}
+                      onChange={(event) => setPlanMemoryModel(event.target.value)}
+                      spellCheck={false}
+                      placeholder="gemini-2.5-flash-lite"
+                      className="w-full rounded-md border border-line-strong bg-studio-800 px-2 py-2 font-mono text-xs text-studio-100 placeholder:text-studio-500 focus:border-accent-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-2xs leading-relaxed text-studio-500">On by default, using each agent's own model and provider key. A dedicated low-cost model such as Gemini 2.5 Flash-Lite cuts cost; its provider's key must be saved under Provider keys, and Ollama can run locally. The same model also writes the rolling conversation summary.</p>
+                <div className="flex justify-end">
+                  <Button size="xs" variant="outline" onClick={() => void handleSavePlanMemorySettings()} disabled={isBusy || !planMemoryModel.trim()}>
+                    Save plan-memory settings
+                  </Button>
+                </div>
+              </div>
+              {status && <p role={status.tone === "error" ? "alert" : "status"} className={`text-2xs ${status.tone === "error" ? "text-red-300" : status.tone === "ok" ? "text-emerald-400" : "text-studio-400"}`}>{status.text}</p>}
+            </div>
           ) : activeSection === "system" ? <SystemCheckPanel /> : <UsagePanel projectId={project?.id} />}
         </div>
 
@@ -260,6 +393,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
               <Button size="xs" variant="primary" onClick={() => void handleSaveEmbeddingModel()} disabled={!embeddingModel.trim() || isBusy}>
                 {isBusy ? "Saving…" : "Save embedding model"}
+              </Button>
+            </div>
+          </div>
+        ) : activeSection === "memory" ? (
+          <div className="space-y-3 border-t border-line p-5 pt-3">
+            <div className="flex items-center justify-between">
+              <Button size="xs" variant="outline" onClick={onClose}>Close</Button>
+              <Button size="xs" variant="primary" onClick={() => void handleSaveMemorySettings()} disabled={isBusy}>
+                {isBusy ? "Saving…" : "Save memory settings"}
               </Button>
             </div>
           </div>

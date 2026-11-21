@@ -9,6 +9,7 @@ export interface KeyStorageResult {
 
 export interface ElectronAPI {
   getBackendPort: () => Promise<number>;
+  logRendererError?: (message: string, componentStack?: string) => Promise<boolean>;
   getApiToken: () => Promise<string>;
   getApiKeyStatus: (provider: string) => Promise<{ saved: boolean; hint: string }>;
   saveApiKey: (provider: string, key: string) => Promise<KeyStorageResult>;

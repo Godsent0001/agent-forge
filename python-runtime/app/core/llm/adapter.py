@@ -50,7 +50,7 @@ async def complete(
     params: LLMParams | None = None,
     model: str = "gpt-4o-mini",
     provider: str | None = None,
-    max_retries: int = 3,
+    max_retries: int = 1,
 ) -> LLMTurn:
     """Call LLM backend with retries and error mapping."""
     if not model or not model.strip():
@@ -78,6 +78,11 @@ async def complete(
             for t in tools
         ]
 
+    # Validate provider credentials before consulting the response cache. A cached
+    # completion must never make a request appear configured when its provider key
+    # has since been removed or revoked.
+    provider_kwargs = _provider_request_kwargs(provider)
+
     # Tool-enabled agents can reuse a prior plain-text completion for an exactly
     # identical prompt + tool schema. Tool-call responses themselves are never
     # cached, so side effects are not skipped or replayed from cache.
@@ -94,7 +99,6 @@ async def complete(
         if cached_turn is not None:
             return cached_turn.model_copy(update={"usage": Usage(), "cost_usd": 0.0, "cached": True})
 
-    provider_kwargs = _provider_request_kwargs(provider)
     attempt = 0
     while True:
         try:

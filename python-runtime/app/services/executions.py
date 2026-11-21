@@ -21,6 +21,7 @@ from app.services.core_adapters import Workspace
 from app.services.graph_loader import load_agent_graph
 from app.services.memory_store import SqlLessonStore, SqlMemoryStore
 from app.services.runner_factory import get_runner
+from app.services.task_memory import record_task_execution_result
 from app.tools.registry import DefaultToolFactory
 from app.ws import manager as legacy_ws_manager
 
@@ -337,12 +338,29 @@ class Emitter:
 
 
 class ExecutionManager:
+    MAX_ACTIVE_EXECUTIONS = 2
+
     def __init__(self, hub: Hub | None = None) -> None:
         self.hub = hub or Hub()
         self.active: dict[str, asyncio.Task[None]] = {}
         self.tokens: dict[str, CancelTokenImpl] = {}
 
+    def _ensure_execution_capacity(self) -> None:
+        # Completed tasks should not consume a slot even if their final callback
+        # has not yet removed them from the registry.
+        self.active = {
+            execution_id: task
+            for execution_id, task in self.active.items()
+            if not task.done()
+        }
+        if len(self.active) >= self.MAX_ACTIVE_EXECUTIONS:
+            raise RuntimeError(
+                f"AgentForge allows at most {self.MAX_ACTIVE_EXECUTIONS} active executions "
+                "at a time to protect system resources. Stop or wait for an existing run."
+            )
+
     def start(self, req: RunRequest) -> dict:
+        self._ensure_execution_capacity()
         db = SessionLocal()
         try:
             project = db.get(models.Project, req.project_id)
@@ -422,6 +440,21 @@ class ExecutionManager:
                         tools=_NoopTools(),
                     )
             finally:
+                # BrowserTool instances are scoped to an agent invocation, but
+                # Chromium sessions are process resources. Close the execution's
+                # session immediately instead of leaving it alive for its idle TTL.
+                try:
+                    from app.tools.browser import close_browser_session
+
+                    await asyncio.wait_for(
+                        close_browser_session(req.execution_id),
+                        timeout=8,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not close browser session for execution %s",
+                        req.execution_id,
+                    )
                 workspace.cleanup()
 
             status = result.status
@@ -461,6 +494,19 @@ class ExecutionManager:
                     db.commit()
             finally:
                 db.close()
+
+            if req.task_state_id:
+                try:
+                    await asyncio.to_thread(
+                        record_task_execution_result,
+                        req.task_state_id,
+                        req.execution_id,
+                        status,
+                        final_output,
+                        error,
+                    )
+                except Exception:
+                    logger.exception("Could not persist task-memory execution result for %s", req.execution_id)
 
             self.active.pop(req.execution_id, None)
             self.tokens.pop(req.execution_id, None)
@@ -543,20 +589,41 @@ class ExecutionManager:
     async def shutdown(self) -> None:
         from app.tools.shell_sessions import shell_sessions
 
-        await shell_sessions.stop_all()
+        # Cancel active executions first so their own finally blocks can stop
+        # one-shot subprocesses and release browser sessions before terminal
+        # sessions and preview servers are torn down.
         tasks = list(self.active.values())
-        for token in self.tokens.values():
+        for token in tuple(self.tokens.values()):
             token.cancel()
         for task in tasks:
-            task.cancel()
+            if not task.done():
+                task.cancel()
+
         if tasks:
-            done, pending = await asyncio.wait(tasks, timeout=3.0)
+            done, pending = await asyncio.wait(tasks, timeout=5.0)
+            for task in done:
+                if not task.cancelled():
+                    try:
+                        task.exception()
+                    except Exception:
+                        logger.exception("Execution task failed during shutdown")
             if pending:
-                for task in pending:
-                    task.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
-            if done:
-                await asyncio.gather(*done, return_exceptions=True)
+                logger.error(
+                    "Runtime shutdown is still waiting for %s execution task(s); "
+                    "continuing with global resource cleanup.",
+                    len(pending),
+                )
+                # Do not cancel these tasks a second time. A repeated Task.cancel()
+                # can interrupt an already-running finally block (for example,
+                # browser.close() or subprocess-tree termination) and orphan the
+                # very processes shutdown is trying to release. The bounded global
+                # cleanup below handles process registries independently.
+                await asyncio.wait(pending, timeout=2.0)
+
+        try:
+            await asyncio.wait_for(shell_sessions.stop_all(), timeout=8.0)
+        except asyncio.TimeoutError:
+            logger.error("Timed out while stopping persistent shell sessions")
 
 
 class _NoopApprovals:

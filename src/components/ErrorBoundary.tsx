@@ -24,6 +24,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("AgentForge renderer error", error, info.componentStack);
+    void window.electronAPI?.logRendererError?.(error.message, info.componentStack ?? undefined).catch(() => {});
   }
 
   render() {

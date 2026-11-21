@@ -20,10 +20,10 @@ class InMemoryStore:
     def __init__(self):
         self.items: dict[str, MemoryItem] = {}
 
-    async def pinned(self, agent_id: str) -> list[MemoryItem]:
+    async def pinned(self, agent_id: str, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         return [
             item for item in self.items.values()
-            if item.agent_id == agent_id and item.pinned and item.status == "active"
+            if item.agent_id == agent_id and (include_other_conversations or item.conversation_id == conversation_id) and item.pinned and item.status == "active"
         ]
 
     async def candidates(
@@ -34,10 +34,12 @@ class InMemoryStore:
         *,
         query_embedding: list[float] | None = None,
         embedding_model: str | None = None,
+        conversation_id: str | None = None,
+        include_other_conversations: bool = False,
     ) -> list[MemoryHit]:
         active_items = [
             item for item in self.items.values()
-            if item.agent_id == agent_id and item.status == "active"
+            if item.agent_id == agent_id and (include_other_conversations or item.conversation_id == conversation_id) and item.status == "active"
         ]
         hits: list[MemoryHit] = []
         query_terms = set(query.lower().split())
@@ -58,17 +60,17 @@ class InMemoryStore:
         hits.sort(key=lambda h: (h.item.pinned, h.keyword_score * 0.6 + h.vector_score * 0.4), reverse=True)
         return hits[:limit]
 
-    async def related(self, agent_id: str, text: str, limit: int) -> list[MemoryItem]:
+    async def related(self, agent_id: str, text: str, limit: int, *, conversation_id: str | None = None, include_other_conversations: bool = False) -> list[MemoryItem]:
         query_terms = set(text.lower().split())
         matched = []
         for item in self.items.values():
-            if item.agent_id == agent_id and item.status == "active":
+            if item.agent_id == agent_id and (include_other_conversations or item.conversation_id == conversation_id) and item.status == "active":
                 item_terms = set(item.text.lower().split())
                 if query_terms.intersection(item_terms):
                     matched.append(item)
         return matched[:limit]
 
-    async def add(self, agent_id: str, items: list[MemoryCandidate]) -> list[MemoryItem]:
+    async def add(self, agent_id: str, items: list[MemoryCandidate], *, conversation_id: str | None = None) -> list[MemoryItem]:
         created: list[MemoryItem] = []
         now = datetime.now(timezone.utc)
 
@@ -82,6 +84,7 @@ class InMemoryStore:
             item = MemoryItem(
                 id=item_id,
                 agent_id=agent_id,
+                conversation_id=conversation_id,
                 text=candidate.text,
                 kind=candidate.kind,
                 source_type=candidate.source_type,
