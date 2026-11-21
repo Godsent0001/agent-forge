@@ -522,19 +522,34 @@ def test_invented_quote_is_never_accepted(db_session, monkeypatch):
     assert status == "proposed"
 
 
-def test_concurrent_writers_do_not_lose_each_others_changes(db_session, monkeypatch):
+def test_concurrent_writers_do_not_lose_each_others_changes(tmp_path, monkeypatch):
     import threading
 
-    task = _task(db_session)
+    from sqlalchemy import create_engine
+
+    from app.db import Base
+
+    # Use a file-backed database so concurrent workers receive independent
+    # connections, matching the application's production SessionLocal behavior.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'concurrent-plan.sqlite3'}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    seed_session = Session()
+    task = _task(seed_session)
+    task_id = task.id
+    seed_session.close()
+
     monkeypatch.setattr(task_memory, "project_dir", lambda _project_id: Path("/tmp/agentforge-plan-tests"))
-    Session = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(plan_intelligence, "SessionLocal", Session)
     errors = []
 
     def add(index):
         try:
             plan_intelligence._apply_interpretation(
-                task.id,
+                task_id,
                 {"nodes": [{"type": "task", "title": f"Task {index}", "parent_ref": "root", "source": "agent"}]},
                 "plan the work",
             )
@@ -546,7 +561,10 @@ def test_concurrent_writers_do_not_lose_each_others_changes(db_session, monkeypa
         thread.start()
     for thread in threads:
         thread.join()
-    db_session.expire_all()
-    titles = {node["title"] for node in db_session.get(models.TaskState, task.id).state_json["plan"]["nodes"]}
+
+    with Session() as verify_session:
+        saved = verify_session.get(models.TaskState, task_id)
+        titles = {node["title"] for node in saved.state_json["plan"]["nodes"]}
     assert not errors
     assert titles == {f"Task {index}" for index in range(8)}
+    engine.dispose()
