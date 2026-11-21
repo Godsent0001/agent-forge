@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.core.tools.conversation_memory import (
+    ConversationFactsInput,
+    ConversationFactsTool,
     ConversationMemoryInput,
     ConversationMemoryTool,
 )
@@ -43,7 +47,6 @@ async def test_conversation_memory_search_and_progressive_read(tmp_path):
 @pytest.mark.asyncio
 async def test_conversation_facts_loads_multiple_files_in_one_call(monkeypatch):
     import json
-    from types import SimpleNamespace
 
     from app.core.tools import conversation_memory
 
@@ -79,10 +82,6 @@ def test_conversation_facts_input_accepts_batch_and_legacy_single_id():
 
 @pytest.mark.asyncio
 async def test_conversation_facts_rejects_more_than_three_files():
-    from types import SimpleNamespace
-
-    from app.core.tools.conversation_memory import ConversationFactsInput, ConversationFactsTool
-
     tool = ConversationFactsTool(project_id="project-1", conversation_id="conv-1")
     args = ConversationFactsInput(action="load", file_ids=["one", "two", "three"])
     args.file_ids.append("four")
