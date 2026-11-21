@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from app.contracts.tools import Permission, Tool, ToolContext, ToolResult
@@ -114,6 +114,14 @@ class ConversationFactsInput(BaseModel):
     # file_id remains accepted for compatibility with earlier tool calls.
     file_id: str | None = Field(default=None, max_length=48)
     file_ids: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("file_ids", mode="before")
+    @classmethod
+    def deduplicate_file_ids(cls, value):
+        # The limit applies to distinct files, not repeated IDs in a model call.
+        if isinstance(value, list):
+            return list(dict.fromkeys(value))
+        return value
 
 
 class ConversationFactsTool(Tool):
